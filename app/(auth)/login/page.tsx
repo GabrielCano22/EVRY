@@ -16,7 +16,7 @@ export default function PaginaIngreso() {
   async function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
     try {
-      await ingresar(email, password);
+      await ingresar(email.trim(), password);
       router.push('/dashboard');
     } catch {}
   }

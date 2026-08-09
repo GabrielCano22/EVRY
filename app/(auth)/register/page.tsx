@@ -35,9 +35,9 @@ export default function PaginaRegistro() {
     }
     try {
       await registrar({
-        email: datos.email,
+        email: datos.email.trim(),
         password: datos.password,
-        name: datos.nombre,
+        name: datos.nombre.trim(),
         biologicalSex: datos.sexoBiologico,
         trackCycle: datos.seguirCiclo,
       });

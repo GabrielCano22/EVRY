@@ -39,9 +39,10 @@ export const useAutenticacion = create<EstadoAutenticacion>((set) => ({
   async ingresar(email, password) {
     set({ cargando: true, error: null });
     try {
+      const emailNormalizado = email.trim().toLowerCase();
       const respuesta = await api<{ accessToken: string }>('/auth/login', {
         method: 'POST',
-        json: { email, password },
+        json: { email: emailNormalizado, password },
         auth: false,
       });
       setAccessToken(respuesta.accessToken);
@@ -55,9 +56,14 @@ export const useAutenticacion = create<EstadoAutenticacion>((set) => ({
   async registrar(datos) {
     set({ cargando: true, error: null });
     try {
+      const datosNormalizados = {
+        ...datos,
+        email: datos.email.trim().toLowerCase(),
+        name: datos.name.trim(),
+      };
       const respuesta = await api<{ accessToken: string }>('/auth/register', {
         method: 'POST',
-        json: datos,
+        json: datosNormalizados,
         auth: false,
       });
       setAccessToken(respuesta.accessToken);

@@ -55,13 +55,6 @@ export default function Inicio() {
         </div>
 
         <div className="relative z-10 text-center px-container-padding max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-sm px-md py-sm rounded-full bg-secondary/15 border border-secondary/30 backdrop-blur-md mb-lg">
-            <Icon name="bolt" fill className="text-secondary" size={16} />
-            <span className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-secondary">
-              Protocolo de alto rendimiento
-            </span>
-          </div>
-
           <h1 className="font-lexend font-extrabold text-5xl md:text-display-xl text-white tracking-tight mb-md leading-[0.95]">
             EVOLUCIONA TU{' '}
             <span className="italic font-extrabold text-primary">FUERZA</span>
