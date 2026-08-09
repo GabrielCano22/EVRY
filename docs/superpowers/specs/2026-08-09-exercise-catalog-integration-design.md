@@ -13,7 +13,7 @@ Incorporar el catálogo completo de 1.324 ejercicios del repositorio `hasaneyldr
 - Las miniaturas y animaciones se versionarán en `EVRY-Backend/assets/exercises/images` y `EVRY-Backend/assets/exercises/videos`.
 - NestJS servirá ambos directorios como contenido estático bajo `/media/exercises/images` y `/media/exercises/videos`.
 - El frontend solo recibirá URLs del backend; no tendrá una segunda copia de los medios.
-- La URL pública del backend se configurará mediante `PUBLIC_API_URL`, permitiendo cambiar host sin modificar datos importados.
+- La URL pública del backend se configurará mediante `MEDIA_BASE_URL`, permitiendo cambiar host sin modificar datos importados.
 
 El dataset descargado pesa aproximadamente 171 MB: 8,9 MB de miniaturas y 128,7 MB de GIFs, con 1.324 archivos de cada tipo. Los archivos son pequeños individualmente y se mantienen a su resolución original de 180×180.
 
