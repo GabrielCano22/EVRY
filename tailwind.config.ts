@@ -71,12 +71,12 @@ const config: Config = {
         warn: '#FF9F0A',
       },
       fontFamily: {
-        abril: ['var(--font-abril-fatface)', 'Abril Fatface', 'serif'],
-        // Legacy aliases keep existing component classes consistent with the
-        // single project-wide typeface.
-        lexend: ['var(--font-abril-fatface)', 'Abril Fatface', 'serif'],
-        grotesk: ['var(--font-abril-fatface)', 'Abril Fatface', 'serif'],
-        sans: ['var(--font-abril-fatface)', 'Abril Fatface', 'serif'],
+        manrope: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        // Alias heredados: mantienen consistencia visual sin obligar a
+        // reescribir cada componente que ya utiliza estas clases.
+        lexend: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        grotesk: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         'display-xl': ['72px', { lineHeight: '76px', letterSpacing: '-0.03em', fontWeight: '800' }],
