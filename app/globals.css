@@ -11,14 +11,8 @@
 html, body {
   background: #0a141d;
   color: #d9e3f0;
-  font-family: var(--font-abril-fatface), 'Abril Fatface', serif;
+  font-family: var(--font-manrope), 'Manrope', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-.abril-fatface-regular {
-  font-family: var(--font-abril-fatface), 'Abril Fatface', serif;
-  font-weight: 400;
-  font-style: normal;
 }
 
 .material-symbols-outlined {

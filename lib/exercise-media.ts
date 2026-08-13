@@ -1,14 +1,14 @@
 import type { Ejercicio } from './types';
 
 function apiOrigin() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-  return apiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api').trim();
+  return apiUrl.replace(/\/api(?:\/.*)?\/?$/, '').replace(/\/$/, '');
 }
 
 export function getExerciseMediaUrl(url: string | null | undefined) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
-  return `${apiOrigin()}/${url.replace(/^\/+/, '')}`;
+  return `${apiOrigin()}/${url.trim().replace(/^\/+/, '')}`;
 }
 
 export function getExerciseInstruction(exercise: Ejercicio, locale = 'es') {

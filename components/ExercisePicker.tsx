@@ -6,6 +6,14 @@ import type { Ejercicio, GrupoMuscular } from '@/lib/types';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExerciseMedia } from './ExerciseMedia';
+import {
+  etiquetaEquipo,
+  etiquetaGrupoMuscular,
+  traducirCategoria,
+  traducirEtiquetaEjercicio,
+  traducirNombreEjercicio,
+  traducirValorEjercicio,
+} from '@/lib/exercise-i18n';
 
 const grupos: { valor: GrupoMuscular | 'TODOS'; etiqueta: string }[] = [
   { valor: 'TODOS', etiqueta: 'Todos' },
@@ -19,21 +27,26 @@ const grupos: { valor: GrupoMuscular | 'TODOS'; etiqueta: string }[] = [
   { valor: 'HAMSTRINGS', etiqueta: 'Isquios' },
   { valor: 'GLUTES', etiqueta: 'Glúteos' },
   { valor: 'CALVES', etiqueta: 'Pantorrillas' },
-  { valor: 'CORE', etiqueta: 'Core' },
+  { valor: 'CORE', etiqueta: 'Zona media' },
   { valor: 'CARDIO', etiqueta: 'Cardio' },
 ];
 
 export function ExercisePicker({
   onPick,
   onClose,
+  idsExcluidos = [],
 }: {
   onPick: (e: Ejercicio) => void;
   onClose: () => void;
+  idsExcluidos?: string[];
 }) {
   const [lista, setLista] = useState<Ejercicio[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [grupo, setGrupo] = useState<GrupoMuscular | 'TODOS'>('TODOS');
   const [cargando, setCargando] = useState(true);
+  const excluidos = new Set(idsExcluidos);
+  const disponibles = lista.filter((ejercicio) => !excluidos.has(ejercicio.id));
+  const cantidadExcluida = lista.length - disponibles.length;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -88,16 +101,31 @@ export function ExercisePicker({
         ))}
       </div>
       <div className="mb-sm flex items-center justify-between text-xs text-on-surface-variant">
-        <span>{cargando ? 'Cargando catálogo…' : `${lista.length} ejercicios disponibles`}</span>
+        <span>
+          {cargando
+            ? 'Cargando catálogo…'
+            : `${disponibles.length} ejercicio${disponibles.length === 1 ? '' : 's'} disponible${
+                disponibles.length === 1 ? '' : 's'
+              }`}
+        </span>
         <span>GIF local · 180×180</span>
       </div>
+      {cantidadExcluida > 0 && !cargando && (
+        <p className="mb-sm rounded-lg border border-primary/20 bg-primary/5 px-sm py-xs text-xs text-primary">
+          {cantidadExcluida === 1
+            ? '1 ejercicio ya fue seleccionado para este día de entrenamiento.'
+            : `${cantidadExcluida} ejercicios ya fueron seleccionados para este día de entrenamiento.`}
+        </p>
+      )}
       <ul className="flex-1 space-y-xs overflow-y-auto">
-        {!cargando && lista.length === 0 && (
+        {!cargando && disponibles.length === 0 && (
           <li className="rounded-lg border border-white/5 bg-surface-container-low p-lg text-center text-sm text-on-surface-variant">
-            No encontramos ejercicios con esos filtros.
+            {cantidadExcluida > 0
+              ? 'Todos los ejercicios mostrados ya fueron seleccionados para este día.'
+              : 'No encontramos ejercicios con esos filtros.'}
           </li>
         )}
-        {lista.map((ejercicio) => (
+        {disponibles.map((ejercicio) => (
           <li key={ejercicio.id}>
             <button
               onClick={() => onPick(ejercicio)}
@@ -105,12 +133,21 @@ export function ExercisePicker({
             >
               <ExerciseMedia exercise={ejercicio} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-body-lg text-on-surface">{ejercicio.name}</p>
+                <p className="truncate font-body-lg text-on-surface">
+                  {traducirNombreEjercicio(ejercicio.name)}
+                </p>
                 <p className="font-grotesk text-[10px] tracking-wider text-on-surface-variant">
-                  {ejercicio.target ?? ejercicio.muscleGroup} · {ejercicio.equipmentLabel ?? ejercicio.equipment}
+                  {ejercicio.target
+                    ? traducirValorEjercicio(ejercicio.target)
+                    : etiquetaGrupoMuscular(ejercicio.muscleGroup)}{' '}
+                  · {ejercicio.equipmentLabel
+                    ? traducirValorEjercicio(ejercicio.equipmentLabel)
+                    : etiquetaEquipo(ejercicio.equipment)}
                 </p>
                 {ejercicio.category && (
-                  <p className="mt-1 truncate text-[10px] uppercase tracking-wider text-outline">{ejercicio.category}</p>
+                  <p className="mt-1 truncate text-[10px] uppercase tracking-wider text-outline">
+                    {traducirCategoria(ejercicio.category)}
+                  </p>
                 )}
               </div>
               {ejercicio.tags.length > 0 && (
@@ -120,7 +157,7 @@ export function ExercisePicker({
                       key={tag}
                       className="rounded bg-tertiary/20 px-xs py-px font-grotesk text-[9px] tracking-wider text-tertiary"
                     >
-                      {tag.replaceAll('_', ' ')}
+                      {traducirEtiquetaEjercicio(tag)}
                     </span>
                   ))}
                 </div>

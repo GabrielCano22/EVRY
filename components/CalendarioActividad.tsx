@@ -19,6 +19,14 @@ const COLOR_FASE: Record<string, string> = {
   LUTEAL: 'bg-tertiary/25',
 };
 
+const ETIQUETAS_FLUJO: Record<string, string> = {
+  NONE: 'Ninguno',
+  SPOTTING: 'Manchado',
+  LIGHT: 'Ligero',
+  MEDIUM: 'Medio',
+  HEAVY: 'Abundante',
+};
+
 export function CalendarioActividad() {
   const { usuario } = useAutenticacion();
   const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
@@ -224,7 +232,7 @@ export function CalendarioActividad() {
               <span className="font-body-md text-on-surface text-xs">
                 {datosSeleccionado.ciclo.isPeriodStart
                   ? 'Inicio de período'
-                  : `Flujo: ${datosSeleccionado.ciclo.flow.toLowerCase()}`}
+                  : `Flujo: ${ETIQUETAS_FLUJO[datosSeleccionado.ciclo.flow] ?? datosSeleccionado.ciclo.flow}`}
               </span>
             </div>
           )}

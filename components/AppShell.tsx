@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {usuario?.name ?? 'Atleta'}
               </span>
               <span className="text-[10px] text-on-surface-variant">
-                {usuario?.trackCycle ? 'Ciclo activo' : 'Tier élite'}
+                {usuario?.trackCycle ? 'Ciclo activo' : 'Nivel élite'}
               </span>
             </div>
           </Link>

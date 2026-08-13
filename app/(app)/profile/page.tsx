@@ -14,7 +14,7 @@ const etiquetasMeta: Record<Meta, { etiqueta: string; icono: string }> = {
   HYPERTROPHY: { etiqueta: 'Hipertrofia', icono: 'exercise' },
   ENDURANCE: { etiqueta: 'Resistencia', icono: 'directions_run' },
   FAT_LOSS: { etiqueta: 'Pérdida de grasa', icono: 'local_fire_department' },
-  GENERAL_FITNESS: { etiqueta: 'Fitness general', icono: 'favorite' },
+  GENERAL_FITNESS: { etiqueta: 'Condición física general', icono: 'favorite' },
   MOBILITY: { etiqueta: 'Movilidad', icono: 'self_improvement' },
 };
 

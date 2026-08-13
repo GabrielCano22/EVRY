@@ -45,11 +45,9 @@ export default function Inicio() {
 
       <section className="relative min-h-[88vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src="https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=2000&q=80"
-            alt=""
-            className="w-full h-full object-cover"
-          />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_25%,rgba(0,122,255,0.28),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(191,90,242,0.22),transparent_30%),linear-gradient(140deg,#0a141d_0%,#101f2c_48%,#0a141d_100%)]" />
+          <div className="absolute -left-24 bottom-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute -right-24 top-24 h-80 w-80 rounded-full bg-secondary/10 blur-3xl" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/40 to-background"></div>
           <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-transparent to-background/60"></div>
         </div>
@@ -123,7 +121,7 @@ export default function Inicio() {
               borde: 'border-primary/30',
               titulo: 'Adaptativo',
               descripcion:
-                'Recomienda peso y reps según tu última sesión, RPE y estado del día.',
+                'Recomienda peso y repeticiones según tu última sesión, RPE y estado del día.',
             },
             {
               icono: 'speed',

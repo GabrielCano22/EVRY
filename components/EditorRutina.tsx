@@ -8,6 +8,11 @@ import { Icon } from './ui/Icon';
 import { ExercisePicker } from './ExercisePicker';
 import { ExerciseMedia } from './ExerciseMedia';
 import { cn } from '@/lib/utils';
+import {
+  etiquetaEquipo,
+  etiquetaGrupoMuscular,
+  traducirNombreEjercicio,
+} from '@/lib/exercise-i18n';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -48,6 +53,11 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
   const [error, setError] = useState<string | null>(null);
 
   function agregarEjercicio(ej: Ejercicio) {
+    if (items.some((item) => item.exerciseId === ej.id)) {
+      setError('Este ejercicio ya fue seleccionado para este día de entrenamiento.');
+      return;
+    }
+    setError(null);
     setItems((arr) => [
       ...arr,
       { exerciseId: ej.id, exercise: ej, targetSets: 3, targetReps: 10, targetWeightKg: null },
@@ -193,9 +203,11 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                     {idx + 1}
                   </div>
                   <div>
-                    <p className="font-body-lg text-on-surface">{it.exercise.name}</p>
+                    <p className="font-body-lg text-on-surface">
+                      {traducirNombreEjercicio(it.exercise.name)}
+                    </p>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
-                      {it.exercise.muscleGroup} · {it.exercise.equipment}
+                      {etiquetaGrupoMuscular(it.exercise.muscleGroup)} · {etiquetaEquipo(it.exercise.equipment)}
                     </p>
                   </div>
                 </div>
@@ -231,7 +243,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                   max={20}
                 />
                 <CampoNumero
-                  etiqueta="Reps"
+                  etiqueta="Repeticiones"
                   valor={it.targetReps ?? 0}
                   onChange={(v) => actualizar(idx, { targetReps: v || null })}
                   min={0}
@@ -269,7 +281,11 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
       </div>
 
       {seleccionando && (
-        <ExercisePicker onPick={agregarEjercicio} onClose={() => setSeleccionando(false)} />
+        <ExercisePicker
+          onPick={agregarEjercicio}
+          onClose={() => setSeleccionando(false)}
+          idsExcluidos={items.map((item) => item.exerciseId)}
+        />
       )}
     </div>
   );

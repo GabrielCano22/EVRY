@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Icon } from '@/components/ui/Icon';
 import { formatearFechaHora, cn } from '@/lib/utils';
+import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -307,7 +308,8 @@ function TarjetaRutina({
       <ul className="text-xs text-on-surface-variant space-y-px">
         {rutina.exercises.slice(0, 4).map((e) => (
           <li key={e.id}>
-            · {e.exercise?.name} <span className="text-outline">({e.targetSets} × {e.targetReps ?? '—'})</span>
+             · {e.exercise ? traducirNombreEjercicio(e.exercise.name) : 'Ejercicio'}{' '}
+             <span className="text-outline">({e.targetSets} × {e.targetReps ?? '—'})</span>
           </li>
         ))}
         {rutina.exercises.length > 4 && (

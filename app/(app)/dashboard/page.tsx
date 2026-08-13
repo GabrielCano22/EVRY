@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { ReadinessCheckin } from '@/components/ReadinessCheckin';
 import { formatearFechaHora, cn } from '@/lib/utils';
+import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 const FASES_ESPANOL: Record<string, string> = {
   MENSTRUAL: 'Menstrual',
@@ -133,7 +134,7 @@ export default function PaginaInicio() {
         </div>
       </div>
 
-      {/* Métricas top */}
+      {/* Métricas principales */}
       <div className={cn('grid gap-md', muestraCiclo ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')}>
         <TarjetaMetrica
           icono="local_fire_department"
@@ -149,7 +150,7 @@ export default function PaginaInicio() {
           color="primary"
           etiqueta="Sesiones 30D"
           valor={(resumen?.workoutsCompleted ?? 0).toString()}
-          extra={`${Math.round(resumen?.volumeKg ?? 0).toLocaleString('es-CO')} kg total`}
+          extra={`${Math.round(resumen?.volumeKg ?? 0).toLocaleString('es-CO')} kg en total`}
         />
         <TarjetaMetrica
           icono="battery_charging_full"
@@ -157,7 +158,7 @@ export default function PaginaInicio() {
           etiqueta="Estado del día"
           valor={puntajeReadiness !== null ? Math.round(puntajeReadiness).toString() : '—'}
           sufijo="/100"
-          extra={puntajeReadiness === null ? 'Sin check-in' : puntajeReadiness >= 75 ? 'Empuja' : puntajeReadiness >= 50 ? 'Mantén' : 'Descansa'}
+          extra={puntajeReadiness === null ? 'Sin registro de hoy' : puntajeReadiness >= 75 ? 'Empuja' : puntajeReadiness >= 50 ? 'Mantén' : 'Descansa'}
         />
         {muestraCiclo && (
           <TarjetaMetrica
@@ -191,12 +192,12 @@ export default function PaginaInicio() {
 
       {/* Grid principal */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-        {/* Top 3 ejercicios */}
+        {/* 3 mejores ejercicios */}
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
           <div className="flex items-center justify-between mb-md">
             <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-sm">
               <Icon name="emoji_events" className="text-secondary" />
-              Top 3 ejercicios
+              3 mejores ejercicios
             </h3>
             <Link
               href="/progress"
@@ -208,7 +209,7 @@ export default function PaginaInicio() {
 
           {top3.length === 0 ? (
             <p className="font-body-md text-on-surface-variant text-sm text-center py-md">
-              Termina algunas sesiones para ver tu top.
+              Termina algunas sesiones para ver tus mejores marcas.
             </p>
           ) : (
             <ul className="space-y-sm">
@@ -228,7 +229,7 @@ export default function PaginaInicio() {
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-body-md text-on-surface truncate">{ej.name}</p>
+                    <p className="font-body-md text-on-surface truncate">{traducirNombreEjercicio(ej.name)}</p>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
                       {ej.sessionsCount} sesiones · 1RM est. {ej.estimated1RM.toFixed(1)}kg
                     </p>

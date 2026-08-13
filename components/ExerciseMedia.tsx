@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Ejercicio } from '@/lib/types';
 import { exerciseGifUrl, exerciseImageUrl } from '@/lib/exercise-media';
+import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { Icon } from './ui/Icon';
 
 export function ExerciseMedia({
@@ -32,8 +33,9 @@ export function ExerciseMedia({
       {src ? (
         <img
           src={src}
-          alt={`Demostración de ${exercise.name}`}
-          loading="lazy"
+          alt={`Demostración de ${traducirNombreEjercicio(exercise.name)}`}
+          loading={variant === 'detail' ? 'eager' : 'lazy'}
+          decoding="async"
           className="h-full w-full object-cover"
           onError={() => (gifUrl && !gifFailed ? setGifFailed(true) : setImageFailed(true))}
         />

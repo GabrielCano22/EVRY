@@ -11,6 +11,7 @@ import { RestTimer } from '@/components/RestTimer';
 import { ExerciseMedia } from '@/components/ExerciseMedia';
 import { formatearFechaHora } from '@/lib/utils';
 import { getExerciseInstruction } from '@/lib/exercise-media';
+import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 const ACCIONES_ESPANOL: Record<Recomendacion['action'], string> = {
   PROGRESS: 'Progresar',
@@ -140,14 +141,16 @@ export default function DetalleEntrenamiento({
                     <div className="w-8 h-8 rounded bg-primary/10 text-primary flex items-center justify-center font-grotesk font-bold">
                       {idx + 1}
                     </div>
-                    <h2 className="font-headline-md text-lg text-on-surface">{ejercicio?.name}</h2>
+                    <h2 className="font-headline-md text-lg text-on-surface">
+                      {ejercicio ? traducirNombreEjercicio(ejercicio.name) : 'Ejercicio'}
+                    </h2>
                   </div>
                 </div>
                 <div className="p-md">
                   <div className="grid grid-cols-12 gap-unit px-sm mb-sm font-grotesk text-label-caps tracking-wider text-on-surface-variant uppercase">
                     <div className="col-span-1 text-center">N°</div>
                     <div className="col-span-4 text-center">KG</div>
-                    <div className="col-span-3 text-center">Reps</div>
+                    <div className="col-span-3 text-center">Repeticiones</div>
                     <div className="col-span-2 text-center">RPE</div>
                     <div className="col-span-2 text-center">
                       <Icon name="check" size={14} />
@@ -211,7 +214,7 @@ export default function DetalleEntrenamiento({
                     Registrando
                   </span>
                   <h3 className="font-headline-md text-headline-md text-on-surface">
-                    {ejercicioActivo.name}
+                    {traducirNombreEjercicio(ejercicioActivo.name)}
                   </h3>
                   </div>
                 </div>

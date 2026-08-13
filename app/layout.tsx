@@ -1,18 +1,17 @@
 import type { Metadata, Viewport } from 'next';
-import { Abril_Fatface } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import './globals.css';
 
-const abrilFatface = Abril_Fatface({
-  weight: '400',
-  style: 'normal',
+const manrope = Manrope({
+  weight: ['400', '500', '600', '700', '800'],
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-abril-fatface',
+  variable: '--font-manrope',
 });
 
 export const metadata: Metadata = {
-  title: 'EVRY — Elite Performance',
-  description: 'Fitness adaptativo con seguimiento del ciclo hormonal. Entrena con tu cuerpo.',
+  title: 'EVRY — Rendimiento adaptativo',
+  description: 'Entrenamiento adaptativo con seguimiento del ciclo hormonal. Entrena con tu cuerpo.',
 };
 
 export const viewport: Viewport = {
@@ -26,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className="dark">
       <body
-        className={`${abrilFatface.variable} abril-fatface-regular bg-background text-on-background font-abril antialiased`}
+        className={`${manrope.variable} bg-background text-on-background font-manrope antialiased`}
       >
         {children}
       </body>

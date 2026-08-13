@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { ExerciseChart } from '@/components/ExerciseChart';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { cn } from '@/lib/utils';
+import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 export default function PaginaProgreso() {
   const [datos, setDatos] = useState<ResumenProgreso | null>(null);
@@ -56,7 +57,7 @@ export default function PaginaProgreso() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
         <div className="lg:col-span-5">
           <h2 className="font-headline-md text-headline-md text-on-surface mb-md">
-            Top ejercicios
+            Mejores ejercicios
           </h2>
           <div className="bg-surface-container-low rounded-xl border border-white/5 divide-y divide-white/5">
             {datos.topExercises.length === 0 ? (
@@ -76,7 +77,7 @@ export default function PaginaProgreso() {
                   )}
                 >
                   <div>
-                    <p className="font-body-lg text-on-surface">{ej.name}</p>
+                    <p className="font-body-lg text-on-surface">{traducirNombreEjercicio(ej.name)}</p>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
                       {ej.bestWeight}kg × {ej.bestReps} · {ej.sessionsCount} sesiones
                     </p>

@@ -15,6 +15,11 @@ const flujos: { valor: Flujo; etiqueta: string; clase: string }[] = [
   { valor: 'HEAVY', etiqueta: 'Fuerte', clase: 'bg-tertiary' },
 ];
 
+const ETIQUETAS_FLUJO = Object.fromEntries(flujos.map((flujo) => [flujo.valor, flujo.etiqueta])) as Record<
+  Flujo,
+  string
+>;
+
 const sintomasDisponibles = [
   'cólicos',
   'dolor de cabeza',
@@ -245,7 +250,7 @@ export default function PaginaCiclo() {
                 <div className="flex gap-sm items-center text-xs text-on-surface-variant">
                   {r.flow !== 'NONE' && (
                     <span className="font-grotesk tracking-wider text-tertiary uppercase">
-                      {r.flow}
+                      {ETIQUETAS_FLUJO[r.flow] ?? r.flow}
                     </span>
                   )}
                   {r.symptoms.length > 0 && <span>· {r.symptoms.length} síntomas</span>}
