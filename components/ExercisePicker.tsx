@@ -143,6 +143,14 @@ export function ExercisePicker({
     };
   }, [cargarPagina]);
 
+  useEffect(() => {
+    const cerrarConEscape = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', cerrarConEscape);
+    return () => window.removeEventListener('keydown', cerrarConEscape);
+  }, [onClose]);
+
   const excluidos = useMemo(() => new Set(idsExcluidos), [idsExcluidos]);
   const disponibles = useMemo(
     () => lista.filter((ejercicio) => !excluidos.has(ejercicio.id)),
@@ -156,11 +164,18 @@ export function ExercisePicker({
   }
 
   return (
-    <div className="fixed inset-0 z-50 mx-auto flex max-w-2xl flex-col bg-background/95 p-lg backdrop-blur-lg">
+    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 p-0 backdrop-blur-sm md:p-lg" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="selector-ejercicios-titulo"
+        onMouseDown={(evento) => evento.stopPropagation()}
+        className="flex h-full w-full max-w-2xl flex-col bg-background/95 p-lg md:rounded-2xl md:border md:border-white/10 md:shadow-2xl"
+      >
       <header className="mb-md flex items-center justify-between">
         <div>
           <span className="font-grotesk text-label-caps tracking-[0.18em] text-primary">CATÁLOGO</span>
-          <h2 className="font-headline-md text-headline-md text-on-surface">Elegir ejercicio</h2>
+          <h2 id="selector-ejercicios-titulo" className="font-headline-md text-headline-md text-on-surface">Elegir ejercicio</h2>
         </div>
         <button
           type="button"
@@ -205,6 +220,7 @@ export function ExercisePicker({
                   ? 'border-primary bg-primary text-on-primary'
                   : 'border-white/10 bg-surface-container text-on-surface-variant hover:text-on-surface'
               }`}
+              aria-pressed={equipo === opcion.valor}
             >
               {opcion.etiqueta}
             </button>
@@ -251,6 +267,7 @@ export function ExercisePicker({
           </li>
         )}
       </ul>
+      </div>
     </div>
   );
 }

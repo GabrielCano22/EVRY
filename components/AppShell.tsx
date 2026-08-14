@@ -19,9 +19,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const items = itemsNavegacion.filter((it) => !it.soloCiclo || usuario?.trackCycle);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background text-on-background">
+    <div className="min-h-screen flex overflow-hidden bg-background text-on-background">
       {/* Sidebar - escritorio */}
-      <nav className="hidden md:flex fixed left-0 top-0 h-screen flex-col py-xl w-64 border-r bg-surface-container-lowest border-white/10 z-40">
+      <nav aria-label="Navegación principal" className="hidden md:flex fixed left-0 top-0 h-screen flex-col py-xl w-64 border-r bg-surface-container-lowest border-white/10 z-40">
         <div className="px-lg mb-xl">
           <h1 className="font-lexend italic font-bold text-2xl text-white tracking-tight">EVRY</h1>
           <p className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant mt-xs">
@@ -41,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       ? 'bg-primary/10 text-primary border-l-4 border-primary'
                       : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface',
                   )}
+                  aria-current={activo ? 'page' : undefined}
                 >
                   <Icon name={it.icono} fill={activo} />
                   <span className="font-lexend font-medium text-sm">{it.etiqueta}</span>
@@ -80,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Bottom nav - móvil */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-background/90 backdrop-blur-lg border-t border-white/10">
+      <nav aria-label="Navegación móvil" className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-background/90 backdrop-blur-lg border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
         <ul className="grid grid-cols-5">
           {items.map((it) => {
             const activo = pathname.startsWith(it.href);
@@ -92,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     'flex flex-col items-center gap-unit py-sm transition-colors',
                     activo ? 'text-primary' : 'text-on-surface-variant',
                   )}
+                  aria-current={activo ? 'page' : undefined}
                 >
                   <Icon name={it.icono} fill={activo} size={22} />
                   <span className="text-[10px] font-grotesk tracking-wider">{it.etiqueta}</span>

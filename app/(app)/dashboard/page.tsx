@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/Icon';
 import { ReadinessCheckin } from '@/components/ReadinessCheckin';
 import { formatearFechaHora, cn } from '@/lib/utils';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
+import { fraseDelDia as obtenerFraseDelDia } from '@/lib/motivacion';
 
 const FASES_ESPANOL: Record<string, string> = {
   MENSTRUAL: 'Menstrual',
@@ -17,7 +18,7 @@ const FASES_ESPANOL: Record<string, string> = {
   LUTEAL: 'Lútea',
 };
 
-const FRASES_GENERALES = [
+/* const FRASES_GENERALES = [
   '"El dolor que sientes hoy es la fuerza que sentirás mañana."',
   '"No se trata de ser perfecta, se trata de ser mejor que ayer."',
   '"Tu cuerpo puede aguantar casi cualquier cosa. Es a tu mente a la que tienes que convencer."',
@@ -38,15 +39,7 @@ const FRASES_CICLO = [
   '"Escucha tu cuerpo: adaptar la intensidad también es progresar."',
   '"Tu ciclo no limita tu fuerza; te enseña a entrenar con inteligencia."',
   '"Descansar cuando lo necesitas es parte de alcanzar tu mejor versión."',
-];
-
-function fraseDelDia(esMujer: boolean): string {
-  const inicioAnio = new Date(new Date().getFullYear(), 0, 0).getTime();
-  const ahora = Date.now();
-  const diaDelAnio = Math.floor((ahora - inicioAnio) / 86400000);
-  const frases = esMujer ? [...FRASES_GENERALES, ...FRASES_CICLO] : FRASES_GENERALES;
-  return frases[diaDelAnio % frases.length];
-}
+]; */
 
 function calcularRacha(entrenamientos: Entrenamiento[]): number {
   // Días consecutivos hacia atrás desde hoy con al menos una sesión finalizada
@@ -75,23 +68,34 @@ export default function PaginaInicio() {
   const [resumen, setResumen] = useState<ResumenProgreso | null>(null);
   const [recientes, setRecientes] = useState<Entrenamiento[]>([]);
   const [puntajeReadiness, setPuntajeReadiness] = useState<number | null>(null);
+  const [estadoCarga, setEstadoCarga] = useState<'cargando' | 'listo' | 'error'>('cargando');
+  const [intento, setIntento] = useState(0);
 
   const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
 
   useEffect(() => {
+    let activo = true;
+    setEstadoCarga('cargando');
     Promise.all([
       muestraCiclo ? api<InfoFase | null>('/cycle/today').catch(() => null) : Promise.resolve(null),
       api<ResumenProgreso>('/progress/overview').catch(() => null),
       api<Entrenamiento[]>('/workouts?take=20').catch(() => []),
       api<{ score: number; date: string } | null>('/readiness/latest').catch(() => null),
     ]).then(([f, r, ent, rd]) => {
+      if (!activo) return;
       setFase(f);
       setResumen(r);
       setRecientes(ent ?? []);
       if (rd && new Date(rd.date).toDateString() === new Date().toDateString())
         setPuntajeReadiness(rd.score);
+      setEstadoCarga('listo');
+    }).catch(() => {
+      if (activo) setEstadoCarga('error');
     });
-  }, [muestraCiclo]);
+    return () => {
+      activo = false;
+    };
+  }, [muestraCiclo, intento]);
 
   const fechaHoy = new Intl.DateTimeFormat('es-CO', {
     day: 'numeric',
@@ -108,10 +112,14 @@ export default function PaginaInicio() {
     () => recientes.filter((e) => e.endedAt).slice(0, 5),
     [recientes],
   );
-  const frase = useMemo(() => fraseDelDia(muestraCiclo), [muestraCiclo]);
+  const esMujer = usuario?.biologicalSex === 'FEMALE';
+  const frase = useMemo(
+    () => obtenerFraseDelDia(esMujer, muestraCiclo),
+    [esMujer, muestraCiclo],
+  );
 
   return (
-    <div className="space-y-lg">
+    <div className="animate-fade-in space-y-lg">
       {/* Encabezado */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-md">
         <div>
@@ -127,13 +135,26 @@ export default function PaginaInicio() {
         </div>
       </div>
 
+      {estadoCarga === 'cargando' && (
+        <div role="status" className="flex items-center gap-sm rounded-xl border border-white/5 bg-surface-container-low p-md text-sm text-on-surface-variant">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+          Preparando tu resumen…
+        </div>
+      )}
+      {estadoCarga === 'error' && (
+        <div role="alert" className="flex flex-col items-start justify-between gap-sm rounded-xl border border-error/30 bg-error/10 p-md text-sm text-error sm:flex-row sm:items-center">
+          <span>No pudimos cargar todos tus datos. Puedes intentarlo de nuevo.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setIntento((valor) => valor + 1)}>Reintentar</Button>
+        </div>
+      )}
+
       {/* Frase motivacional */}
       <div className="bg-gradient-to-r from-primary/10 via-secondary/5 to-transparent rounded-xl p-lg border-l-4 border-primary relative overflow-hidden">
         <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-primary/10 rounded-full blur-3xl"></div>
         <div className="relative flex items-start gap-md">
           <Icon name="format_quote" className="text-primary" size={32} />
           <div>
-            <p className="font-lexend italic text-body-lg text-on-surface leading-snug">{frase}</p>
+          <p aria-live="polite" className="font-lexend italic text-body-lg text-on-surface leading-snug">{frase}</p>
             <p className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant text-[10px] mt-xs">
               Frase del día
             </p>
