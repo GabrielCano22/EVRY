@@ -30,9 +30,14 @@ export default function PaginaProgreso() {
         </p>
       </header>
 
-      <CalendarioActividad />
+      <div className="grid gap-md lg:grid-cols-[minmax(0,1.05fr)_minmax(300px,.95fr)]">
+        <div className="animate-rise rounded-xl border border-white/5 bg-surface-container-low p-md">
+          <CalendarioActividad />
+        </div>
+        <ResumenPeriodo datos={datos} seleccionado={seleccionado} />
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+      <div className="grid grid-cols-1 gap-md md:grid-cols-3">
         <TarjetaEstadistica
           icono="event"
           etiqueta="Sesiones"
@@ -54,8 +59,8 @@ export default function PaginaProgreso() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
-        <div className="lg:col-span-5">
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-12">
+        <div className="lg:col-span-5 animate-rise" style={{ animationDelay: '120ms' }}>
           <h2 className="font-headline-md text-headline-md text-on-surface mb-md">
             Mejores ejercicios
           </h2>
@@ -115,11 +120,67 @@ export default function PaginaProgreso() {
           </div>
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-7 animate-rise" style={{ animationDelay: '180ms' }}>
           {seleccionado && <ExerciseChart exerciseId={seleccionado} />}
         </div>
       </div>
     </div>
+  );
+}
+
+function ResumenPeriodo({
+  datos,
+  seleccionado,
+}: {
+  datos: ResumenProgreso;
+  seleccionado: string | null;
+}) {
+  const ejercicio = datos.topExercises.find((item) => item.exerciseId === seleccionado) ?? datos.topExercises[0];
+  const records = datos.topExercises.filter((item) => item.trendSlope > 0).length;
+  const objetivo = Math.max(datos.workoutsCompleted + 1, 3);
+  const avance = Math.min(100, Math.round((datos.workoutsCompleted / objetivo) * 100));
+
+  return (
+    <aside className="animate-rise flex h-full flex-col justify-between rounded-xl border border-white/5 bg-surface-container-low p-lg" style={{ animationDelay: '70ms' }}>
+      <div>
+        <div className="flex items-start justify-between gap-md">
+          <div>
+            <p className="font-grotesk text-label-caps uppercase tracking-[0.18em] text-primary">Lectura de tu progreso</p>
+            <h2 className="mt-xs font-headline-md text-white">Este mes vas construyendo ritmo</h2>
+          </div>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon name="auto_awesome" size={20} /></span>
+        </div>
+
+        <div className="mt-lg rounded-xl border border-white/5 bg-background/50 p-md">
+          <div className="flex items-center justify-between gap-sm">
+            <div className="flex items-center gap-sm"><Icon name="flag" className="text-secondary" size={20} /><span className="text-sm text-white">Objetivo de sesiones</span></div>
+            <span className="font-grotesk text-sm tabular-nums text-on-surface-variant">{datos.workoutsCompleted}/{objetivo}</span>
+          </div>
+          <div className="mt-sm h-2 overflow-hidden rounded-full bg-surface-container-high" aria-label={`${avance}% del objetivo de sesiones`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance}>
+            <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-[width] duration-500" style={{ width: `${avance}%` }} />
+          </div>
+          <p className="mt-sm text-xs leading-relaxed text-on-surface-variant">Una sesión consistente esta semana vale más que una semana perfecta y difícil de repetir.</p>
+        </div>
+
+        <div className="mt-md grid grid-cols-2 gap-sm">
+          <div className="rounded-xl bg-background/50 p-md"><span className="block text-[10px] uppercase tracking-wider text-on-surface-variant">Récords al alza</span><strong className="mt-xs block font-display-lg text-3xl text-white">{records}</strong><span className="text-xs text-on-surface-variant">ejercicios</span></div>
+          <div className="rounded-xl bg-background/50 p-md"><span className="block text-[10px] uppercase tracking-wider text-on-surface-variant">Volumen total</span><strong className="mt-xs block font-display-lg text-3xl text-white">{Math.round(datos.volumeKg).toLocaleString('es-CO')}</strong><span className="text-xs text-on-surface-variant">kilogramos</span></div>
+        </div>
+
+        {ejercicio && (
+          <div className="mt-md rounded-xl border border-secondary/20 bg-secondary/5 p-md">
+            <div className="flex items-center gap-sm"><Icon name="insights" className="text-secondary" size={19} /><span className="text-[10px] uppercase tracking-[0.16em] text-secondary">Tu foco</span></div>
+            <p className="mt-sm truncate font-headline-md text-white">{traducirNombreEjercicio(ejercicio.name)}</p>
+            <p className="mt-xs text-xs text-on-surface-variant">Mejor marca {ejercicio.bestWeight} kg × {ejercicio.bestReps} · {ejercicio.sessionsCount} sesiones</p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-lg flex flex-col gap-sm sm:flex-row lg:flex-col xl:flex-row">
+        <a href="/workout" className="inline-flex min-h-11 flex-1 items-center justify-center gap-xs rounded-lg bg-primary px-md py-sm font-grotesk text-label-caps uppercase tracking-wider text-on-primary transition-colors hover:bg-primary-fixed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Icon name="play_arrow" size={18} /> Iniciar sesión</a>
+        <a href="/workout" className="inline-flex min-h-11 flex-1 items-center justify-center gap-xs rounded-lg border border-white/10 px-md py-sm font-grotesk text-label-caps uppercase tracking-wider text-on-surface-variant transition-colors hover:border-white/25 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Icon name="calendar_view_week" size={18} /> Ver rutinas</a>
+      </div>
+    </aside>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Ejercicio } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 type VistaCuerpo = 'FRENTE' | 'ESPALDA';
 type SexoMapa = 'MASCULINO' | 'FEMENINO';
@@ -156,6 +157,33 @@ export function MapaMuscular({ ejercicios }: { ejercicios: Ejercicio[] }) {
   const [sexo, setSexo] = useState<SexoMapa>('MASCULINO');
   const [vista, setVista] = useState<VistaCuerpo>('FRENTE');
   const activos = useMemo(() => new Set(obtenerMusculos(ejercicios)), [ejercicios]);
+  const secundarios = useMemo(() => {
+    const resultado = new Set<Musculo>();
+    for (const ejercicio of ejercicios) {
+      for (const musculo of ejercicio.secondaryMuscles ?? []) {
+        const texto = normalizar(musculo);
+        if (/neck|cuello/.test(texto)) resultado.add('cuello');
+        if (/chest|pector|pecho/.test(texto)) resultado.add('pecho');
+        if (/shoulder|deltoid|hombro/.test(texto)) resultado.add('hombros');
+        if (/biceps|bicep/.test(texto)) resultado.add('biceps');
+        if (/triceps|tricep/.test(texto)) resultado.add('triceps');
+        if (/forearm|antebrazo/.test(texto)) resultado.add('antebrazos');
+        if (/abs|abdominal|core/.test(texto)) resultado.add('abdominales');
+        if (/oblique/.test(texto)) resultado.add('oblicuos');
+        if (/lat|dorsal/.test(texto)) resultado.add('dorsales');
+        if (/upper back|espalda superior/.test(texto)) resultado.add('espalda-superior');
+        if (/lower back|lumbar|espalda baja/.test(texto)) resultado.add('espalda-baja');
+        if (/trap|trapezi/.test(texto)) resultado.add('trapecio');
+        if (/glute|butt|gluteo/.test(texto)) resultado.add('gluteos');
+        if (/quad|cuadricep/.test(texto)) resultado.add('cuadriceps');
+        if (/adductor|aductor/.test(texto)) resultado.add('aductores');
+        if (/abductor|abductora/.test(texto)) resultado.add('abductores');
+        if (/hamstring|ischio|isquio/.test(texto)) resultado.add('isquios');
+        if (/calf|calves|pantorrilla/.test(texto)) resultado.add('pantorrillas');
+      }
+    }
+    return resultado;
+  }, [ejercicios]);
   const activosVisibles = [...activos].filter((musculo) => {
     if (vista === 'FRENTE') return !['dorsales', 'espalda-superior', 'espalda-baja', 'trapecio', 'triceps', 'gluteos', 'isquios'].includes(musculo);
     return !['pecho', 'abdominales', 'oblicuos', 'biceps', 'cuadriceps', 'aductores', 'abductores'].includes(musculo);
@@ -205,7 +233,9 @@ export function MapaMuscular({ ejercicios }: { ejercicios: Ejercicio[] }) {
       </div>
 
       <div className="flex justify-center rounded-lg bg-background/60 py-sm">
-        <svg viewBox="0 0 240 360" className="h-auto w-full max-w-[210px]" role="img" aria-label={`${sexo === 'FEMENINO' ? 'Silueta femenina' : 'Silueta masculina'}, vista de ${vista.toLowerCase()}`}>
+        <svg viewBox="0 0 240 360" className="h-auto w-full max-w-[210px]" role="img" aria-labelledby="mapa-muscular-titulo mapa-muscular-descripcion">
+          <title id="mapa-muscular-titulo">Mapa de músculos trabajados</title>
+          <desc id="mapa-muscular-descripcion">Silueta {sexo === 'FEMENINO' ? 'femenina' : 'masculina'} en vista de {vista.toLowerCase()}. El azul indica músculos principales y el morado músculos secundarios.</desc>
           <circle cx="120" cy="52" r="25" fill="#263746" stroke="#425364" strokeWidth="1.2" />
           <Region id="cuello" active={activos.has('cuello')} label={ETIQUETAS.cuello} d="M105 73 L135 73 L137 96 L103 96 Z" />
           {vista === 'FRENTE' ? (
@@ -253,12 +283,24 @@ export function MapaMuscular({ ejercicios }: { ejercicios: Ejercicio[] }) {
       </div>
 
       {activosVisibles.length > 0 ? (
-        <div className="mt-sm flex flex-wrap gap-xs" aria-live="polite">
-          {activosVisibles.map((musculo) => (
-            <span key={musculo} className="rounded-full border border-primary/30 bg-primary/10 px-xs py-px text-[10px] text-primary">
-              {ETIQUETAS[musculo]}
-            </span>
-          ))}
+        <div className="mt-sm" aria-live="polite">
+          <div className="mb-xs flex flex-wrap items-center gap-sm text-[10px] text-on-surface-variant" aria-label="Leyenda del mapa">
+            <span className="inline-flex items-center gap-xs"><i className="h-2 w-2 rounded-full bg-primary" /> Principal</span>
+            <span className="inline-flex items-center gap-xs"><i className="h-2 w-2 rounded-full bg-secondary" /> Secundario</span>
+          </div>
+          <div className="flex flex-wrap gap-xs">
+            {activosVisibles.map((musculo) => {
+              const esSecundario = secundarios.has(musculo);
+              return (
+                <span key={musculo} className={cn(
+                  'rounded-full border px-xs py-px text-[10px]',
+                  esSecundario ? 'border-secondary/30 bg-secondary/10 text-secondary' : 'border-primary/30 bg-primary/10 text-primary',
+                )}>
+                  {ETIQUETAS[musculo]}
+                </span>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <p className="mt-sm text-xs text-on-surface-variant">Selecciona ejercicios para ver las zonas implicadas.</p>

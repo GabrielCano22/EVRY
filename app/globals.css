@@ -57,5 +57,31 @@ input[type="number"] { -moz-appearance: textfield; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .animate-fade-in { animation: fade-in 0.3s ease-out; }
 
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-rise { animation: rise-in 0.45s cubic-bezier(.22, 1, .36, 1) both; }
+
+@keyframes float-soft {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -6px, 0); }
+}
+.animate-float-soft { animation: float-soft 5s ease-in-out infinite; }
+
+*:focus-visible {
+  outline: 2px solid #4da2ff;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }

@@ -27,6 +27,14 @@ const ETIQUETAS_FLUJO: Record<string, string> = {
   HEAVY: 'Abundante',
 };
 
+function claveFechaLocal(valor: Date | string): string {
+  const fecha = valor instanceof Date ? valor : new Date(valor);
+  const año = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+}
+
 export function CalendarioActividad() {
   const { usuario } = useAutenticacion();
   const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
@@ -39,25 +47,41 @@ export function CalendarioActividad() {
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Entrenamiento[]>('/workouts?take=200').then(setEntrenamientos).catch(() => setEntrenamientos([]));
-    if (muestraCiclo) {
-      api<RegistroCiclo[]>('/cycle/entries').then(setCiclo).catch(() => setCiclo([]));
-    } else {
-      setCiclo([]);
-    }
+    let activo = true;
+    const cargarDatos = async () => {
+      const entrenamientosPromise = api<Entrenamiento[]>('/workouts?take=200').catch(() => []);
+      const cicloPromise = muestraCiclo
+        ? api<RegistroCiclo[]>('/cycle/entries').catch(() => [])
+        : Promise.resolve([] as RegistroCiclo[]);
+      const [nuevosEntrenamientos, nuevosRegistros] = await Promise.all([
+        entrenamientosPromise,
+        cicloPromise,
+      ]);
+      if (!activo) return;
+      setEntrenamientos(nuevosEntrenamientos);
+      setCiclo(nuevosRegistros);
+    };
+
+    cargarDatos();
+    const actualizar = () => cargarDatos();
+    window.addEventListener('evry:cycle-updated', actualizar);
+    return () => {
+      activo = false;
+      window.removeEventListener('evry:cycle-updated', actualizar);
+    };
   }, [muestraCiclo]);
 
   const datosPorDia = useMemo(() => {
     const mapa = new Map<string, { entrenamientos: Entrenamiento[]; ciclo?: RegistroCiclo }>();
     for (const e of entrenamientos) {
-      const llave = new Date(e.startedAt).toISOString().slice(0, 10);
+      const llave = claveFechaLocal(e.startedAt);
       const actual = mapa.get(llave) ?? { entrenamientos: [] };
       actual.entrenamientos.push(e);
       mapa.set(llave, actual);
     }
     if (muestraCiclo) {
       for (const r of ciclo) {
-        const llave = new Date(r.date).toISOString().slice(0, 10);
+        const llave = claveFechaLocal(r.date);
         const actual = mapa.get(llave) ?? { entrenamientos: [] };
         actual.ciclo = r;
         mapa.set(llave, actual);
@@ -98,6 +122,8 @@ export function CalendarioActividad() {
         </h3>
         <div className="flex items-center gap-xs">
           <button
+            type="button"
+            aria-label="Mes anterior"
             onClick={() => cambiarMes(-1)}
             className="w-6 h-6 rounded bg-surface-container-high hover:bg-surface-bright text-on-surface flex items-center justify-center"
           >
@@ -107,6 +133,8 @@ export function CalendarioActividad() {
             {MESES[mes].slice(0, 3)} {anio}
           </span>
           <button
+            type="button"
+            aria-label="Mes siguiente"
             onClick={() => cambiarMes(1)}
             className="w-6 h-6 rounded bg-surface-container-high hover:bg-surface-bright text-on-surface flex items-center justify-center"
           >
@@ -129,7 +157,7 @@ export function CalendarioActividad() {
       <div className="grid grid-cols-7 gap-px">
         {celdas.map((fecha, idx) => {
           if (!fecha) return <div key={idx} className="aspect-square"></div>;
-          const llave = fecha.toISOString().slice(0, 10);
+          const llave = claveFechaLocal(fecha);
           const datos = datosPorDia.get(llave);
           const tieneSesion = (datos?.entrenamientos.length ?? 0) > 0;
           const fase =
@@ -142,7 +170,13 @@ export function CalendarioActividad() {
           return (
             <button
               key={idx}
+              type="button"
               onClick={() => setDiaSeleccionado(seleccionado ? null : llave)}
+              aria-label={`Ver actividad del ${fecha.toLocaleDateString('es-CO', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}${tieneSesion ? ', con sesión de entrenamiento' : ''}${datos?.ciclo?.isPeriodStart ? ', inicio de período' : ''}${datos?.ciclo?.symptoms.length ? `, ${datos.ciclo.symptoms.length} síntomas` : ''}`}
               className={cn(
                 'aspect-square rounded flex flex-col items-center justify-center relative transition-all border text-[11px]',
                 seleccionado
@@ -166,6 +200,20 @@ export function CalendarioActividad() {
               )}
               {muestraCiclo && datos?.ciclo?.isPeriodStart && (
                 <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-tertiary"></span>
+              )}
+              {muestraCiclo && datos?.ciclo && !datos.ciclo.isPeriodStart && datos.ciclo.flow !== 'NONE' && (
+                <span
+                  className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-tertiary"
+                  title={`Flujo: ${ETIQUETAS_FLUJO[datos.ciclo.flow] ?? datos.ciclo.flow}`}
+                ></span>
+              )}
+              {muestraCiclo && datos?.ciclo && datos.ciclo.symptoms.length > 0 && (
+                <span
+                  className="absolute bottom-0.5 right-0.5 min-w-2 rounded-full bg-secondary/80 px-0.5 text-[7px] leading-3 text-on-secondary"
+                  title={`${datos.ciclo.symptoms.length} síntoma(s)`}
+                >
+                  {datos.ciclo.symptoms.length}
+                </span>
               )}
             </button>
           );
@@ -227,13 +275,32 @@ export function CalendarioActividad() {
             );
           })}
           {muestraCiclo && datosSeleccionado.ciclo && (
-            <div className="flex items-center gap-xs py-px">
-              <Icon name="water_drop" fill className="text-tertiary" size={12} />
-              <span className="font-body-md text-on-surface text-xs">
-                {datosSeleccionado.ciclo.isPeriodStart
-                  ? 'Inicio de período'
-                  : `Flujo: ${ETIQUETAS_FLUJO[datosSeleccionado.ciclo.flow] ?? datosSeleccionado.ciclo.flow}`}
-              </span>
+            <div className="space-y-1 py-px">
+              <div className="flex items-center gap-xs">
+                <Icon name="water_drop" fill className="text-tertiary" size={12} />
+                <span className="font-body-md text-on-surface text-xs">
+                  {datosSeleccionado.ciclo.isPeriodStart
+                    ? 'Inicio de período'
+                    : `Flujo: ${ETIQUETAS_FLUJO[datosSeleccionado.ciclo.flow] ?? datosSeleccionado.ciclo.flow}`}
+                </span>
+              </div>
+              {datosSeleccionado.ciclo.symptoms.length > 0 && (
+                <p className="font-body-md text-xs text-on-surface-variant">
+                  Síntomas: {datosSeleccionado.ciclo.symptoms.join(', ')}
+                </p>
+              )}
+              {(datosSeleccionado.ciclo.energy !== null || datosSeleccionado.ciclo.mood !== null) && (
+                <p className="font-grotesk text-[10px] tracking-wider text-on-surface-variant">
+                  {datosSeleccionado.ciclo.energy !== null && `Energía ${datosSeleccionado.ciclo.energy}/5`}
+                  {datosSeleccionado.ciclo.energy !== null && datosSeleccionado.ciclo.mood !== null && ' · '}
+                  {datosSeleccionado.ciclo.mood !== null && `Ánimo ${datosSeleccionado.ciclo.mood}/5`}
+                </p>
+              )}
+              {datosSeleccionado.ciclo.notes && (
+                <p className="font-body-md text-xs italic text-on-surface-variant">
+                  {datosSeleccionado.ciclo.notes}
+                </p>
+              )}
             </div>
           )}
         </div>
