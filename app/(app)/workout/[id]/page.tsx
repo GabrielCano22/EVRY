@@ -27,6 +27,15 @@ const FASES_ESPANOL: Record<string, string> = {
   LUTEAL: 'Lútea',
 };
 
+interface EjercicioEnSesion {
+  id: string;
+  exercise?: Ejercicio;
+  series: SerieEntrenamiento[];
+  targetSets?: number;
+  targetReps?: number | null;
+  targetWeightKg?: number | null;
+}
+
 export default function DetalleEntrenamiento({
   params,
 }: {
@@ -42,6 +51,8 @@ export default function DetalleEntrenamiento({
   const [reps, setReps] = useState(8);
   const [rpe, setRpe] = useState(7);
   const [resetTimer, setResetTimer] = useState(0);
+  const [guardandoSerie, setGuardandoSerie] = useState(false);
+  const [errorSerie, setErrorSerie] = useState<string | null>(null);
 
   async function recargar() {
     const datos = await api<Entrenamiento>(`/workouts/${id}`);
@@ -52,6 +63,7 @@ export default function DetalleEntrenamiento({
   }, [id]);
 
   async function seleccionarEjercicio(ejercicio: Ejercicio) {
+    setErrorSerie(null);
     const detalle = await api<Ejercicio>(`/exercises/${ejercicio.id}`).catch(() => ejercicio);
     setEjercicioActivo(detalle);
     setSeleccionando(false);
@@ -66,15 +78,23 @@ export default function DetalleEntrenamiento({
   }
 
   async function registrarSerie() {
-    if (!ejercicioActivo || !entrenamiento) return;
+    if (!ejercicioActivo || !entrenamiento || guardandoSerie) return;
     const orden =
       entrenamiento.sets.filter((s) => s.exerciseId === ejercicioActivo.id).length + 1;
-    await api<SerieEntrenamiento>(`/workouts/${id}/sets`, {
-      method: 'POST',
-      json: { exerciseId: ejercicioActivo.id, order: orden, weightKg: peso, reps, rpe },
-    });
-    setResetTimer((k) => k + 1);
-    await recargar();
+    setGuardandoSerie(true);
+    setErrorSerie(null);
+    try {
+      await api<SerieEntrenamiento>(`/workouts/${id}/sets`, {
+        method: 'POST',
+        json: { exerciseId: ejercicioActivo.id, order: orden, weightKg: peso, reps, rpe },
+      });
+      setResetTimer((k) => k + 1);
+      await recargar();
+    } catch (error: any) {
+      setErrorSerie(error?.message ?? 'No se pudo registrar la serie. Inténtalo de nuevo.');
+    } finally {
+      setGuardandoSerie(false);
+    }
   }
 
   async function finalizar() {
@@ -92,6 +112,32 @@ export default function DetalleEntrenamiento({
     }
     return mapa;
   }, [entrenamiento]);
+
+  const ejerciciosEnSesion = useMemo<EjercicioEnSesion[]>(() => {
+    if (!entrenamiento) return [];
+
+    const ejerciciosPlaneados: EjercicioEnSesion[] = (entrenamiento.routine?.exercises ?? []).map((item) => ({
+      id: item.exerciseId,
+      exercise: item.exercise,
+      series: agrupado.get(item.exerciseId) ?? [],
+      targetSets: item.targetSets,
+      targetReps: item.targetReps,
+      targetWeightKg: item.targetWeightKg,
+    }));
+    const idsPlaneados = new Set(ejerciciosPlaneados.map((item) => item.id));
+
+    for (const [exerciseId, series] of agrupado) {
+      if (!idsPlaneados.has(exerciseId)) {
+        ejerciciosPlaneados.push({
+          id: exerciseId,
+          exercise: series[0]?.exercise,
+          series,
+        });
+      }
+    }
+
+    return ejerciciosPlaneados;
+  }, [agrupado, entrenamiento]);
 
   if (!entrenamiento) return <p className="text-on-surface-variant">Cargando…</p>;
   const finalizada = !!entrenamiento.endedAt;
@@ -128,11 +174,11 @@ export default function DetalleEntrenamiento({
         <div className="lg:col-span-8 space-y-lg">
           {!finalizada && ejercicioActivo && <RestTimer key={resetTimer} seconds={120} />}
 
-          {[...agrupado.entries()].map(([idEjercicio, series], idx) => {
-            const ejercicio = series[0].exercise;
+          {ejerciciosEnSesion.map((item, idx) => {
+            const { exercise: ejercicio, series } = item;
             return (
               <div
-                key={idEjercicio}
+                key={item.id}
                 className="bg-surface-container rounded-xl overflow-hidden border border-white/5"
               >
                 <div className="p-md bg-surface-container-high border-b border-white/5 flex justify-between items-center">
@@ -141,47 +187,72 @@ export default function DetalleEntrenamiento({
                     <div className="w-8 h-8 rounded bg-primary/10 text-primary flex items-center justify-center font-grotesk font-bold">
                       {idx + 1}
                     </div>
-                    <h2 className="font-headline-md text-lg text-on-surface">
-                      {ejercicio ? traducirNombreEjercicio(ejercicio.name) : 'Ejercicio'}
-                    </h2>
-                  </div>
-                </div>
-                <div className="p-md">
-                  <div className="grid grid-cols-12 gap-unit px-sm mb-sm font-grotesk text-label-caps tracking-wider text-on-surface-variant uppercase">
-                    <div className="col-span-1 text-center">N°</div>
-                    <div className="col-span-4 text-center">KG</div>
-                    <div className="col-span-3 text-center">Repeticiones</div>
-                    <div className="col-span-2 text-center">RPE</div>
-                    <div className="col-span-2 text-center">
-                      <Icon name="check" size={14} />
+                    <div>
+                      <h2 className="font-headline-md text-lg text-on-surface">
+                        {ejercicio ? traducirNombreEjercicio(ejercicio.name) : 'Ejercicio'}
+                      </h2>
+                      {item.targetSets && (
+                        <p className="font-grotesk text-[10px] tracking-wider text-on-surface-variant">
+                          Objetivo: {item.targetSets} × {item.targetReps ?? '—'}
+                          {item.targetWeightKg ? ` · ${item.targetWeightKg} kg` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  {series
-                    .sort((a, b) => a.order - b.order)
-                    .map((serie, i) => (
-                      <div
-                        key={serie.id}
-                        className="grid grid-cols-12 gap-unit items-center p-sm rounded-lg mb-unit hover:bg-surface-container-high/30 transition-colors"
-                      >
-                        <div className="col-span-1 text-center font-grotesk text-on-surface">
-                          {i + 1}
-                        </div>
-                        <div className="col-span-4 text-center font-grotesk text-on-surface tabular-nums">
-                          {serie.weightKg ?? '—'}
-                        </div>
-                        <div className="col-span-3 text-center font-grotesk text-on-surface tabular-nums">
-                          {serie.reps ?? '—'}
-                        </div>
-                        <div className="col-span-2 text-center font-grotesk text-on-surface-variant tabular-nums">
-                          {serie.rpe ?? '—'}
-                        </div>
-                        <div className="col-span-2 flex justify-center">
-                          <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center">
-                            <Icon name="check" fill size={14} />
-                          </div>
+                  {!finalizada && ejercicio && ejercicioActivo?.id !== ejercicio.id && (
+                    <button
+                      type="button"
+                      onClick={() => seleccionarEjercicio(ejercicio)}
+                      className="rounded-lg border border-primary/30 px-sm py-xs font-grotesk text-[10px] tracking-wider text-primary transition-colors hover:bg-primary/10"
+                    >
+                      {series.length > 0 ? 'Añadir serie' : 'Empezar'}
+                    </button>
+                  )}
+                </div>
+                <div className="p-md">
+                  {series.length === 0 ? (
+                    <p className="rounded-lg bg-surface-container-low px-md py-sm text-sm text-on-surface-variant">
+                      Aún no registras series para este ejercicio.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-12 gap-unit px-sm mb-sm font-grotesk text-label-caps tracking-wider text-on-surface-variant uppercase">
+                        <div className="col-span-1 text-center">N°</div>
+                        <div className="col-span-4 text-center">KG</div>
+                        <div className="col-span-3 text-center">Repeticiones</div>
+                        <div className="col-span-2 text-center">RPE</div>
+                        <div className="col-span-2 text-center">
+                          <Icon name="check" size={14} />
                         </div>
                       </div>
-                    ))}
+                      {[...series]
+                        .sort((a, b) => a.order - b.order)
+                        .map((serie, i) => (
+                          <div
+                            key={serie.id}
+                            className="grid grid-cols-12 gap-unit items-center p-sm rounded-lg mb-unit hover:bg-surface-container-high/30 transition-colors"
+                          >
+                            <div className="col-span-1 text-center font-grotesk text-on-surface">
+                              {i + 1}
+                            </div>
+                            <div className="col-span-4 text-center font-grotesk text-on-surface tabular-nums">
+                              {serie.weightKg ?? '—'}
+                            </div>
+                            <div className="col-span-3 text-center font-grotesk text-on-surface tabular-nums">
+                              {serie.reps ?? '—'}
+                            </div>
+                            <div className="col-span-2 text-center font-grotesk text-on-surface-variant tabular-nums">
+                              {serie.rpe ?? '—'}
+                            </div>
+                            <div className="col-span-2 flex justify-center">
+                              <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center">
+                                <Icon name="check" fill size={14} />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -201,6 +272,7 @@ export default function DetalleEntrenamiento({
             <ExercisePicker
               onPick={seleccionarEjercicio}
               onClose={() => setSeleccionando(false)}
+              idsExcluidos={ejerciciosEnSesion.map((ejercicio) => ejercicio.id)}
             />
           )}
 
@@ -279,10 +351,15 @@ export default function DetalleEntrenamiento({
                   </span>
                   <Stepper value={rpe} step={1} min={1} max={10} onChange={setRpe} />
                 </div>
-                <Button onClick={registrarSerie} size="lg" className="w-full">
+                <Button onClick={registrarSerie} loading={guardandoSerie} size="lg" className="w-full">
                   <Icon name="check" fill />
                   Registrar serie
                 </Button>
+                {errorSerie && (
+                  <p role="alert" className="text-center text-sm text-error">
+                    {errorSerie}
+                  </p>
+                )}
               </div>
             </div>
           )}

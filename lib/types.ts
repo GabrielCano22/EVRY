@@ -91,6 +91,15 @@ export interface Ejercicio {
 }
 export type Exercise = Ejercicio;
 
+export interface PaginaEjercicios {
+  items: Ejercicio[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}
+export type ExercisePage = PaginaEjercicios;
+
 export interface SerieEntrenamiento {
   id: string;
   workoutId: string;
@@ -114,6 +123,7 @@ export interface Entrenamiento {
   endedAt: string | null;
   cyclePhase: FaseCiclo | null;
   notes: string | null;
+  routine?: Rutina | null;
   sets: SerieEntrenamiento[];
 }
 export type Workout = Entrenamiento;
