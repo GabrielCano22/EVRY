@@ -7,7 +7,7 @@ const GRUPOS_MUSCULARES: Record<GrupoMuscular, string> = {
   BICEPS: 'Bíceps',
   TRICEPS: 'Tríceps',
   FOREARMS: 'Antebrazos',
-  CORE: 'Zona media',
+  CORE: 'Abdominales',
   QUADS: 'Cuádriceps',
   HAMSTRINGS: 'Isquiotibiales',
   GLUTES: 'Glúteos',
@@ -64,7 +64,7 @@ const VALORES_EJERCICIO: Record<string, string> = {
   obliques: 'Oblicuos',
   adductors: 'Aductores',
   abductors: 'Abductores',
-  waist: 'Zona media',
+  waist: 'Abdominales',
   'body weight': 'Peso corporal',
   bodyweight: 'Peso corporal',
   barbell: 'Barra',
@@ -512,7 +512,12 @@ export function traducirNombreEjercicio(nombre: string | null | undefined) {
     .replace(/\s+/g, ' ')
     .trim();
   for (const [patron, reemplazo] of REEMPLAZOS_NOMBRE) traducido = traducido.replace(patron, reemplazo);
-  return capitalizar(limpiarTexto(traducido));
+  const limpio = limpiarTexto(traducido)
+    .replace(/\blastrado\s+(sentadilla|zancada|prensa|extensi[oó]n)\b/gi, '$1 lastrada')
+    .replace(/\blastrado\s+(curl)\b/gi, '$1 lastrado')
+    .replace(/\bpress\s+banca\b/gi, 'press de banca')
+    .replace(/\bdominadas\s+agarre\b/gi, 'dominadas con agarre');
+  return capitalizar(limpio);
 }
 
 export function etiquetaGrupoMuscular(grupo: GrupoMuscular | string | null | undefined) {

@@ -21,6 +21,8 @@ export default function ListaEntrenamientos() {
   const [rutinas, setRutinas] = useState<Rutina[]>([]);
   const [nombre, setNombre] = useState('Sesión rápida');
   const [creando, setCreando] = useState(false);
+  const [iniciandoRutinaId, setIniciandoRutinaId] = useState<string | null>(null);
+  const [errorInicio, setErrorInicio] = useState<string | null>(null);
 
   async function cargar() {
     const [ent, rut] = await Promise.all([
@@ -36,6 +38,7 @@ export default function ListaEntrenamientos() {
   }, []);
 
   async function iniciarRapida() {
+    setErrorInicio(null);
     setCreando(true);
     try {
       const nuevo = await api<Entrenamiento>('/workouts', {
@@ -43,14 +46,25 @@ export default function ListaEntrenamientos() {
         json: { name: nombre },
       });
       router.push(`/workout/${nuevo.id}`);
+    } catch (error: any) {
+      setErrorInicio(error?.message ?? 'No se pudo iniciar la sesión. Comprueba que el backend esté activo.');
     } finally {
       setCreando(false);
     }
   }
 
   async function iniciarRutina(rutina: Rutina) {
-    const nuevo = await api<Entrenamiento>(`/routines/${rutina.id}/start`, { method: 'POST' });
-    router.push(`/workout/${nuevo.id}`);
+    if (iniciandoRutinaId) return;
+    setErrorInicio(null);
+    setIniciandoRutinaId(rutina.id);
+    try {
+      const nuevo = await api<Entrenamiento>(`/routines/${rutina.id}/start`, { method: 'POST' });
+      router.push(`/workout/${nuevo.id}`);
+    } catch (error: any) {
+      setErrorInicio(error?.message ?? 'No se pudo iniciar la rutina. Comprueba tu conexión e inténtalo de nuevo.');
+    } finally {
+      setIniciandoRutinaId(null);
+    }
   }
 
   async function eliminarRutina(rutina: Rutina) {
@@ -68,6 +82,12 @@ export default function ListaEntrenamientos() {
 
   return (
     <div className="space-y-lg">
+      {errorInicio && (
+        <div role="alert" className="flex items-start gap-sm rounded-lg border border-error/30 bg-error/10 p-md text-sm text-error">
+          <Icon name="error" size={18} />
+          <span>{errorInicio}</span>
+        </div>
+      )}
       <header>
         <h1 className="font-headline-lg text-headline-lg text-on-surface">Entrenamientos</h1>
         <p className="font-body-md text-on-surface-variant">
@@ -142,6 +162,7 @@ export default function ListaEntrenamientos() {
                 rutina={rutina}
                 onIniciar={iniciarRutina}
                 onEliminar={eliminarRutina}
+                iniciando={rutina ? iniciandoRutinaId === rutina.id : false}
               />
             ))}
           </div>
@@ -156,6 +177,7 @@ export default function ListaEntrenamientos() {
                     rutina={r}
                     onIniciar={iniciarRutina}
                     onEliminar={eliminarRutina}
+                    iniciando={iniciandoRutinaId === r.id}
                   />
                 ))}
               </div>
@@ -242,11 +264,13 @@ function TarjetaDia({
   rutina,
   onIniciar,
   onEliminar,
+  iniciando,
 }: {
   dia: string;
   rutina: Rutina | null;
   onIniciar: (r: Rutina) => void;
   onEliminar: (r: Rutina) => void;
+  iniciando: boolean;
 }) {
   if (!rutina) {
     return (
@@ -261,7 +285,7 @@ function TarjetaDia({
     );
   }
   return (
-    <TarjetaRutina rutina={rutina} dia={dia} onIniciar={onIniciar} onEliminar={onEliminar} />
+    <TarjetaRutina rutina={rutina} dia={dia} onIniciar={onIniciar} onEliminar={onEliminar} iniciando={iniciando} />
   );
 }
 
@@ -270,11 +294,13 @@ function TarjetaRutina({
   dia,
   onIniciar,
   onEliminar,
+  iniciando,
 }: {
   rutina: Rutina;
   dia?: string;
   onIniciar: (r: Rutina) => void;
   onEliminar: (r: Rutina) => void;
+  iniciando: boolean;
 }) {
   return (
     <div className="bg-surface-container rounded-xl p-md border border-white/5 flex flex-col gap-sm">
@@ -316,9 +342,9 @@ function TarjetaRutina({
           <li className="text-outline">+ {rutina.exercises.length - 4} más</li>
         )}
       </ul>
-      <Button onClick={() => onIniciar(rutina)} className="w-full mt-sm" size="md">
+      <Button onClick={() => onIniciar(rutina)} disabled={iniciando} loading={iniciando} className="w-full mt-sm" size="md">
         <Icon name="play_arrow" />
-        Empezar rutina
+        {iniciando ? 'Iniciando…' : 'Empezar rutina'}
       </Button>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import type { Ejercicio, GrupoMuscular, PaginaEjercicios } from '@/lib/types';
+import type { Ejercicio, Equipo, GrupoMuscular, PaginaEjercicios } from '@/lib/types';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExerciseMedia } from './ExerciseMedia';
@@ -17,20 +17,48 @@ import {
 
 const TAMANO_PAGINA = 30;
 
-const grupos: { valor: GrupoMuscular | 'TODOS'; etiqueta: string }[] = [
+type FiltroZona = {
+  valor: string;
+  etiqueta: string;
+  muscleGroup?: GrupoMuscular;
+  category?: string;
+  target?: string;
+};
+
+const zonas: FiltroZona[] = [
   { valor: 'TODOS', etiqueta: 'Todos' },
-  { valor: 'CHEST', etiqueta: 'Pecho' },
-  { valor: 'BACK', etiqueta: 'Espalda' },
-  { valor: 'SHOULDERS', etiqueta: 'Hombros' },
-  { valor: 'BICEPS', etiqueta: 'Bíceps' },
-  { valor: 'TRICEPS', etiqueta: 'Tríceps' },
-  { valor: 'FOREARMS', etiqueta: 'Antebrazos' },
-  { valor: 'QUADS', etiqueta: 'Cuádriceps' },
-  { valor: 'HAMSTRINGS', etiqueta: 'Isquios' },
-  { valor: 'GLUTES', etiqueta: 'Glúteos' },
-  { valor: 'CALVES', etiqueta: 'Pantorrillas' },
-  { valor: 'CORE', etiqueta: 'Zona media' },
-  { valor: 'CARDIO', etiqueta: 'Cardio' },
+  { valor: 'CHEST', etiqueta: 'Pecho', muscleGroup: 'CHEST' },
+  { valor: 'BACK', etiqueta: 'Espalda', muscleGroup: 'BACK' },
+  { valor: 'LATS', etiqueta: 'Dorsales', muscleGroup: 'BACK', target: 'lats' },
+  { valor: 'UPPER_BACK', etiqueta: 'Espalda superior', category: 'back', target: 'upper back' },
+  { valor: 'LOWER_BACK', etiqueta: 'Espalda baja', category: 'back', target: 'spine' },
+  { valor: 'TRAPS', etiqueta: 'Trapecio', category: 'back', target: 'traps' },
+  { valor: 'SHOULDERS', etiqueta: 'Hombros', muscleGroup: 'SHOULDERS' },
+  { valor: 'BICEPS', etiqueta: 'Bíceps', muscleGroup: 'BICEPS' },
+  { valor: 'TRICEPS', etiqueta: 'Tríceps', muscleGroup: 'TRICEPS' },
+  { valor: 'FOREARMS', etiqueta: 'Antebrazos', muscleGroup: 'FOREARMS' },
+  { valor: 'QUADS', etiqueta: 'Cuádriceps', muscleGroup: 'QUADS' },
+  { valor: 'HAMSTRINGS', etiqueta: 'Isquiosurales', muscleGroup: 'HAMSTRINGS' },
+  { valor: 'GLUTES', etiqueta: 'Glúteos', muscleGroup: 'GLUTES' },
+  { valor: 'ABDUCTORS', etiqueta: 'Abductores', category: 'upper legs', target: 'abductors' },
+  { valor: 'ADDUCTORS', etiqueta: 'Aductores', category: 'upper legs', target: 'adductors' },
+  { valor: 'CALVES', etiqueta: 'Pantorrillas', muscleGroup: 'CALVES' },
+  { valor: 'ABS', etiqueta: 'Abdominales', muscleGroup: 'CORE', category: 'waist' },
+  { valor: 'NECK', etiqueta: 'Cuello', category: 'neck' },
+  { valor: 'FULL_BODY', etiqueta: 'Cuerpo completo', muscleGroup: 'FULL_BODY' },
+  { valor: 'CARDIO', etiqueta: 'Cardio', muscleGroup: 'CARDIO' },
+];
+
+const equipos: { valor: Equipo | 'TODOS'; etiqueta: string }[] = [
+  { valor: 'TODOS', etiqueta: 'Cualquier equipo' },
+  { valor: 'BARBELL', etiqueta: 'Barra' },
+  { valor: 'DUMBBELL', etiqueta: 'Mancuernas' },
+  { valor: 'MACHINE', etiqueta: 'Máquina' },
+  { valor: 'CABLE', etiqueta: 'Polea' },
+  { valor: 'BODYWEIGHT', etiqueta: 'Peso corporal' },
+  { valor: 'KETTLEBELL', etiqueta: 'Kettlebell' },
+  { valor: 'BAND', etiqueta: 'Bandas' },
+  { valor: 'OTHER', etiqueta: 'Otro' },
 ];
 
 export function ExercisePicker({
@@ -44,7 +72,8 @@ export function ExercisePicker({
 }) {
   const [lista, setLista] = useState<Ejercicio[]>([]);
   const [busqueda, setBusqueda] = useState('');
-  const [grupo, setGrupo] = useState<GrupoMuscular | 'TODOS'>('TODOS');
+  const [zona, setZona] = useState('TODOS');
+  const [equipo, setEquipo] = useState<Equipo | 'TODOS'>('TODOS');
   const [pagina, setPagina] = useState(1);
   const [total, setTotal] = useState(0);
   const [hayMas, setHayMas] = useState(false);
@@ -60,7 +89,11 @@ export function ExercisePicker({
         page: String(paginaSolicitada),
       });
       if (busqueda.trim()) params.set('q', busqueda.trim());
-      if (grupo !== 'TODOS') params.set('muscleGroup', grupo);
+      const filtroZona = zonas.find((opcion) => opcion.valor === zona);
+      if (filtroZona?.muscleGroup) params.set('muscleGroup', filtroZona.muscleGroup);
+      if (filtroZona?.category) params.set('category', filtroZona.category);
+      if (filtroZona?.target) params.set('target', filtroZona.target);
+      if (equipo !== 'TODOS') params.set('equipment', equipo);
 
       if (acumular) setCargandoMas(true);
       else setCargando(true);
@@ -91,7 +124,7 @@ export function ExercisePicker({
         }
       }
     },
-    [busqueda, grupo],
+    [busqueda, equipo, zona],
   );
 
   useEffect(() => {
@@ -145,21 +178,38 @@ export function ExercisePicker({
         icon="search"
         autoFocus
       />
-      <div className="-mx-lg flex gap-sm overflow-x-auto px-lg py-md">
-        {grupos.map((opcion) => (
-          <button
-            type="button"
-            key={opcion.valor}
-            onClick={() => setGrupo(opcion.valor)}
-            className={`whitespace-nowrap rounded-full border px-md py-xs font-grotesk text-label-caps tracking-wider transition-colors ${
-              grupo === opcion.valor
-                ? 'border-primary bg-primary text-on-primary'
-                : 'border-white/10 bg-surface-container text-on-surface-variant hover:text-on-surface'
-            }`}
-          >
-            {opcion.etiqueta}
-          </button>
-        ))}
+      <div className="space-y-sm py-md">
+        <label className="block font-grotesk text-[10px] uppercase tracking-[0.18em] text-on-surface-variant" htmlFor="filtro-zona">
+          Zona muscular
+        </label>
+        <select
+          id="filtro-zona"
+          value={zona}
+          onChange={(e) => setZona(e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-surface-container px-sm py-sm text-sm text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+        >
+          {zonas.map((opcion) => (
+            <option key={opcion.valor} value={opcion.valor}>
+              {opcion.etiqueta}
+            </option>
+          ))}
+        </select>
+        <div className="flex gap-sm overflow-x-auto pb-px" aria-label="Filtrar por equipo">
+          {equipos.map((opcion) => (
+            <button
+              type="button"
+              key={opcion.valor}
+              onClick={() => setEquipo(opcion.valor)}
+              className={`whitespace-nowrap rounded-full border px-md py-xs font-grotesk text-label-caps tracking-wider transition-colors ${
+                equipo === opcion.valor
+                  ? 'border-primary bg-primary text-on-primary'
+                  : 'border-white/10 bg-surface-container text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              {opcion.etiqueta}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="mb-sm flex items-center justify-between text-xs text-on-surface-variant" aria-live="polite">
         <span>
