@@ -28,11 +28,40 @@ const ETIQUETAS_FLUJO: Record<string, string> = {
 };
 
 function claveFechaLocal(valor: Date | string): string {
+  if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
+    return valor.slice(0, 10);
+  }
   const fecha = valor instanceof Date ? valor : new Date(valor);
   const año = fecha.getFullYear();
   const mes = String(fecha.getMonth() + 1).padStart(2, '0');
   const dia = String(fecha.getDate()).padStart(2, '0');
   return `${año}-${mes}-${dia}`;
+}
+
+function fechaDesdeClave(clave: string): Date {
+  const [año, mes, dia] = clave.split('-').map(Number);
+  return new Date(año, mes - 1, dia);
+}
+
+function faseProyectada(
+  clave: string,
+  inicios: string[],
+  cicloMedio: number,
+  periodoMedio: number,
+): string | null {
+  const fecha = fechaDesdeClave(clave).getTime();
+  const inicio = inicios
+    .map(fechaDesdeClave)
+    .filter((item) => item.getTime() <= fecha)
+    .sort((a, b) => b.getTime() - a.getTime())[0];
+  if (!inicio) return null;
+
+  const dia = Math.floor((fecha - inicio.getTime()) / 86_400_000) + 1;
+  const diaCiclo = ((dia - 1) % cicloMedio) + 1;
+  if (diaCiclo <= periodoMedio) return 'MENSTRUAL';
+  const ovulacion = cicloMedio - 14;
+  if (diaCiclo >= ovulacion - 1 && diaCiclo <= ovulacion + 1) return 'OVULATION';
+  return diaCiclo < ovulacion ? 'FOLLICULAR' : 'LUTEAL';
 }
 
 export function CalendarioActividad() {
@@ -89,6 +118,11 @@ export function CalendarioActividad() {
     }
     return mapa;
   }, [entrenamientos, ciclo, muestraCiclo]);
+
+  const iniciosCiclo = useMemo(
+    () => ciclo.filter((registro) => registro.isPeriodStart).map((registro) => claveFechaLocal(registro.date)),
+    [ciclo],
+  );
 
   const celdas = useMemo(() => {
     const primerDia = new Date(anio, mes, 1);
@@ -163,7 +197,12 @@ export function CalendarioActividad() {
           const fase =
             muestraCiclo
               ? datos?.entrenamientos.find((e) => e.cyclePhase)?.cyclePhase ??
-                (datos?.ciclo?.isPeriodStart ? 'MENSTRUAL' : null)
+                faseProyectada(
+                  llave,
+                  iniciosCiclo,
+                  usuario?.avgCycleLen ?? 28,
+                  usuario?.avgPeriodLen ?? 5,
+                )
               : null;
           const esHoy = fecha.toDateString() === hoy.toDateString();
           const seleccionado = diaSeleccionado === llave;
