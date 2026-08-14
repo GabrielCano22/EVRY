@@ -170,7 +170,14 @@ export interface EjercicioRutina {
   targetSets: number;
   targetReps: number | null;
   targetWeightKg: number | null;
+  seriesPlan?: SerieObjetivo[] | null;
   notes: string | null;
+}
+
+/** Objetivo independiente para una serie de una rutina. */
+export interface SerieObjetivo {
+  reps: number | null;
+  weightKg: number | null;
 }
 
 export interface Rutina {

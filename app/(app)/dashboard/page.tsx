@@ -17,7 +17,7 @@ const FASES_ESPANOL: Record<string, string> = {
   LUTEAL: 'Lútea',
 };
 
-const FRASES = [
+const FRASES_GENERALES = [
   '"El dolor que sientes hoy es la fuerza que sentirás mañana."',
   '"No se trata de ser perfecta, se trata de ser mejor que ayer."',
   '"Tu cuerpo puede aguantar casi cualquier cosa. Es a tu mente a la que tienes que convencer."',
@@ -34,11 +34,18 @@ const FRASES = [
   '"Fuerte por dentro, fuerte por fuera."',
 ];
 
-function fraseDelDia(): string {
+const FRASES_CICLO = [
+  '"Escucha tu cuerpo: adaptar la intensidad también es progresar."',
+  '"Tu ciclo no limita tu fuerza; te enseña a entrenar con inteligencia."',
+  '"Descansar cuando lo necesitas es parte de alcanzar tu mejor versión."',
+];
+
+function fraseDelDia(esMujer: boolean): string {
   const inicioAnio = new Date(new Date().getFullYear(), 0, 0).getTime();
   const ahora = Date.now();
   const diaDelAnio = Math.floor((ahora - inicioAnio) / 86400000);
-  return FRASES[diaDelAnio % FRASES.length];
+  const frases = esMujer ? [...FRASES_GENERALES, ...FRASES_CICLO] : FRASES_GENERALES;
+  return frases[diaDelAnio % frases.length];
 }
 
 function calcularRacha(entrenamientos: Entrenamiento[]): number {
@@ -101,7 +108,7 @@ export default function PaginaInicio() {
     () => recientes.filter((e) => e.endedAt).slice(0, 5),
     [recientes],
   );
-  const frase = useMemo(fraseDelDia, []);
+  const frase = useMemo(() => fraseDelDia(muestraCiclo), [muestraCiclo]);
 
   return (
     <div className="space-y-lg">

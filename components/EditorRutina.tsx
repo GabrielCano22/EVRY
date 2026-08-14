@@ -1,13 +1,14 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import type { Ejercicio, Rutina } from '@/lib/types';
+import type { Ejercicio, Rutina, SerieObjetivo } from '@/lib/types';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExercisePicker } from './ExercisePicker';
 import { ExerciseMedia } from './ExerciseMedia';
 import { cn } from '@/lib/utils';
+import { MapaMuscular } from './MapaMuscular';
 import {
   etiquetaEquipo,
   etiquetaGrupoMuscular,
@@ -22,7 +23,27 @@ interface ItemRutina {
   targetSets: number;
   targetReps: number | null;
   targetWeightKg: number | null;
+  seriesPlan: SerieObjetivo[];
   notes?: string;
+}
+
+function crearPlan(series: number, reps: number | null, peso: number | null): SerieObjetivo[] {
+  return Array.from({ length: Math.max(1, series) }, () => ({ reps, weightKg: peso }));
+}
+
+function normalizarPlan(
+  plan: SerieObjetivo[] | null | undefined,
+  series: number,
+  reps: number | null,
+  peso: number | null,
+): SerieObjetivo[] {
+  const base = plan?.length ? plan : crearPlan(series, reps, peso);
+  return base.slice(0, Math.max(1, series)).concat(
+    Array.from({ length: Math.max(0, series - base.length) }, () => ({
+      reps: base.at(-1)?.reps ?? reps,
+      weightKg: base.at(-1)?.weightKg ?? peso,
+    })),
+  );
 }
 
 interface Props {
@@ -45,6 +66,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
       targetSets: e.targetSets,
       targetReps: e.targetReps,
       targetWeightKg: e.targetWeightKg,
+      seriesPlan: normalizarPlan(e.seriesPlan, e.targetSets, e.targetReps, e.targetWeightKg),
       notes: e.notes ?? undefined,
     })) ?? [],
   );
@@ -60,13 +82,49 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
     setError(null);
     setItems((arr) => [
       ...arr,
-      { exerciseId: ej.id, exercise: ej, targetSets: 3, targetReps: 10, targetWeightKg: null },
+      {
+        exerciseId: ej.id,
+        exercise: ej,
+        targetSets: 3,
+        targetReps: 10,
+        targetWeightKg: null,
+        seriesPlan: crearPlan(3, 10, null),
+      },
     ]);
     setSeleccionando(false);
   }
 
-  function actualizar(idx: number, parche: Partial<ItemRutina>) {
-    setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...parche } : it)));
+  function cambiarNumeroDeSeries(idx: number, valor: number | null) {
+    const cantidad = Math.max(1, Math.min(20, valor ?? 1));
+    setItems((arr) =>
+      arr.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              targetSets: cantidad,
+              seriesPlan: normalizarPlan(it.seriesPlan, cantidad, it.targetReps, it.targetWeightKg),
+            }
+          : it,
+      ),
+    );
+  }
+
+  function cambiarObjetivoDeSerie(idx: number, serie: number, parche: Partial<SerieObjetivo>) {
+    setItems((arr) =>
+      arr.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              seriesPlan: it.seriesPlan.map((objetivo, numero) =>
+                numero === serie ? { ...objetivo, ...parche } : objetivo,
+              ),
+              targetReps: serie === 0 && parche.reps !== undefined ? parche.reps : it.targetReps,
+              targetWeightKg:
+                serie === 0 && parche.weightKg !== undefined ? parche.weightKg : it.targetWeightKg,
+            }
+          : it,
+      ),
+    );
   }
 
   function quitar(idx: number) {
@@ -94,8 +152,12 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
         exerciseId: it.exerciseId,
         order: i,
         targetSets: it.targetSets,
-        targetReps: it.targetReps ?? undefined,
-        targetWeightKg: it.targetWeightKg ?? undefined,
+        targetReps: it.seriesPlan[0]?.reps ?? undefined,
+        targetWeightKg: it.seriesPlan[0]?.weightKg ?? undefined,
+        seriesPlan: it.seriesPlan.map((serie) => ({
+          reps: serie.reps,
+          weightKg: serie.weightKg,
+        })),
         notes: it.notes,
       })),
     };
@@ -114,7 +176,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
   }
 
   return (
-    <div className="space-y-lg max-w-3xl">
+    <div className="space-y-lg">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="font-headline-lg text-headline-lg text-on-surface">{titulo}</h1>
@@ -123,7 +185,9 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
           </p>
         </div>
         <button
+          type="button"
           onClick={onCancelar}
+          aria-label="Cerrar editor de rutina"
           className="w-10 h-10 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center"
         >
           <Icon name="close" />
@@ -175,6 +239,8 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="space-y-lg">
       <div className="bg-surface-container rounded-xl p-lg border border-white/5">
         <div className="flex justify-between items-center mb-md">
           <h2 className="font-headline-md text-headline-md text-on-surface">Ejercicios</h2>
@@ -213,50 +279,68 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                 </div>
                 <div className="flex gap-xs">
                   <button
+                    type="button"
                     onClick={() => mover(idx, -1)}
+                    aria-label="Subir ejercicio"
                     disabled={idx === 0}
                     className="w-7 h-7 rounded bg-surface-container-high text-on-surface-variant disabled:opacity-30 hover:bg-surface-bright"
                   >
                     <Icon name="arrow_upward" size={14} />
                   </button>
                   <button
+                    type="button"
                     onClick={() => mover(idx, 1)}
+                    aria-label="Bajar ejercicio"
                     disabled={idx === items.length - 1}
                     className="w-7 h-7 rounded bg-surface-container-high text-on-surface-variant disabled:opacity-30 hover:bg-surface-bright"
                   >
                     <Icon name="arrow_downward" size={14} />
                   </button>
                   <button
+                    type="button"
                     onClick={() => quitar(idx)}
+                    aria-label={`Eliminar ${traducirNombreEjercicio(it.exercise.name)}`}
                     className="w-7 h-7 rounded bg-error/10 text-error hover:bg-error/20"
                   >
                     <Icon name="delete" size={14} />
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-sm">
+              <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
                 <CampoNumero
                   etiqueta="Series"
                   valor={it.targetSets}
-                  onChange={(v) => actualizar(idx, { targetSets: v })}
+                  onChange={(v) => cambiarNumeroDeSeries(idx, v)}
                   min={1}
                   max={20}
                 />
-                <CampoNumero
-                  etiqueta="Repeticiones"
-                  valor={it.targetReps ?? 0}
-                  onChange={(v) => actualizar(idx, { targetReps: v || null })}
-                  min={0}
-                  max={100}
-                />
-                <CampoNumero
-                  etiqueta="Peso (kg)"
-                  valor={it.targetWeightKg ?? 0}
-                  onChange={(v) => actualizar(idx, { targetWeightKg: v || null })}
-                  min={0}
-                  max={500}
-                  paso={2.5}
-                />
+              </div>
+              <div className="mt-md space-y-xs rounded-lg border border-white/5 bg-background/50 p-sm">
+                <div className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] gap-sm px-xs text-[10px] uppercase tracking-wider text-on-surface-variant">
+                  <span>Serie</span>
+                  <span>Repeticiones</span>
+                  <span>Peso (kg)</span>
+                </div>
+                {it.seriesPlan.map((serie, numero) => (
+                  <div key={`${it.exerciseId}-serie-${numero}`} className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] items-end gap-sm">
+                    <span className="pb-xs text-center font-grotesk text-sm text-primary">{numero + 1}</span>
+                    <CampoNumero
+                      etiqueta=""
+                      valor={serie.reps}
+                      onChange={(valor) => cambiarObjetivoDeSerie(idx, numero, { reps: valor })}
+                      min={0}
+                      max={100}
+                    />
+                    <CampoNumero
+                      etiqueta=""
+                      valor={serie.weightKg}
+                      onChange={(valor) => cambiarObjetivoDeSerie(idx, numero, { weightKg: valor })}
+                      min={0}
+                      max={500}
+                      paso={2.5}
+                    />
+                  </div>
+                ))}
               </div>
             </li>
           ))}
@@ -280,6 +364,12 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
         </Button>
       </div>
 
+      </div>
+      <aside className="lg:sticky lg:top-lg lg:self-start">
+        <MapaMuscular ejercicios={items.map((item) => item.exercise)} />
+      </aside>
+      </div>
+
       {seleccionando && (
         <ExercisePicker
           onPick={agregarEjercicio}
@@ -300,12 +390,44 @@ function CampoNumero({
   paso = 1,
 }: {
   etiqueta: string;
-  valor: number;
-  onChange: (v: number) => void;
+  valor: number | null;
+  onChange: (v: number | null) => void;
   min: number;
   max: number;
   paso?: number;
 }) {
+  const [texto, setTexto] = useState(valor === null ? '' : String(valor));
+  const [enfocado, setEnfocado] = useState(false);
+
+  useEffect(() => {
+    if (!enfocado) setTexto(valor === null ? '' : String(valor));
+  }, [enfocado, valor]);
+
+  function cambiarTexto(nuevoTexto: string) {
+    if (!/^[0-9]*([.,][0-9]*)?$/.test(nuevoTexto)) return;
+    setTexto(nuevoTexto);
+    if (nuevoTexto.trim() === '') {
+      onChange(null);
+      return;
+    }
+    const numero = Number(nuevoTexto.replace(',', '.'));
+    if (Number.isFinite(numero)) onChange(numero);
+  }
+
+  function normalizarAlSalir() {
+    setEnfocado(false);
+    const numero = texto.trim() === '' ? null : Number(texto.replace(',', '.'));
+    if (numero === null || !Number.isFinite(numero)) {
+      onChange(null);
+      setTexto('');
+      return;
+    }
+    const limitado = Math.min(max, Math.max(min, numero));
+    const escalado = paso === 1 ? Math.round(limitado) : Math.round(limitado / paso) * paso;
+    onChange(escalado);
+    setTexto(String(escalado));
+  }
+
   return (
     <div>
       <span className="font-grotesk text-label-caps tracking-wider text-on-surface-variant mb-xs block uppercase">
@@ -316,8 +438,11 @@ function CampoNumero({
         min={min}
         max={max}
         step={paso}
-        value={valor}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={texto}
+        onFocus={() => setEnfocado(true)}
+        onBlur={normalizarAlSalir}
+        onChange={(e) => cambiarTexto(e.target.value)}
+        inputMode="decimal"
         className="w-full bg-background border border-white/10 rounded text-center font-grotesk text-on-surface py-xs focus:ring-1 focus:ring-primary focus:border-primary outline-none"
       />
     </div>

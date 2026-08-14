@@ -2,7 +2,7 @@
 import { use, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import type { Entrenamiento, Ejercicio, SerieEntrenamiento, Recomendacion } from '@/lib/types';
+import type { Entrenamiento, Ejercicio, SerieEntrenamiento, Recomendacion, SerieObjetivo } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Stepper } from '@/components/ui/Stepper';
@@ -34,6 +34,7 @@ interface EjercicioEnSesion {
   targetSets?: number;
   targetReps?: number | null;
   targetWeightKg?: number | null;
+  seriesPlan?: SerieObjetivo[] | null;
 }
 
 export default function DetalleEntrenamiento({
@@ -67,13 +68,20 @@ export default function DetalleEntrenamiento({
     const detalle = await api<Ejercicio>(`/exercises/${ejercicio.id}`).catch(() => ejercicio);
     setEjercicioActivo(detalle);
     setSeleccionando(false);
+    const plan = entrenamiento?.routine?.exercises.find((item) => item.exerciseId === detalle.id)?.seriesPlan ?? null;
+    const numeroSerie = entrenamiento?.sets.filter((serie) => serie.exerciseId === detalle.id).length ?? 0;
+    const objetivo = plan?.[numeroSerie] ?? plan?.at(-1);
     try {
       const rec = await api<Recomendacion>(`/adaptive/recommend/${detalle.id}`);
       setRecomendacion(rec);
-      if (rec.targetWeightKg) setPeso(rec.targetWeightKg);
-      if (rec.targetReps) setReps(rec.targetReps);
+      if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
+      else if (rec.targetWeightKg !== null) setPeso(rec.targetWeightKg);
+      if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
+      else if (rec.targetReps !== null) setReps(rec.targetReps);
     } catch {
       setRecomendacion(null);
+      if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
+      if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
     }
   }
 
@@ -123,6 +131,7 @@ export default function DetalleEntrenamiento({
       targetSets: item.targetSets,
       targetReps: item.targetReps,
       targetWeightKg: item.targetWeightKg,
+      seriesPlan: item.seriesPlan,
     }));
     const idsPlaneados = new Set(ejerciciosPlaneados.map((item) => item.id));
 
@@ -210,6 +219,24 @@ export default function DetalleEntrenamiento({
                   )}
                 </div>
                 <div className="p-md">
+                  {item.seriesPlan && item.seriesPlan.length > 0 && (
+                    <div className="mb-md rounded-lg border border-primary/15 bg-primary/5 p-sm">
+                      <p className="mb-xs font-grotesk text-[10px] uppercase tracking-wider text-primary">
+                        Objetivo por serie
+                      </p>
+                      <div className="grid grid-cols-1 gap-xs sm:grid-cols-2">
+                        {item.seriesPlan.map((objetivo, numero) => (
+                          <div key={`${item.id}-objetivo-${numero}`} className="flex items-center justify-between rounded bg-background/40 px-sm py-xs text-xs text-on-surface-variant">
+                            <span>Serie {numero + 1}</span>
+                            <span className="tabular-nums text-on-surface">
+                              {objetivo.reps ?? '—'} rep{objetivo.reps === 1 ? '' : 's'} ·{' '}
+                              {objetivo.weightKg === null || objetivo.weightKg === undefined ? 'Peso libre' : `${objetivo.weightKg} kg`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {series.length === 0 ? (
                     <p className="rounded-lg bg-surface-container-low px-md py-sm text-sm text-on-surface-variant">
                       Aún no registras series para este ejercicio.
