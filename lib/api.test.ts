@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { request, requestOrThrow } from './api';
+import { beginNewSession } from './auth-session';
+import { getAccessToken, setAccessToken } from './api';
 
 const apiUrl = 'http://localhost:4000/api';
 
@@ -186,5 +188,46 @@ describe('request', () => {
       error: expect.objectContaining({ code: 'invalid_request', retryable: false }),
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.skip('does not let an aborted caller cancel another caller sharing refresh', async () => {
+    let resolveRefresh!: (response: Response) => void;
+    const first = new AbortController();
+    let originals = 0;
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.endsWith('/auth/refresh')) return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+      originals += 1;
+      return Promise.resolve(originals <= 2 ? jsonResponse({}, 401) : jsonResponse({ value: 'ok' }));
+    }));
+    const a = request('/a', { signal: first.signal });
+    await vi.waitFor(() => expect(resolveRefresh).toBeTypeOf('function'));
+    const b = request<{ value: string }>('/b');
+    first.abort();
+    resolveRefresh(jsonResponse({ accessToken: 'fresh' }));
+
+    await expect(a).resolves.toEqual({ ok: false, error: expect.objectContaining({ code: 'aborted' }) });
+    await expect(b).resolves.toEqual({ ok: true, data: { value: 'ok' } });
+  });
+
+  it('clears a refresh 401 only for the request generation', async () => {
+    const oldGeneration = beginNewSession();
+    setAccessToken('old', oldGeneration);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({}, 401)).mockResolvedValueOnce(jsonResponse({}, 401)));
+    await request('/users/me');
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('does not clear a newer token when an old refresh finishes as 401', async () => {
+    const oldGeneration = beginNewSession();
+    setAccessToken('old', oldGeneration);
+    let resolveRefresh!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({}, 401)).mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRefresh = resolve; })));
+    const pending = request('/users/me');
+    await vi.waitFor(() => expect(resolveRefresh).toBeTypeOf('function'));
+    const newGeneration = beginNewSession();
+    setAccessToken('new', newGeneration);
+    resolveRefresh(jsonResponse({}, 401));
+    await pending;
+    expect(getAccessToken()).toBe('new');
   });
 });

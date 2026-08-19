@@ -275,7 +275,12 @@ async function requestInternal<T>(path: string, options: RequestOptions, allowRe
   if (!fetched.ok) return fetched;
   if (fetched.data.status === 401 && auth && allowRefresh) {
     const refreshed = await waitForRefresh(tryRefresh(generation), options);
-    if (!refreshed.ok) return refreshed as ApiResult<T>;
+    if (!refreshed.ok) {
+      if ((refreshed.error.status === 401 || refreshed.error.status === 403) && isCurrentSessionGeneration(generation)) {
+        setAccessToken(null, generation);
+      }
+      return refreshed as ApiResult<T>;
+    }
     if (!setAccessToken(refreshed.data, generation)) return { ok: false, error: abortedFailure(false) };
     headers.set('Authorization', `Bearer ${refreshed.data}`);
     fetched = await execute();
