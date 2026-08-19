@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-08-19
 
-**Estado:** aprobado en conversación; pendiente de revisión de esta especificación
+**Estado:** aprobado
 
 **Repositorios:** `EVRY` y `EVRY-Backend`
 
@@ -23,6 +23,7 @@ La identidad visual se refinará para que EVRY se reconozca por su jerarquía ed
 - Creación y edición de rutinas con objetivos independientes por serie.
 - Inicio, reanudación, edición, eliminación, cancelación y finalización de sesiones.
 - Catálogo de 1.324 ejercicios con búsqueda, zona, músculo y equipamiento.
+- Ficha transversal de cada ejercicio con demostración, progreso, récords, historial e indicaciones.
 - Mapa muscular propio para frente/espalda y siluetas masculina/femenina.
 - Progreso basado exclusivamente en datos reales y periodos definidos.
 - Check-in de disposición y recomendaciones conservadoras.
@@ -110,6 +111,23 @@ El diario permitirá crear, editar y borrar entradas. Desactivar el seguimiento 
 
 Las fases proyectadas se etiquetarán como estimaciones. Una sola implementación calculará la fase para evitar contradicciones entre calendario, dashboard y backend.
 
+### 4.7 Ficha transversal de ejercicio
+
+El nombre de un ejercicio abrirá la misma ficha desde el selector, la rutina, la sesión y progreso sin perder el contexto actual. En escritorio se presentará como panel lateral; en móvil ocupará la pantalla completa. Un proveedor situado en el layout autenticado controlará apertura, cierre y restauración del foco.
+
+La selección y la consulta serán acciones diferentes. En el selector, la fila dejará de ser un único botón: el nombre abrirá la ficha y un control `Agregar` incorporará el ejercicio a la rutina. Las listas y las rutinas usarán el JPG como miniatura; el GIF solo se solicitará al reproducir la demostración dentro de la ficha.
+
+La ficha tendrá cuatro pestañas:
+
+1. **Resumen:** demostración controlada, equipo, categoría, músculo principal, músculos secundarios, mapa muscular y métricas destacadas.
+2. **Progreso:** gráfica alternable entre carga máxima y 1RM estimado para 30 días, 90 días, 6 meses, 1 año o todo el historial, más comparación con el periodo anterior.
+3. **Historial:** sesiones recientes agrupadas por fecha, con peso, repeticiones y RPE de cada serie, cargadas mediante paginación progresiva.
+4. **Indicaciones:** instrucciones completas en español, advertencia breve de ejecución segura y atribución del medio.
+
+Los récords tendrán definiciones explícitas. `Mejor carga` será el mayor peso de una serie de trabajo; `Récord de repeticiones` será el mayor número de repeticiones en una serie e incluirá el peso usado; `1RM estimado` indicará que es un cálculo, no una medición directa. Los empates conservarán la marca más reciente.
+
+`GET /exercises/:id` seguirá proporcionando metadatos y medios. `GET /progress/exercise/:id` aceptará periodo, página y límite validados, verificará que el ejercicio sea visible para el usuario y devolverá resumen, puntos agregados por sesión, historial paginado y comparación del periodo. Un ejercicio sin sesiones mostrará un estado vacío útil; un fallo de API nunca se convertirá en historial vacío.
+
 ## 5. Seguridad e integridad del backend
 
 - El proceso fallará al iniciar si faltan secretos JWT seguros o variables obligatorias.
@@ -142,7 +160,9 @@ La primera pantalla responderá tres preguntas: qué puedo entrenar hoy, cómo m
 
 ### 6.4 Catálogo y mapa muscular
 
-Las listas usarán JPG estático. El GIF se cargará solo al solicitar vista previa o abrir detalle, con control de reproducción y alternativa para movimiento reducido. Los filtros tendrán semántica accesible y conservarán búsqueda, zona, músculo y equipo.
+Las listas usarán JPG estático. El GIF se cargará solo al activar `Reproducir animación` dentro de la ficha, con control para detenerlo y alternativa para movimiento reducido. Los filtros tendrán semántica accesible y conservarán búsqueda, zona, músculo y equipo.
+
+El nombre de cada ejercicio será un control independiente para consultar la ficha. La acción para agregarlo o comenzar a entrenarlo permanecerá visible y separada, evitando controles anidados o selecciones accidentales.
 
 El mapa muscular distinguirá músculo principal y secundario, incluirá leyenda, navegación por teclado y relación entre región y ejercicios seleccionados. Las siluetas no implicarán diferencias de capacidad.
 
@@ -152,9 +172,17 @@ La sesión priorizará lectura rápida bajo esfuerzo: ejercicio actual, serie an
 
 Progreso usará una cuadrícula equilibrada, detalle del día seleccionado y gráficos con resumen textual. No habrá espacios decorativos sin información ni objetivos artificiales.
 
+### 6.6 Ficha de ejercicio
+
+El encabezado conservará nombre, equipo y músculo visibles durante la navegación entre pestañas. La demostración iniciará como JPG y ofrecerá `Reproducir animación`; detenerla volverá a la imagen. Con movimiento reducido activo no se reproducirá automáticamente.
+
+El panel tendrá `role="dialog"`, nombre accesible, foco contenido, cierre con `Escape` y retorno al nombre que lo abrió. Las pestañas usarán `tablist`, `tab`, `tabpanel`, teclas de flecha y un orden de foco predecible. Gráficas y mapa muscular incluirán resúmenes textuales equivalentes.
+
 ## 7. Rendimiento
 
 - Las listas de ejercicios no reproducirán GIF simultáneamente.
+- Metadatos, progreso e historial de la ficha se solicitarán de forma diferida; cambiar de periodo cancelará la consulta anterior.
+- La gráfica se cargará dinámicamente solo al visitar la pestaña de progreso.
 - Dashboard, calendario y progreso cancelarán solicitudes obsoletas y evitarán refetch innecesario.
 - Recharts y módulos pesados se cargarán de forma diferida cuando sea posible.
 - Las consultas usarán rangos y selección de campos mínimos.
@@ -180,7 +208,7 @@ La meta es WCAG 2.2 AA en los recorridos principales:
 
 - Vitest y Testing Library para utilidades, estados API y componentes críticos.
 - axe para accesibilidad de formularios, navegación y diálogos.
-- Playwright en escritorio y viewport móvil para ocho recorridos:
+- Playwright en escritorio y viewport móvil para nueve recorridos:
   1. registro inclusivo y opt-in;
   2. login, refresh y logout;
   3. crear y editar rutina;
@@ -188,7 +216,8 @@ La meta es WCAG 2.2 AA en los recorridos principales:
   5. agregar, corregir y borrar serie;
   6. finalizar y comprobar progreso;
   7. editar perfil y recuperar errores;
-  8. crear, editar y borrar una entrada del ciclo.
+  8. crear, editar y borrar una entrada del ciclo;
+  9. abrir la ficha desde selector, rutina y sesión, cambiar periodo, consultar historial y leer indicaciones.
 
 ### Backend
 
@@ -215,4 +244,4 @@ La entrega final incluirá ambos repositorios limpios, ramas publicadas en GitHu
 
 ## 12. Criterio de terminado
 
-EVRY estará terminado cuando los recorridos incluidos sean funcionales en móvil y escritorio, los datos mostrados coincidan con consultas controladas, los errores no se oculten, los datos privados puedan gestionarse, las reglas adaptativas sean conservadoras, no existan dependencias remotas de interfaz, las puertas automatizadas estén verdes y la documentación describa exactamente el comportamiento publicado.
+EVRY estará terminado cuando los recorridos incluidos sean funcionales en móvil y escritorio, los datos mostrados coincidan con consultas controladas, la ficha de los 1.324 ejercicios pueda abrirse desde todos los contextos acordados, los errores no se oculten, los datos privados puedan gestionarse, las reglas adaptativas sean conservadoras, no existan dependencias remotas de interfaz, las puertas automatizadas estén verdes y la documentación describa exactamente el comportamiento publicado.
