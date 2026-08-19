@@ -12,7 +12,7 @@ function daysInMonth(year: number, month: number): number {
 }
 
 function civilDateFromParts({ year, month, day }: CivilDateParts): CivilDate {
-  if (!Number.isInteger(year) || year < 0 || year > 9999 || !Number.isInteger(month) || !Number.isInteger(day)) {
+  if (!Number.isInteger(year) || year < 1 || year > 9999 || !Number.isInteger(month) || !Number.isInteger(day)) {
     throw new RangeError('La fecha civil no es válida.');
   }
   if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
@@ -33,7 +33,10 @@ function partsFromFormatter(formatter: Intl.DateTimeFormat, value: Date): CivilD
 
 function localPresentationDate(value: CivilDate): Date {
   const { year, month, day } = parseCivilDate(value);
-  return new Date(year, month - 1, day, 12);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(12, 0, 0, 0);
+  return date;
 }
 
 function addCalendarDays(value: CivilDate, days: number): CivilDate {

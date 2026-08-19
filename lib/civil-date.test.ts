@@ -38,6 +38,21 @@ describe('civil dates in America/Bogota', () => {
     ).toBe('1 de agosto');
   });
 
+  it('preserves civil year 0001 through parsing, formatting, and day ranges', () => {
+    const firstCenturyDate = civilDate('0001-08-01');
+    const now = new Date('0001-08-01T17:00:00.000Z');
+
+    expect(parseCivilDate(firstCenturyDate)).toEqual({ year: 1, month: 8, day: 1 });
+    expect(periodRange('30d', now)).toEqual({ from: '0001-07-03', to: '0001-08-01' });
+    expect(
+      formatCivilDate(firstCenturyDate, { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    ).toBe('01/08/1');
+  });
+
+  it('rejects year 0000 because the civil-date domain is 0001 through 9999', () => {
+    expect(() => civilDate('0000-01-01')).toThrow(RangeError);
+  });
+
   it('returns inclusive month endpoints across a leap February and year boundary', () => {
     expect(monthRange(2024, 2)).toEqual({ from: '2024-02-01', to: '2024-02-29' });
     expect(monthRange(2026, 12)).toEqual({ from: '2026-12-01', to: '2026-12-31' });
@@ -55,6 +70,17 @@ describe('civil dates in America/Bogota', () => {
 
     expect(periodRange('6m', now)).toEqual({ from: '2026-02-19', to: '2026-08-19' });
     expect(periodRange('1y', now)).toEqual({ from: '2025-08-19', to: '2026-08-19' });
+  });
+
+  it('caps month subtraction at February end for leap and non-leap calendar years', () => {
+    expect(periodRange('6m', new Date('2024-08-31T17:00:00.000Z'))).toEqual({
+      from: '2024-02-29',
+      to: '2024-08-31',
+    });
+    expect(periodRange('1y', new Date('2024-02-29T17:00:00.000Z'))).toEqual({
+      from: '2023-02-28',
+      to: '2024-02-29',
+    });
   });
 
   it('compares validated civil dates by calendar order', () => {
