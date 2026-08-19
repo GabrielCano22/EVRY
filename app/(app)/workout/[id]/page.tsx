@@ -158,7 +158,8 @@ export default function DetalleEntrenamiento({
     return ejerciciosPlaneados;
   }, [agrupado, entrenamiento]);
 
-  if (!entrenamiento) return <p className="text-on-surface-variant">Cargando…</p>;
+  if (!entrenamiento && errorSerie) return <p role="alert" className="text-error">No pudimos cargar el entrenamiento. <button type="button" onClick={() => void recargar()} className="underline">Reintentar</button></p>;
+  if (!entrenamiento) return <p role="status" className="text-on-surface-variant">Cargando…</p>;
   const finalizada = !!entrenamiento.endedAt;
   const volumenTotal = entrenamiento.sets
     .filter((s) => !s.isWarmup)

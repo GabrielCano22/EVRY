@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { ApiError, request, requestOrThrow, setAccessToken } from './api';
+import { beginNewSession, currentSessionGeneration, invalidateSession, isCurrentSessionGeneration } from './auth-session';
 import type { AuthStatus, Usuario } from './types';
 
 interface DatosRegistro {
@@ -32,7 +33,7 @@ function mensajeSeguro(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
-let epochSesion = 0;
+let epochOperacion = 0;
 
 export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   usuario: null,
@@ -40,23 +41,25 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   error: null,
   estado: 'checking',
   async inicializar() {
-    const epoch = ++epochSesion;
+    const epoch = ++epochOperacion;
+    const generation = currentSessionGeneration();
     set({ cargando: true, estado: 'checking', error: null });
     const resultado = await request<Usuario>('/users/me');
-    if (epoch !== epochSesion) return;
+    if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
     if (resultado.ok) {
       set({ usuario: resultado.data, cargando: false, estado: 'authenticated', error: null });
       return;
     }
     if (resultado.error.status === 401 || resultado.error.status === 403) {
-      setAccessToken(null);
+      setAccessToken(null, generation);
       set({ usuario: null, cargando: false, estado: 'anonymous', error: null });
       return;
     }
     set({ usuario: get().usuario, cargando: false, estado: 'error', error: resultado.error.message });
   },
   async ingresar(email, password) {
-    const epoch = ++epochSesion;
+    const epoch = ++epochOperacion;
+    const generation = beginNewSession();
     set({ cargando: true, error: null, estado: 'checking' });
     try {
       const emailNormalizado = email.trim().toLowerCase();
@@ -65,15 +68,15 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
         body: { email: emailNormalizado, password },
         auth: false,
       });
-      if (epoch !== epochSesion) return;
-      setAccessToken(respuesta.accessToken);
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      setAccessToken(respuesta.accessToken, generation);
       const usuario = await requestOrThrow<Usuario>('/users/me');
-      if (epoch !== epochSesion) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
       set({ usuario, cargando: false, estado: 'authenticated', error: null });
     } catch (error) {
-      if (epoch !== epochSesion) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
       const sesionInvalida = esSesionInvalida(error);
-      if (sesionInvalida) setAccessToken(null);
+      if (sesionInvalida) setAccessToken(null, generation);
       set({
         usuario: sesionInvalida ? null : get().usuario,
         error: mensajeSeguro(error, 'Error al ingresar'),
@@ -84,7 +87,8 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
     }
   },
   async registrar(datos) {
-    const epoch = ++epochSesion;
+    const epoch = ++epochOperacion;
+    const generation = beginNewSession();
     set({ cargando: true, error: null, estado: 'checking' });
     try {
       const datosNormalizados = {
@@ -97,15 +101,15 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
         body: datosNormalizados,
         auth: false,
       });
-      if (epoch !== epochSesion) return;
-      setAccessToken(respuesta.accessToken);
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      setAccessToken(respuesta.accessToken, generation);
       const usuario = await requestOrThrow<Usuario>('/users/me');
-      if (epoch !== epochSesion) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
       set({ usuario, cargando: false, estado: 'authenticated', error: null });
     } catch (error) {
-      if (epoch !== epochSesion) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
       const sesionInvalida = esSesionInvalida(error);
-      if (sesionInvalida) setAccessToken(null);
+      if (sesionInvalida) setAccessToken(null, generation);
       set({
         usuario: sesionInvalida ? null : get().usuario,
         error: mensajeSeguro(error, 'No se pudo crear la cuenta'),
@@ -116,8 +120,8 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
     }
   },
   async cerrarSesion() {
-    ++epochSesion;
-    setAccessToken(null);
+    ++epochOperacion;
+    setAccessToken(null, invalidateSession());
     set({ usuario: null, estado: 'anonymous', cargando: false, error: null });
     await request('/auth/logout', { method: 'POST' });
   },

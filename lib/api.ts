@@ -1,5 +1,7 @@
 'use client';
 
+import { currentSessionGeneration, isCurrentSessionGeneration } from './auth-session';
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const TOKEN_KEY = 'evry_access';
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -29,10 +31,12 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setAccessToken(token: string | null) {
-  if (typeof window === 'undefined') return;
+export function setAccessToken(token: string | null, generation?: number): boolean {
+  if (generation !== undefined && !isCurrentSessionGeneration(generation)) return false;
+  if (typeof window === 'undefined') return false;
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+  return true;
 }
 
 export class ApiError extends Error implements ApiFailure {
@@ -53,18 +57,18 @@ export class ApiError extends Error implements ApiFailure {
   }
 }
 
-let refreshing: Promise<ApiResult<string>> | null = null;
+const refreshing = new Map<number, Promise<ApiResult<string>>>();
 
-async function tryRefresh(options: RequestOptions): Promise<ApiResult<string>> {
-  if (!refreshing) {
-    refreshing = (async () => {
+async function tryRefresh(generation: number): Promise<ApiResult<string>> {
+  let shared = refreshing.get(generation);
+  if (!shared) {
+    shared = (async () => {
       try {
         const result = await requestInternal<unknown>('/auth/refresh', {
           method: 'POST',
           auth: false,
-          timeoutMs: options.timeoutMs,
-          signal: options.signal,
-        }, false);
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+        }, false, generation);
         if (!result.ok) return result;
         if (!isRecord(result.data) || typeof result.data.accessToken !== 'string' || !result.data.accessToken) {
           return {
@@ -74,11 +78,12 @@ async function tryRefresh(options: RequestOptions): Promise<ApiResult<string>> {
         }
         return { ok: true, data: result.data.accessToken };
       } finally {
-        refreshing = null;
+        refreshing.delete(generation);
       }
     })();
+    refreshing.set(generation, shared);
   }
-  return refreshing;
+  return shared;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -224,7 +229,31 @@ async function parseResponse(response: Response): Promise<ApiResult<unknown>> {
   return response.ok ? { ok: true, data: body } : { ok: false, error: httpFailure(response, body) };
 }
 
-async function requestInternal<T>(path: string, options: RequestOptions, allowRefresh: boolean): Promise<ApiResult<T>> {
+async function waitForRefresh(
+  shared: Promise<ApiResult<string>>,
+  options: RequestOptions,
+): Promise<ApiResult<string>> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onAbort = () => controller.abort();
+  if (options.signal?.aborted) onAbort();
+  else options.signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    return await Promise.race([
+      shared,
+      new Promise<ApiResult<string>>((resolve) => controller.signal.addEventListener('abort', () => resolve({
+        ok: false,
+        error: timedOut ? abortedFailure(true) : abortedFailure(false),
+      }), { once: true })),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+async function requestInternal<T>(path: string, options: RequestOptions, allowRefresh: boolean, generation = currentSessionGeneration()): Promise<ApiResult<T>> {
   const { auth = true, body, headers: suppliedHeaders, method = 'GET' } = options;
   const headers = new Headers(suppliedHeaders);
   if (body instanceof URLSearchParams && !headers.has('Content-Type')) headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
@@ -245,9 +274,9 @@ async function requestInternal<T>(path: string, options: RequestOptions, allowRe
   let fetched = await execute();
   if (!fetched.ok) return fetched;
   if (fetched.data.status === 401 && auth && allowRefresh) {
-    const refreshed = await tryRefresh(options);
+    const refreshed = await waitForRefresh(tryRefresh(generation), options);
     if (!refreshed.ok) return refreshed as ApiResult<T>;
-    setAccessToken(refreshed.data);
+    if (!setAccessToken(refreshed.data, generation)) return { ok: false, error: abortedFailure(false) };
     headers.set('Authorization', `Bearer ${refreshed.data}`);
     fetched = await execute();
     if (!fetched.ok) return fetched;

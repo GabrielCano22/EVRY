@@ -85,10 +85,12 @@ export function CalendarioActividad() {
   const [ciclo, setCiclo] = useState<RegistroCiclo[]>([]);
   const [diaSeleccionado, setDiaSeleccionado] = useState<CivilDate | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [estadoCarga, setEstadoCarga] = useState<'loading' | 'error' | 'empty' | 'success'>('loading');
 
   useEffect(() => {
     let activo = true;
     const cargarDatos = async () => {
+      setEstadoCarga('loading');
       const entrenamientosPromise = request<Entrenamiento[]>('/workouts?take=200');
       const cicloPromise = muestraCiclo
         ? request<RegistroCiclo[]>('/cycle/entries')
@@ -102,6 +104,8 @@ export function CalendarioActividad() {
       if (nuevosRegistros.ok) setCiclo(nuevosRegistros.data);
       const error = !nuevosEntrenamientos.ok ? nuevosEntrenamientos.error : !nuevosRegistros.ok ? nuevosRegistros.error : null;
       if (error && error.code !== 'aborted') setErrorCarga(error.message);
+      if (error && error.code !== 'aborted') setEstadoCarga('error');
+      else if (nuevosEntrenamientos.ok && nuevosRegistros.ok) setEstadoCarga(nuevosEntrenamientos.data.length === 0 && nuevosRegistros.data.length === 0 ? 'empty' : 'success');
     };
 
     cargarDatos();
@@ -154,7 +158,10 @@ export function CalendarioActividad() {
   const datosSeleccionado = diaSeleccionado ? datosPorDia.get(diaSeleccionado) : null;
 
   return (
-    <div className="bg-surface-container rounded-xl p-sm border border-white/5 max-w-md">
+      <div className="bg-surface-container rounded-xl p-sm border border-white/5 max-w-md">
+      {estadoCarga === 'loading' && <p role="status" className="px-xs pb-sm text-xs text-on-surface-variant">Cargando calendario…</p>}
+      {estadoCarga === 'error' && <p role="alert" className="px-xs pb-sm text-xs text-error">No pudimos cargar el calendario. <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('evry:cycle-updated'))} className="underline">Reintentar</button></p>}
+      {estadoCarga === 'empty' && <p className="px-xs pb-sm text-xs text-on-surface-variant">Aún no hay actividad registrada.</p>}
       <div className="flex items-center justify-between mb-sm px-xs">
         <h3 className="font-grotesk text-label-caps tracking-wider uppercase text-on-surface-variant text-[10px]">
           Actividad

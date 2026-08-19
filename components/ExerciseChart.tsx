@@ -21,6 +21,7 @@ interface Punto {
 
 export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
   const [estado, setEstado] = useState<RemoteData<Punto[]>>({ status: 'loading' });
+  const [intento, setIntento] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -28,7 +29,7 @@ export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
       setEstado(remoteFromResult(result, { isEmpty: (items) => items.length === 0 })),
     );
     return () => controller.abort();
-  }, [exerciseId]);
+  }, [exerciseId, intento]);
 
   const serie = (estado.status === 'success' || estado.status === 'empty' ? estado.data : estado.status === 'error' ? estado.staleData ?? [] : [])
     .filter((d) => d.weightKg && d.reps)
@@ -45,7 +46,7 @@ export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
       <h3 className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant mb-md">
         Evolución 1RM estimado
       </h3>
-      {estado.status === 'error' && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar la evolución. Cambia de ejercicio o reintenta.</p>}
+      {estado.status === 'error' && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar la evolución. <button type="button" onClick={() => setIntento((value) => value + 1)} className="underline">Reintentar</button></p>}
       {serie.length === 0 ? (
         <p className="text-on-surface-variant font-body-md text-center py-xl">
           Sin datos para graficar.

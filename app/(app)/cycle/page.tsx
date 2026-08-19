@@ -64,6 +64,7 @@ export default function PaginaCiclo() {
   const [editandoFecha, setEditandoFecha] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [estadoCarga, setEstadoCarga] = useState<'loading' | 'error' | 'empty' | 'success'>('loading');
 
   function fechaClave(fecha: string): string {
     return civilDate(fecha);
@@ -82,6 +83,7 @@ export default function PaginaCiclo() {
   }
 
   async function cargar() {
+    setEstadoCarga('loading');
     const [f, r] = await Promise.all([
       request<InfoFase | null>('/cycle/today'),
       request<RegistroCiclo[]>('/cycle/entries'),
@@ -89,7 +91,12 @@ export default function PaginaCiclo() {
     if (f.ok) setFase(f.data);
     if (r.ok) setRegistros(r.data);
     const error = !f.ok ? f.error : !r.ok ? r.error : null;
-    if (error && error.code !== 'aborted') setMensaje(error.message);
+    if (error && error.code !== 'aborted') {
+      setMensaje(error.message);
+      setEstadoCarga('error');
+    } else if (f.ok && r.ok) {
+      setEstadoCarga(f.data === null && r.data.length === 0 ? 'empty' : 'success');
+    }
   }
 
   useEffect(() => {
@@ -165,6 +172,8 @@ export default function PaginaCiclo() {
           </Button>
         </div>
       </header>
+      {estadoCarga === 'loading' && <p role="status" className="text-on-surface-variant">Cargando datos del ciclo…</p>}
+      {estadoCarga === 'error' && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>}
       {mensaje && mensaje !== 'Registro guardado. El calendario se actualizó.' && (
         <p role="alert" className="text-error">No pudimos cargar todos los datos. {mensaje} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>
       )}

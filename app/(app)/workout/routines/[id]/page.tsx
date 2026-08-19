@@ -10,15 +10,16 @@ export default function EditarRutina({ params }: { params: Promise<{ id: string 
   const router = useRouter();
   const [rutina, setRutina] = useState<Rutina | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
 
   useEffect(() => {
     void request<Rutina>(`/routines/${id}`).then((result) => {
       if (result.ok) setRutina(result.data);
       else if (result.error.code !== 'aborted') setError(result.error.message);
     });
-  }, [id]);
+  }, [id, intento]);
 
-  if (error) return <p role="alert" className="text-error">No pudimos cargar la rutina. <button type="button" onClick={() => router.refresh()} className="underline">Reintentar</button></p>;
+  if (error) return <p role="alert" className="text-error">No pudimos cargar la rutina. <button type="button" onClick={() => setIntento((value) => value + 1)} className="underline">Reintentar</button></p>;
   if (!rutina) return <p role="status" className="text-on-surface-variant">Cargando…</p>;
 
   return (

@@ -41,7 +41,7 @@ describe('useAutenticacion operation epochs', () => {
     await initializing;
 
     expect(useAutenticacion.getState()).toMatchObject({ usuario: user, estado: 'authenticated' });
-    expect(apiMock.setAccessToken).toHaveBeenCalledWith('fresh');
+    expect(apiMock.setAccessToken).toHaveBeenCalledWith('fresh', expect.any(Number));
   });
 
   it('ignores a late initialize success after logout', async () => {
