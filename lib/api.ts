@@ -53,24 +53,28 @@ export class ApiError extends Error implements ApiFailure {
   }
 }
 
-let refreshing: Promise<string | null> | null = null;
+let refreshing: Promise<ApiResult<string>> | null = null;
 
-async function tryRefresh(): Promise<string | null> {
+async function tryRefresh(options: RequestOptions): Promise<ApiResult<string>> {
   if (!refreshing) {
     refreshing = (async () => {
       try {
-        const response = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
-        if (!response.ok) return null;
-        const body = await response.json();
-        if (!isRecord(body) || typeof body.accessToken !== 'string' || !body.accessToken) return null;
-        setAccessToken(body.accessToken);
-        return body.accessToken;
-      } catch {
-        return null;
+        const result = await requestInternal<unknown>('/auth/refresh', {
+          method: 'POST',
+          auth: false,
+          timeoutMs: options.timeoutMs,
+          signal: options.signal,
+        }, false);
+        if (!result.ok) return result;
+        if (!isRecord(result.data) || typeof result.data.accessToken !== 'string' || !result.data.accessToken) {
+          return {
+            ok: false,
+            error: { status: 200, code: 'invalid_response', message: 'El servidor devolvió una respuesta inválida.', retryable: false },
+          };
+        }
+        return { ok: true, data: result.data.accessToken };
       } finally {
-        setTimeout(() => {
-          refreshing = null;
-        }, 0);
+        refreshing = null;
       }
     })();
   }
@@ -220,33 +224,39 @@ async function parseResponse(response: Response): Promise<ApiResult<unknown>> {
   return response.ok ? { ok: true, data: body } : { ok: false, error: httpFailure(response, body) };
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+async function requestInternal<T>(path: string, options: RequestOptions, allowRefresh: boolean): Promise<ApiResult<T>> {
   const { auth = true, body, headers: suppliedHeaders, method = 'GET' } = options;
   const headers = new Headers(suppliedHeaders);
-  if (body !== undefined && !(body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (body instanceof URLSearchParams && !headers.has('Content-Type')) headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
+  else if (body !== undefined && !(body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (auth) {
     const token = getAccessToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const execute = () =>
-    fetchWithControls(
-      `${BASE}${path}`,
-      { method, headers, credentials: 'include', body: encodeBody(body) },
-      options,
-    );
+  let encodedBody: BodyInit | undefined;
+  try {
+    encodedBody = encodeBody(body);
+  } catch {
+    return { ok: false, error: { status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false } };
+  }
+  const execute = () => fetchWithControls(`${BASE}${path}`, { method, headers, credentials: 'include', body: encodedBody }, options);
 
   let fetched = await execute();
   if (!fetched.ok) return fetched;
-  if (fetched.data.status === 401 && auth) {
-    const token = await tryRefresh();
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-      fetched = await execute();
-      if (!fetched.ok) return fetched;
-    }
+  if (fetched.data.status === 401 && auth && allowRefresh) {
+    const refreshed = await tryRefresh(options);
+    if (!refreshed.ok) return refreshed as ApiResult<T>;
+    setAccessToken(refreshed.data);
+    headers.set('Authorization', `Bearer ${refreshed.data}`);
+    fetched = await execute();
+    if (!fetched.ok) return fetched;
   }
   return parseResponse(fetched.data) as Promise<ApiResult<T>>;
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+  return requestInternal<T>(path, options, true);
 }
 
 export async function requestOrThrow<T>(path: string, options?: RequestOptions): Promise<T> {

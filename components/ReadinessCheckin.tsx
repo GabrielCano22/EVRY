@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, request } from '@/lib/api';
 import { Button } from './ui/Button';
 import { Icon } from './ui/Icon';
 import { compareCivil, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
@@ -13,10 +13,16 @@ interface UltimoCheckin {
 export function ReadinessCheckin() {
   const [ultimo, setUltimo] = useState<UltimoCheckin | null>(null);
   const [abierto, setAbierto] = useState(false);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [datos, setDatos] = useState({ sleepHrs: 7, stress: 3, soreness: 2, motivation: 4 });
 
   useEffect(() => {
-    api<UltimoCheckin | null>('/readiness/latest').then(setUltimo).catch(() => setUltimo(null));
+    const controller = new AbortController();
+    void request<UltimoCheckin | null>('/readiness/latest', { signal: controller.signal }).then((result) => {
+      if (result.ok) setUltimo(result.data);
+      else if (result.error.code !== 'aborted') setErrorCarga(result.error.message);
+    });
+    return () => controller.abort();
   }, []);
 
   const yaHoy = ultimo && compareCivil(timestampToLocalCivil(ultimo.date), todayCivil()) === 0;
@@ -44,6 +50,7 @@ export function ReadinessCheckin() {
           {abierto ? 'Cerrar' : 'Registrar'}
         </Button>
       </div>
+      {errorCarga && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar el estado diario. <button type="button" onClick={() => window.location.reload()} className="underline">Reintentar</button></p>}
       {abierto && (
         <div className="mt-md space-y-md animate-fade-in">
           <Deslizador

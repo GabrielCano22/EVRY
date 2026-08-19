@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '@/lib/api';
+import { request } from '@/lib/api';
 import type { Entrenamiento, RegistroCiclo } from '@/lib/types';
 import { useAutenticacion } from '@/lib/auth-store';
 import { Icon } from './ui/Icon';
@@ -84,21 +84,24 @@ export function CalendarioActividad() {
   const [entrenamientos, setEntrenamientos] = useState<Entrenamiento[]>([]);
   const [ciclo, setCiclo] = useState<RegistroCiclo[]>([]);
   const [diaSeleccionado, setDiaSeleccionado] = useState<CivilDate | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   useEffect(() => {
     let activo = true;
     const cargarDatos = async () => {
-      const entrenamientosPromise = api<Entrenamiento[]>('/workouts?take=200').catch(() => []);
+      const entrenamientosPromise = request<Entrenamiento[]>('/workouts?take=200');
       const cicloPromise = muestraCiclo
-        ? api<RegistroCiclo[]>('/cycle/entries').catch(() => [])
-        : Promise.resolve([] as RegistroCiclo[]);
+        ? request<RegistroCiclo[]>('/cycle/entries')
+        : Promise.resolve({ ok: true as const, data: [] as RegistroCiclo[] });
       const [nuevosEntrenamientos, nuevosRegistros] = await Promise.all([
         entrenamientosPromise,
         cicloPromise,
       ]);
       if (!activo) return;
-      setEntrenamientos(nuevosEntrenamientos);
-      setCiclo(nuevosRegistros);
+      if (nuevosEntrenamientos.ok) setEntrenamientos(nuevosEntrenamientos.data);
+      if (nuevosRegistros.ok) setCiclo(nuevosRegistros.data);
+      const error = !nuevosEntrenamientos.ok ? nuevosEntrenamientos.error : !nuevosRegistros.ok ? nuevosRegistros.error : null;
+      if (error && error.code !== 'aborted') setErrorCarga(error.message);
     };
 
     cargarDatos();

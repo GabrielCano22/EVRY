@@ -1,7 +1,7 @@
 'use client';
 import { use, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, request } from '@/lib/api';
 import type { Entrenamiento, Ejercicio, SerieEntrenamiento, Recomendacion, SerieObjetivo } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -56,32 +56,42 @@ export default function DetalleEntrenamiento({
   const [errorSerie, setErrorSerie] = useState<string | null>(null);
 
   async function recargar() {
-    const datos = await api<Entrenamiento>(`/workouts/${id}`);
-    setEntrenamiento(datos);
+    const result = await request<Entrenamiento>(`/workouts/${id}`);
+    if (result.ok) setEntrenamiento(result.data);
+    else if (result.error.code !== 'aborted') setErrorSerie(result.error.message);
   }
   useEffect(() => {
-    recargar().catch(() => router.replace('/workout'));
+    void recargar();
   }, [id]);
 
   async function seleccionarEjercicio(ejercicio: Ejercicio) {
     setErrorSerie(null);
-    const detalle = await api<Ejercicio>(`/exercises/${ejercicio.id}`).catch(() => ejercicio);
+    const detalleResult = await request<Ejercicio>(`/exercises/${ejercicio.id}`);
+    if (!detalleResult.ok) {
+      if (detalleResult.error.code !== 'aborted') setErrorSerie(detalleResult.error.message);
+      return;
+    }
+    const detalle = detalleResult.data;
     setEjercicioActivo(detalle);
     setSeleccionando(false);
     const plan = entrenamiento?.routine?.exercises.find((item) => item.exerciseId === detalle.id)?.seriesPlan ?? null;
     const numeroSerie = entrenamiento?.sets.filter((serie) => serie.exerciseId === detalle.id).length ?? 0;
     const objetivo = plan?.[numeroSerie] ?? plan?.at(-1);
-    try {
-      const rec = await api<Recomendacion>(`/adaptive/recommend/${detalle.id}`);
+    {
+      const result = await request<Recomendacion>(`/adaptive/recommend/${detalle.id}`);
+      if (result.ok) {
+        const rec = result.data;
       setRecomendacion(rec);
       if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
       else if (rec.targetWeightKg !== null) setPeso(rec.targetWeightKg);
       if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
       else if (rec.targetReps !== null) setReps(rec.targetReps);
-    } catch {
+      } else {
       setRecomendacion(null);
+      if (result.error.code !== 'aborted') setErrorSerie(result.error.message);
       if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
       if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
+      }
     }
   }
 

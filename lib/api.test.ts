@@ -139,4 +139,52 @@ describe('request', () => {
       retryable: false,
     });
   });
+
+  it.each([
+    ['network_error', () => Promise.reject(new TypeError('offline'))],
+    ['too_many_requests', () => Promise.resolve(jsonResponse({}, 429))],
+    ['server_error', () => Promise.resolve(jsonResponse({}, 503))],
+  ])('returns the temporary refresh failure (%s) instead of the original 401', async (code, refresh) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({}, 401)).mockImplementationOnce(refresh));
+
+    const result = await request('/users/me');
+
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code, retryable: true }) });
+  });
+
+  it('returns a refresh 401 as an invalid session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({}, 401)).mockResolvedValueOnce(jsonResponse({}, 401)));
+
+    await expect(request('/users/me')).resolves.toEqual({ ok: false, error: expect.objectContaining({ status: 401, code: 'unauthorized' }) });
+  });
+
+  it('cancels the refresh request when the caller aborts after the first 401', async () => {
+    const caller = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce(jsonResponse({}, 401))
+        .mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+          queueMicrotask(() => caller.abort());
+        })),
+    );
+
+    await expect(request('/users/me', { signal: caller.signal })).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'aborted', retryable: false }),
+    });
+  });
+
+  it('normalizes a circular JSON body as a local non-retryable failure', async () => {
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    vi.stubGlobal('fetch', vi.fn());
+
+    await expect(request('/cycle/entries', { method: 'POST', body: circular })).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'invalid_request', retryable: false }),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

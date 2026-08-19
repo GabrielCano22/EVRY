@@ -9,7 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { api } from '@/lib/api';
+import { request } from '@/lib/api';
+import { remoteFromResult, type RemoteData } from '@/lib/remote-data';
 
 interface Punto {
   weightKg: number | null;
@@ -19,15 +20,17 @@ interface Punto {
 }
 
 export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
-  const [datos, setDatos] = useState<Punto[]>([]);
+  const [estado, setEstado] = useState<RemoteData<Punto[]>>({ status: 'loading' });
 
   useEffect(() => {
-    api<Punto[]>(`/progress/exercise/${exerciseId}`)
-      .then(setDatos)
-      .catch(() => setDatos([]));
+    const controller = new AbortController();
+    void request<Punto[]>(`/progress/exercise/${exerciseId}`, { signal: controller.signal }).then((result) =>
+      setEstado(remoteFromResult(result, { isEmpty: (items) => items.length === 0 })),
+    );
+    return () => controller.abort();
   }, [exerciseId]);
 
-  const serie = datos
+  const serie = (estado.status === 'success' || estado.status === 'empty' ? estado.data : estado.status === 'error' ? estado.staleData ?? [] : [])
     .filter((d) => d.weightKg && d.reps)
     .map((d) => ({
       fecha: new Date(d.completedAt).toLocaleDateString('es-CO', {
@@ -42,6 +45,7 @@ export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
       <h3 className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant mb-md">
         Evolución 1RM estimado
       </h3>
+      {estado.status === 'error' && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar la evolución. Cambia de ejercicio o reintenta.</p>}
       {serie.length === 0 ? (
         <p className="text-on-surface-variant font-body-md text-center py-xl">
           Sin datos para graficar.

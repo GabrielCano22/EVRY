@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAutenticacion } from '@/lib/auth-store';
-import { api } from '@/lib/api';
+import { request } from '@/lib/api';
 import type { InfoFase, ResumenProgreso, Entrenamiento } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -85,20 +85,22 @@ export default function PaginaInicio() {
     let activo = true;
     setEstadoCarga('cargando');
     Promise.all([
-      muestraCiclo ? api<InfoFase | null>('/cycle/today').catch(() => null) : Promise.resolve(null),
-      api<ResumenProgreso>('/progress/overview').catch(() => null),
-      api<Entrenamiento[]>('/workouts?take=20').catch(() => []),
-      api<{ score: number; date: string } | null>('/readiness/latest').catch(() => null),
+      muestraCiclo ? request<InfoFase | null>('/cycle/today') : Promise.resolve({ ok: true as const, data: null }),
+      request<ResumenProgreso>('/progress/overview'),
+      request<Entrenamiento[]>('/workouts?take=20'),
+      request<{ score: number; date: string } | null>('/readiness/latest'),
     ]).then(([f, r, ent, rd]) => {
       if (!activo) return;
-      setFase(f);
-      setResumen(r);
-      setRecientes(ent ?? []);
-      if (rd && compareCivil(timestampToLocalCivil(rd.date), todayCivil()) === 0)
-        setPuntajeReadiness(rd.score);
+      if (!f.ok || !r.ok || !ent.ok || !rd.ok) {
+        if (activo) setEstadoCarga('error');
+        return;
+      }
+      setFase(f.data);
+      setResumen(r.data);
+      setRecientes(ent.data);
+      if (rd.data && compareCivil(timestampToLocalCivil(rd.data.date), todayCivil()) === 0)
+        setPuntajeReadiness(rd.data.score);
       setEstadoCarga('listo');
-    }).catch(() => {
-      if (activo) setEstadoCarga('error');
     });
     return () => {
       activo = false;

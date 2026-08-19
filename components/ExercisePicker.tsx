@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { request } from '@/lib/api';
 import type { Ejercicio, Equipo, GrupoMuscular, PaginaEjercicios } from '@/lib/types';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
@@ -79,6 +79,7 @@ export function ExercisePicker({
   const [hayMas, setHayMas] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [cargandoMas, setCargandoMas] = useState(false);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const solicitudActual = useRef(0);
 
   const cargarPagina = useCallback(
@@ -99,8 +100,14 @@ export function ExercisePicker({
       else setCargando(true);
 
       try {
-        const respuesta = await api<PaginaEjercicios>(`/exercises?${params.toString()}`);
+        const result = await request<PaginaEjercicios>(`/exercises?${params.toString()}`);
         if (solicitud !== solicitudActual.current) return;
+        if (!result.ok) {
+          if (result.error.code !== 'aborted') setErrorCarga(result.error.message);
+          return;
+        }
+        const respuesta = result.data;
+        setErrorCarga(null);
 
         setLista((actual) => {
           if (!acumular) return respuesta.items;
@@ -112,11 +119,7 @@ export function ExercisePicker({
         setHayMas(respuesta.hasMore);
       } catch {
         if (solicitud !== solicitudActual.current) return;
-        if (!acumular) {
-          setLista([]);
-          setTotal(0);
-          setHayMas(false);
-        }
+        setErrorCarga('No pudimos cargar el catálogo.');
       } finally {
         if (solicitud === solicitudActual.current) {
           if (acumular) setCargandoMas(false);
@@ -235,6 +238,7 @@ export function ExercisePicker({
         </span>
         <span>GIF local · 180×180</span>
       </div>
+      {errorCarga && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar el catálogo. <button type="button" onClick={() => void cargarPagina(1, false)} className="underline">Reintentar</button></p>}
       {cantidadExcluida > 0 && !cargando && (
         <p className="mb-sm rounded-lg border border-primary/20 bg-primary/5 px-sm py-xs text-xs text-primary">
           {cantidadExcluida === 1

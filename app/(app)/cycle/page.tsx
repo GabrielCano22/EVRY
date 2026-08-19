@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, request } from '@/lib/api';
 import type { RegistroCiclo, Flujo, InfoFase } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -83,11 +83,13 @@ export default function PaginaCiclo() {
 
   async function cargar() {
     const [f, r] = await Promise.all([
-      api<InfoFase | null>('/cycle/today').catch(() => null),
-      api<RegistroCiclo[]>('/cycle/entries').catch(() => []),
+      request<InfoFase | null>('/cycle/today'),
+      request<RegistroCiclo[]>('/cycle/entries'),
     ]);
-    setFase(f);
-    setRegistros(r);
+    if (f.ok) setFase(f.data);
+    if (r.ok) setRegistros(r.data);
+    const error = !f.ok ? f.error : !r.ok ? r.error : null;
+    if (error && error.code !== 'aborted') setMensaje(error.message);
   }
 
   useEffect(() => {
@@ -163,6 +165,9 @@ export default function PaginaCiclo() {
           </Button>
         </div>
       </header>
+      {mensaje && mensaje !== 'Registro guardado. El calendario se actualizó.' && (
+        <p role="alert" className="text-error">No pudimos cargar todos los datos. {mensaje} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>
+      )}
 
       {fase ? (
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">

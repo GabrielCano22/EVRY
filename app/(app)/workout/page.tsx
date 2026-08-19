@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, request } from '@/lib/api';
 import type { Entrenamiento, Rutina } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -26,11 +26,13 @@ export default function ListaEntrenamientos() {
 
   async function cargar() {
     const [ent, rut] = await Promise.all([
-      api<Entrenamiento[]>('/workouts').catch(() => []),
-      api<Rutina[]>('/routines').catch(() => []),
+      request<Entrenamiento[]>('/workouts'),
+      request<Rutina[]>('/routines'),
     ]);
-    setEntrenamientos(ent);
-    setRutinas(rut);
+    if (ent.ok) setEntrenamientos(ent.data);
+    if (rut.ok) setRutinas(rut.data);
+    const error = !ent.ok ? ent.error : !rut.ok ? rut.error : null;
+    if (error && error.code !== 'aborted') setErrorInicio(error.message);
   }
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export default function ListaEntrenamientos() {
           Inicia, continúa o gestiona tus rutinas.
         </p>
       </header>
+      {errorInicio && <button type="button" onClick={() => void cargar()} className="text-sm text-primary underline">Reintentar carga</button>}
 
       {activo && (
         <div className="bg-surface-container rounded-xl p-md border border-primary/30 relative overflow-hidden">

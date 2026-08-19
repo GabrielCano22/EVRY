@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { request } from '@/lib/api';
+import { remoteFromResult, type RemoteData } from '@/lib/remote-data';
 import type { ResumenProgreso } from '@/lib/types';
 import { Icon } from '@/components/ui/Icon';
 import { ExerciseChart } from '@/components/ExerciseChart';
@@ -9,17 +10,21 @@ import { cn } from '@/lib/utils';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 export default function PaginaProgreso() {
-  const [datos, setDatos] = useState<ResumenProgreso | null>(null);
+  const [estado, setEstado] = useState<RemoteData<ResumenProgreso>>({ status: 'loading' });
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
 
   useEffect(() => {
-    api<ResumenProgreso>('/progress/overview').then((d) => {
-      setDatos(d);
-      setSeleccionado(d.topExercises[0]?.exerciseId ?? null);
+    void request<ResumenProgreso>('/progress/overview').then((result) => {
+      const next = remoteFromResult(result, { isEmpty: (data) => data.topExercises.length === 0 });
+      setEstado(next);
+      if (result.ok) setSeleccionado(result.data.topExercises[0]?.exerciseId ?? null);
     });
   }, []);
 
-  if (!datos) return <p className="text-on-surface-variant">Cargando…</p>;
+  if (estado.status === 'loading' || estado.status === 'idle') return <p role="status" className="text-on-surface-variant">Cargando…</p>;
+  if (estado.status === 'error') return <div role="alert" className="text-error">No pudimos cargar tu progreso. <button type="button" onClick={() => location.reload()} className="underline">Reintentar</button></div>;
+  if (!('data' in estado)) return null;
+  const datos = estado.data;
 
   return (
     <div className="space-y-lg">
