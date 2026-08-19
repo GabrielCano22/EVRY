@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '@/lib/api';
 import type { Entrenamiento, RegistroCiclo } from '@/lib/types';
 import { useAutenticacion } from '@/lib/auth-store';
@@ -86,20 +86,26 @@ export function CalendarioActividad() {
   const [diaSeleccionado, setDiaSeleccionado] = useState<CivilDate | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [estadoCarga, setEstadoCarga] = useState<'loading' | 'error' | 'empty' | 'success'>('loading');
+  const solicitudActual = useRef(0);
+  const controladorActual = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let activo = true;
     const cargarDatos = async () => {
+      controladorActual.current?.abort();
+      const controlador = new AbortController();
+      controladorActual.current = controlador;
+      const solicitud = ++solicitudActual.current;
       setEstadoCarga('loading');
-      const entrenamientosPromise = request<Entrenamiento[]>('/workouts?take=200');
+      const entrenamientosPromise = request<Entrenamiento[]>('/workouts?take=200', { signal: controlador.signal });
       const cicloPromise = muestraCiclo
-        ? request<RegistroCiclo[]>('/cycle/entries')
+        ? request<RegistroCiclo[]>('/cycle/entries', { signal: controlador.signal })
         : Promise.resolve({ ok: true as const, data: [] as RegistroCiclo[] });
       const [nuevosEntrenamientos, nuevosRegistros] = await Promise.all([
         entrenamientosPromise,
         cicloPromise,
       ]);
-      if (!activo) return;
+      if (!activo || solicitud !== solicitudActual.current) return;
       if (nuevosEntrenamientos.ok) setEntrenamientos(nuevosEntrenamientos.data);
       if (nuevosRegistros.ok) setCiclo(nuevosRegistros.data);
       const error = !nuevosEntrenamientos.ok ? nuevosEntrenamientos.error : !nuevosRegistros.ok ? nuevosRegistros.error : null;
@@ -113,6 +119,8 @@ export function CalendarioActividad() {
     window.addEventListener('evry:cycle-updated', actualizar);
     return () => {
       activo = false;
+      solicitudActual.current += 1;
+      controladorActual.current?.abort();
       window.removeEventListener('evry:cycle-updated', actualizar);
     };
   }, [muestraCiclo]);

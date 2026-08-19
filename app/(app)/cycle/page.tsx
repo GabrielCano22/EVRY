@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, request } from '@/lib/api';
 import type { RegistroCiclo, Flujo, InfoFase } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
@@ -65,6 +65,8 @@ export default function PaginaCiclo() {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [estadoCarga, setEstadoCarga] = useState<'loading' | 'error' | 'empty' | 'success'>('loading');
+  const solicitudActual = useRef(0);
+  const controladorActual = useRef<AbortController | null>(null);
 
   function fechaClave(fecha: string): string {
     return civilDate(fecha);
@@ -83,11 +85,16 @@ export default function PaginaCiclo() {
   }
 
   async function cargar() {
+    controladorActual.current?.abort();
+    const controlador = new AbortController();
+    controladorActual.current = controlador;
+    const solicitud = ++solicitudActual.current;
     setEstadoCarga('loading');
     const [f, r] = await Promise.all([
-      request<InfoFase | null>('/cycle/today'),
-      request<RegistroCiclo[]>('/cycle/entries'),
+      request<InfoFase | null>('/cycle/today', { signal: controlador.signal }),
+      request<RegistroCiclo[]>('/cycle/entries', { signal: controlador.signal }),
     ]);
+    if (solicitud !== solicitudActual.current) return;
     if (f.ok) setFase(f.data);
     if (r.ok) setRegistros(r.data);
     const error = !f.ok ? f.error : !r.ok ? r.error : null;
@@ -100,7 +107,8 @@ export default function PaginaCiclo() {
   }
 
   useEffect(() => {
-    cargar();
+    void cargar();
+    return () => { solicitudActual.current += 1; controladorActual.current?.abort(); };
   }, []);
 
   function editarRegistro(registro: RegistroCiclo) {
