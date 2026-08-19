@@ -16,11 +16,12 @@ describe('ExerciseChart remote state', () => {
     request.mockReturnValueOnce(new Promise((done) => { resolve = done; }))
       .mockResolvedValueOnce({ ok: true, data: [{ weightKg: 10, reps: 8, rpe: 7, completedAt: '2026-08-19T12:00:00Z' }] });
     render(<ExerciseChart exerciseId="e1" />);
-    expect(screen.getByText('Sin datos para graficar.')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando evolución');
     resolve({ ok: false, error: { status: 0, code: 'network_error', message: 'Temporal', retryable: true } });
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos cargar la evolución');
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.queryByText('Sin datos para graficar.')).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CartesianGrid,
   Tooltip,
@@ -22,13 +22,16 @@ interface Punto {
 export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
   const [estado, setEstado] = useState<RemoteData<Punto[]>>({ status: 'loading' });
   const [intento, setIntento] = useState(0);
+  const solicitudActual = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const solicitud = ++solicitudActual.current;
+    setEstado({ status: 'loading' });
     void request<Punto[]>(`/progress/exercise/${exerciseId}`, { signal: controller.signal }).then((result) =>
-      setEstado(remoteFromResult(result, { isEmpty: (items) => items.length === 0 })),
+      solicitud === solicitudActual.current && setEstado(remoteFromResult(result, { isEmpty: (items) => items.length === 0 })),
     );
-    return () => controller.abort();
+    return () => { controller.abort(); solicitudActual.current += 1; };
   }, [exerciseId, intento]);
 
   const serie = (estado.status === 'success' || estado.status === 'empty' ? estado.data : estado.status === 'error' ? estado.staleData ?? [] : [])
@@ -46,8 +49,9 @@ export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
       <h3 className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant mb-md">
         Evolución 1RM estimado
       </h3>
+      {estado.status === 'loading' && <p role="status" className="text-on-surface-variant">Cargando evolución…</p>}
       {estado.status === 'error' && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar la evolución. <button type="button" onClick={() => setIntento((value) => value + 1)} className="underline">Reintentar</button></p>}
-      {serie.length === 0 ? (
+      {estado.status !== 'loading' && serie.length === 0 ? (
         <p className="text-on-surface-variant font-body-md text-center py-xl">
           Sin datos para graficar.
         </p>

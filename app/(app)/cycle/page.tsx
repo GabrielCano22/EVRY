@@ -178,7 +178,7 @@ export default function PaginaCiclo() {
         <p role="alert" className="text-error">No pudimos cargar todos los datos. {mensaje} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>
       )}
 
-      {fase ? (
+      {estadoCarga === 'success' && fase ? (
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">
           <div className="absolute -right-8 -top-8 w-64 h-64 bg-tertiary/10 rounded-full blur-3xl"></div>
           <div className="relative">
@@ -209,14 +209,14 @@ export default function PaginaCiclo() {
             )}
           </div>
         </div>
-      ) : (
+      ) : estadoCarga === 'empty' ? (
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 text-center">
           <Icon name="info" size={32} className="text-on-surface-variant mb-sm" />
           <p className="font-body-md text-on-surface-variant">
             Datos insuficientes. Marca abajo el inicio de tu próximo período para empezar.
           </p>
         </div>
-      )}
+      ) : null}
 
       <div className="bg-surface-container rounded-xl p-lg border border-white/5">
         <div className="flex items-center justify-between mb-md">
