@@ -160,22 +160,29 @@ describe('request', () => {
     await expect(request('/users/me')).resolves.toEqual({ ok: false, error: expect.objectContaining({ status: 401, code: 'unauthorized' }) });
   });
 
-  it('cancels the refresh request when the caller aborts after the first 401', async () => {
+  it('cancels only the caller wait when the caller aborts after the first 401', async () => {
     const caller = new AbortController();
+    let resolveRefresh!: (response: Response) => void;
+    let refreshSignal: AbortSignal | undefined;
     vi.stubGlobal(
       'fetch',
       vi.fn()
         .mockResolvedValueOnce(jsonResponse({}, 401))
-        .mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
-          init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
-          queueMicrotask(() => caller.abort());
-        })),
+        .mockImplementationOnce((_url: string, init: RequestInit) => {
+          refreshSignal = init.signal ?? undefined;
+          return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+        }),
     );
-
-    await expect(request('/users/me', { signal: caller.signal })).resolves.toEqual({
+    const pending = request('/users/me', { signal: caller.signal });
+    await vi.waitFor(() => expect(resolveRefresh).toBeTypeOf('function'));
+    caller.abort();
+    await expect(pending).resolves.toEqual({
       ok: false,
       error: expect.objectContaining({ code: 'aborted', retryable: false }),
     });
+    expect(refreshSignal?.aborted).toBe(false);
+    resolveRefresh(jsonResponse({}, 401));
+    await Promise.resolve();
   });
 
   it('normalizes a circular JSON body as a local non-retryable failure', async () => {
@@ -190,12 +197,12 @@ describe('request', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.skip('does not let an aborted caller cancel another caller sharing refresh', async () => {
+  it('does not let an aborted caller cancel another caller sharing refresh', async () => {
     let resolveRefresh!: (response: Response) => void;
     const first = new AbortController();
     let originals = 0;
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/auth/refresh')) return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+      if (String(url).includes('/auth/refresh')) return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
       originals += 1;
       return Promise.resolve(originals <= 2 ? jsonResponse({}, 401) : jsonResponse({ value: 'ok' }));
     }));
