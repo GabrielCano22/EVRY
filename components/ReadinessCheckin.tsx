@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from './ui/Button';
 import { Icon } from './ui/Icon';
+import { compareCivil, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
 
 interface UltimoCheckin {
   date: string;
@@ -18,7 +19,7 @@ export function ReadinessCheckin() {
     api<UltimoCheckin | null>('/readiness/latest').then(setUltimo).catch(() => setUltimo(null));
   }, []);
 
-  const yaHoy = ultimo && new Date(ultimo.date).toDateString() === new Date().toDateString();
+  const yaHoy = ultimo && compareCivil(timestampToLocalCivil(ultimo.date), todayCivil()) === 0;
   if (yaHoy) return null;
 
   async function guardar() {

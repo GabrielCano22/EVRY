@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { formatearFecha } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { civilDate, todayCivil } from '@/lib/civil-date';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 
 const flujos: { valor: Flujo; etiqueta: string; clase: string }[] = [
@@ -52,7 +53,7 @@ export default function PaginaCiclo() {
   const [fase, setFase] = useState<InfoFase | null>(null);
   const [registros, setRegistros] = useState<RegistroCiclo[]>([]);
   const [hoy, setHoy] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: todayCivil() as string,
     flow: 'NONE' as Flujo,
     symptoms: [] as string[],
     energy: 3,
@@ -65,12 +66,12 @@ export default function PaginaCiclo() {
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   function fechaClave(fecha: string): string {
-    return fecha.slice(0, 10);
+    return civilDate(fecha);
   }
 
   function formularioVacio() {
     return {
-      date: new Date().toISOString().slice(0, 10),
+      date: todayCivil() as string,
       flow: 'NONE' as Flujo,
       symptoms: [] as string[],
       energy: 3,

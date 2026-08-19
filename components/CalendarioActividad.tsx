@@ -5,6 +5,15 @@ import type { Entrenamiento, RegistroCiclo } from '@/lib/types';
 import { useAutenticacion } from '@/lib/auth-store';
 import { Icon } from './ui/Icon';
 import { cn } from '@/lib/utils';
+import {
+  civilDate,
+  compareCivil,
+  formatCivilDate,
+  parseCivilDate,
+  timestampToLocalCivil,
+  todayCivil,
+  type CivilDate,
+} from '@/lib/civil-date';
 
 const DIAS_ABREV = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MESES = [
@@ -27,36 +36,38 @@ const ETIQUETAS_FLUJO: Record<string, string> = {
   HEAVY: 'Abundante',
 };
 
-function claveFechaLocal(valor: Date | string): string {
-  if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
-    return valor.slice(0, 10);
+function claveFechaLocal(valor: Date | string): CivilDate {
+  if (typeof valor === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return civilDate(valor);
+    return timestampToLocalCivil(valor);
   }
-  const fecha = valor instanceof Date ? valor : new Date(valor);
-  const año = fecha.getFullYear();
-  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-  const dia = String(fecha.getDate()).padStart(2, '0');
-  return `${año}-${mes}-${dia}`;
+  return civilDate(`${valor.getFullYear()}-${String(valor.getMonth() + 1).padStart(2, '0')}-${String(valor.getDate()).padStart(2, '0')}`);
 }
 
-function fechaDesdeClave(clave: string): Date {
-  const [año, mes, dia] = clave.split('-').map(Number);
-  return new Date(año, mes - 1, dia);
+function numeroDiaCivil(fecha: CivilDate): number {
+  const { year, month, day } = parseCivilDate(fecha);
+  const adjustedYear = month <= 2 ? year - 1 : year;
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const monthIndex = month > 2 ? month - 3 : month + 9;
+  const dayOfYear = Math.floor((153 * monthIndex + 2) / 5) + day - 1;
+  return era * 146097 + yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
 }
 
 function faseProyectada(
-  clave: string,
-  inicios: string[],
+  clave: CivilDate,
+  inicios: CivilDate[],
   cicloMedio: number,
   periodoMedio: number,
 ): string | null {
-  const fecha = fechaDesdeClave(clave).getTime();
+  const fecha = numeroDiaCivil(clave);
   const inicio = inicios
-    .map(fechaDesdeClave)
-    .filter((item) => item.getTime() <= fecha)
-    .sort((a, b) => b.getTime() - a.getTime())[0];
+    .map(numeroDiaCivil)
+    .filter((item) => item <= fecha)
+    .sort((a, b) => b - a)[0];
   if (!inicio) return null;
 
-  const dia = Math.floor((fecha - inicio.getTime()) / 86_400_000) + 1;
+  const dia = fecha - inicio + 1;
   const diaCiclo = ((dia - 1) % cicloMedio) + 1;
   if (diaCiclo <= periodoMedio) return 'MENSTRUAL';
   const ovulacion = cicloMedio - 14;
@@ -68,12 +79,13 @@ export function CalendarioActividad() {
   const { usuario } = useAutenticacion();
   const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
 
-  const [hoy] = useState(new Date());
-  const [mes, setMes] = useState(hoy.getMonth());
-  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [hoy] = useState(todayCivil);
+  const componentesHoy = parseCivilDate(hoy);
+  const [mes, setMes] = useState(componentesHoy.month - 1);
+  const [anio, setAnio] = useState(componentesHoy.year);
   const [entrenamientos, setEntrenamientos] = useState<Entrenamiento[]>([]);
   const [ciclo, setCiclo] = useState<RegistroCiclo[]>([]);
-  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<CivilDate | null>(null);
 
   useEffect(() => {
     let activo = true;
@@ -101,7 +113,7 @@ export function CalendarioActividad() {
   }, [muestraCiclo]);
 
   const datosPorDia = useMemo(() => {
-    const mapa = new Map<string, { entrenamientos: Entrenamiento[]; ciclo?: RegistroCiclo }>();
+    const mapa = new Map<CivilDate, { entrenamientos: Entrenamiento[]; ciclo?: RegistroCiclo }>();
     for (const e of entrenamientos) {
       const llave = claveFechaLocal(e.startedAt);
       const actual = mapa.get(llave) ?? { entrenamientos: [] };
@@ -204,7 +216,7 @@ export function CalendarioActividad() {
                   usuario?.avgPeriodLen ?? 5,
                 )
               : null;
-          const esHoy = fecha.toDateString() === hoy.toDateString();
+          const esHoy = compareCivil(llave, hoy) === 0;
           const seleccionado = diaSeleccionado === llave;
           return (
             <button
@@ -289,7 +301,7 @@ export function CalendarioActividad() {
       {datosSeleccionado && (
         <div className="mt-sm pt-sm border-t border-white/5 animate-fade-in">
           <h4 className="font-grotesk text-label-caps tracking-wider uppercase text-primary text-[10px] mb-xs">
-            {new Date(diaSeleccionado!).toLocaleDateString('es-CO', {
+            {formatCivilDate(diaSeleccionado!, {
               day: 'numeric',
               month: 'long',
             })}

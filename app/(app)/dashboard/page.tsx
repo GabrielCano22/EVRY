@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { ReadinessCheckin } from '@/components/ReadinessCheckin';
 import { formatearFechaHora, cn } from '@/lib/utils';
+import { compareCivil, formatCivilDate, parseCivilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { fraseDelDia as obtenerFraseDelDia } from '@/lib/motivacion';
 
@@ -43,23 +44,30 @@ const FRASES_CICLO = [
 
 function calcularRacha(entrenamientos: Entrenamiento[]): number {
   // Días consecutivos hacia atrás desde hoy con al menos una sesión finalizada
-  const dias = new Set<string>();
+  const dias = new Set<number>();
   for (const e of entrenamientos) {
     if (!e.endedAt) continue;
-    dias.add(new Date(e.startedAt).toISOString().slice(0, 10));
+    dias.add(numeroDiaCivil(timestampToLocalCivil(e.startedAt)));
   }
+  const hoy = numeroDiaCivil(todayCivil());
   let racha = 0;
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
   // Permitir que hoy aún no haya entrenado: empezamos desde ayer si hoy no hay
-  if (!dias.has(cursor.toISOString().slice(0, 10))) {
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  while (dias.has(cursor.toISOString().slice(0, 10))) {
+  let cursor = dias.has(hoy) ? hoy : hoy - 1;
+  while (dias.has(cursor)) {
     racha++;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor--;
   }
   return racha;
+}
+
+function numeroDiaCivil(fecha: ReturnType<typeof todayCivil>): number {
+  const { year, month, day } = parseCivilDate(fecha);
+  const adjustedYear = month <= 2 ? year - 1 : year;
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const monthIndex = month > 2 ? month - 3 : month + 9;
+  const dayOfYear = Math.floor((153 * monthIndex + 2) / 5) + day - 1;
+  return era * 146097 + yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
 }
 
 export default function PaginaInicio() {
@@ -86,7 +94,7 @@ export default function PaginaInicio() {
       setFase(f);
       setResumen(r);
       setRecientes(ent ?? []);
-      if (rd && new Date(rd.date).toDateString() === new Date().toDateString())
+      if (rd && compareCivil(timestampToLocalCivil(rd.date), todayCivil()) === 0)
         setPuntajeReadiness(rd.score);
       setEstadoCarga('listo');
     }).catch(() => {
@@ -97,11 +105,11 @@ export default function PaginaInicio() {
     };
   }, [muestraCiclo, intento]);
 
-  const fechaHoy = new Intl.DateTimeFormat('es-CO', {
+  const fechaHoy = formatCivilDate(todayCivil(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(new Date());
+  });
 
   const racha = useMemo(() => calcularRacha(recientes), [recientes]);
   const top3 = useMemo(
