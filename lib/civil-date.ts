@@ -57,6 +57,23 @@ function subtractCalendarMonths(value: CivilDate, months: number): CivilDate {
   });
 }
 
+function mondayWeekday(value: CivilDate): number {
+  const { year, month, day } = parseCivilDate(value);
+  const adjustedYear = month <= 2 ? year - 1 : year;
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const monthIndex = month > 2 ? month - 3 : month + 9;
+  const dayNumber =
+    era * 146097 +
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    Math.floor((153 * monthIndex + 2) / 5) +
+    day -
+    1;
+  return ((dayNumber - 306) % 7 + 7) % 7;
+}
+
 export function civilDate(value: string): CivilDate {
   const match = CIVIL_DATE_PATTERN.exec(value);
   if (!match) throw new RangeError('La fecha civil debe usar el formato AAAA-MM-DD.');
@@ -110,6 +127,17 @@ export function monthRange(year: number, month: number): { from: CivilDate; to: 
     from: civilDateFromParts({ year, month, day: 1 }),
     to: civilDateFromParts({ year, month, day: daysInMonth(year, month) }),
   };
+}
+
+export function calendarMonthCells(year: number, month: number): Array<CivilDate | null> {
+  const { from, to } = monthRange(year, month);
+  const total = parseCivilDate(to).day;
+  const cells: Array<CivilDate | null> = Array.from({ length: mondayWeekday(from) }, () => null);
+  for (let day = 1; day <= total; day++) {
+    cells.push(civilDateFromParts({ year, month, day }));
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
 }
 
 export function periodRange(

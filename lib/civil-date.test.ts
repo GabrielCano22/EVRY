@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calendarMonthCells,
   civilDate,
   compareCivil,
   formatCivilDate,
@@ -51,6 +52,15 @@ describe('civil dates in America/Bogota', () => {
 
   it('rejects year 0000 because the civil-date domain is 0001 through 9999', () => {
     expect(() => civilDate('0000-01-01')).toThrow(RangeError);
+  });
+
+  it('builds January 0001 calendar cells with the real civil year and weekday', () => {
+    const cells = calendarMonthCells(1, 1);
+
+    expect(cells).toHaveLength(35);
+    expect(cells[0]).toBe('0001-01-01');
+    expect(cells[30]).toBe('0001-01-31');
+    expect(cells[31]).toBeNull();
   });
 
   it('returns inclusive month endpoints across a leap February and year boundary', () => {

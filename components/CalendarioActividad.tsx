@@ -6,6 +6,7 @@ import { useAutenticacion } from '@/lib/auth-store';
 import { Icon } from './ui/Icon';
 import { cn } from '@/lib/utils';
 import {
+  calendarMonthCells,
   civilDate,
   compareCivil,
   formatCivilDate,
@@ -36,12 +37,9 @@ const ETIQUETAS_FLUJO: Record<string, string> = {
   HEAVY: 'Abundante',
 };
 
-function claveFechaLocal(valor: Date | string): CivilDate {
-  if (typeof valor === 'string') {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return civilDate(valor);
-    return timestampToLocalCivil(valor);
-  }
-  return civilDate(`${valor.getFullYear()}-${String(valor.getMonth() + 1).padStart(2, '0')}-${String(valor.getDate()).padStart(2, '0')}`);
+function claveFechaLocal(valor: string): CivilDate {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return civilDate(valor);
+  return timestampToLocalCivil(valor);
 }
 
 function numeroDiaCivil(fecha: CivilDate): number {
@@ -137,15 +135,7 @@ export function CalendarioActividad() {
   );
 
   const celdas = useMemo(() => {
-    const primerDia = new Date(anio, mes, 1);
-    const ultimoDia = new Date(anio, mes + 1, 0);
-    const primerDiaSemana = (primerDia.getDay() + 6) % 7;
-    const total = ultimoDia.getDate();
-    const arr: (Date | null)[] = [];
-    for (let i = 0; i < primerDiaSemana; i++) arr.push(null);
-    for (let d = 1; d <= total; d++) arr.push(new Date(anio, mes, d));
-    while (arr.length % 7 !== 0) arr.push(null);
-    return arr;
+    return calendarMonthCells(anio, mes + 1);
   }, [mes, anio]);
 
   function cambiarMes(delta: number) {
@@ -203,7 +193,8 @@ export function CalendarioActividad() {
       <div className="grid grid-cols-7 gap-px">
         {celdas.map((fecha, idx) => {
           if (!fecha) return <div key={idx} className="aspect-square"></div>;
-          const llave = claveFechaLocal(fecha);
+          const llave = fecha;
+          const { day } = parseCivilDate(fecha);
           const datos = datosPorDia.get(llave);
           const tieneSesion = (datos?.entrenamientos.length ?? 0) > 0;
           const fase =
@@ -223,7 +214,7 @@ export function CalendarioActividad() {
               key={idx}
               type="button"
               onClick={() => setDiaSeleccionado(seleccionado ? null : llave)}
-              aria-label={`Ver actividad del ${fecha.toLocaleDateString('es-CO', {
+              aria-label={`Ver actividad del ${formatCivilDate(fecha, {
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric',
@@ -244,7 +235,7 @@ export function CalendarioActividad() {
                   esHoy ? 'text-primary font-bold' : 'text-on-surface',
                 )}
               >
-                {fecha.getDate()}
+                {day}
               </span>
               {tieneSesion && (
                 <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-primary"></span>
