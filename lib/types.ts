@@ -64,6 +64,9 @@ export interface Usuario {
 }
 export type User = Usuario;
 
+export type EstadoAutenticacionRemota = 'checking' | 'authenticated' | 'anonymous' | 'error';
+export type AuthStatus = EstadoAutenticacionRemota;
+
 export interface Ejercicio {
   id: string;
   sourceId?: string | null;

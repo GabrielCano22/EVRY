@@ -1,8 +1,8 @@
 'use client';
 
 import { create } from 'zustand';
-import { api, setAccessToken } from './api';
-import type { Usuario } from './types';
+import { ApiError, request, requestOrThrow, setAccessToken } from './api';
+import type { AuthStatus, Usuario } from './types';
 
 interface DatosRegistro {
   email: string;
@@ -16,6 +16,7 @@ interface EstadoAutenticacion {
   usuario: Usuario | null;
   cargando: boolean;
   error: string | null;
+  estado: AuthStatus;
   inicializar: () => Promise<void>;
   ingresar: (email: string, password: string) => Promise<void>;
   registrar: (datos: DatosRegistro) => Promise<void>;
@@ -23,64 +24,91 @@ interface EstadoAutenticacion {
   recargarUsuario: () => Promise<void>;
 }
 
-export const useAutenticacion = create<EstadoAutenticacion>((set) => ({
+function esSesionInvalida(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
+function mensajeSeguro(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
+
+export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   usuario: null,
   cargando: false,
   error: null,
+  estado: 'checking',
   async inicializar() {
-    set({ cargando: true });
-    try {
-      const usuario = await api<Usuario>('/users/me');
-      set({ usuario, cargando: false });
-    } catch {
-      set({ usuario: null, cargando: false });
+    set({ cargando: true, estado: 'checking', error: null });
+    const resultado = await request<Usuario>('/users/me');
+    if (resultado.ok) {
+      set({ usuario: resultado.data, cargando: false, estado: 'authenticated', error: null });
+      return;
     }
+    if (resultado.error.status === 401 || resultado.error.status === 403) {
+      setAccessToken(null);
+      set({ usuario: null, cargando: false, estado: 'anonymous', error: null });
+      return;
+    }
+    set({ usuario: get().usuario, cargando: false, estado: 'error', error: resultado.error.message });
   },
   async ingresar(email, password) {
-    set({ cargando: true, error: null });
+    set({ cargando: true, error: null, estado: 'checking' });
     try {
       const emailNormalizado = email.trim().toLowerCase();
-      const respuesta = await api<{ accessToken: string }>('/auth/login', {
+      const respuesta = await requestOrThrow<{ accessToken: string }>('/auth/login', {
         method: 'POST',
-        json: { email: emailNormalizado, password },
+        body: { email: emailNormalizado, password },
         auth: false,
       });
       setAccessToken(respuesta.accessToken);
-      const usuario = await api<Usuario>('/users/me');
-      set({ usuario, cargando: false });
-    } catch (e: any) {
-      set({ error: e?.message ?? 'Error al ingresar', cargando: false });
-      throw e;
+      const usuario = await requestOrThrow<Usuario>('/users/me');
+      set({ usuario, cargando: false, estado: 'authenticated', error: null });
+    } catch (error) {
+      const sesionInvalida = esSesionInvalida(error);
+      if (sesionInvalida) setAccessToken(null);
+      set({
+        usuario: sesionInvalida ? null : get().usuario,
+        error: mensajeSeguro(error, 'Error al ingresar'),
+        cargando: false,
+        estado: sesionInvalida ? 'anonymous' : 'error',
+      });
+      throw error;
     }
   },
   async registrar(datos) {
-    set({ cargando: true, error: null });
+    set({ cargando: true, error: null, estado: 'checking' });
     try {
       const datosNormalizados = {
         ...datos,
         email: datos.email.trim().toLowerCase(),
         name: datos.name.trim(),
       };
-      const respuesta = await api<{ accessToken: string }>('/auth/register', {
+      const respuesta = await requestOrThrow<{ accessToken: string }>('/auth/register', {
         method: 'POST',
-        json: datosNormalizados,
+        body: datosNormalizados,
         auth: false,
       });
       setAccessToken(respuesta.accessToken);
-      const usuario = await api<Usuario>('/users/me');
-      set({ usuario, cargando: false });
-    } catch (e: any) {
-      set({ error: e?.message ?? 'No se pudo crear la cuenta', cargando: false });
-      throw e;
+      const usuario = await requestOrThrow<Usuario>('/users/me');
+      set({ usuario, cargando: false, estado: 'authenticated', error: null });
+    } catch (error) {
+      const sesionInvalida = esSesionInvalida(error);
+      if (sesionInvalida) setAccessToken(null);
+      set({
+        usuario: sesionInvalida ? null : get().usuario,
+        error: mensajeSeguro(error, 'No se pudo crear la cuenta'),
+        cargando: false,
+        estado: sesionInvalida ? 'anonymous' : 'error',
+      });
+      throw error;
     }
   },
   async cerrarSesion() {
-    await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    await request('/auth/logout', { method: 'POST' });
     setAccessToken(null);
-    set({ usuario: null });
+    set({ usuario: null, estado: 'anonymous', cargando: false, error: null });
   },
   async recargarUsuario() {
-    const usuario = await api<Usuario>('/users/me');
-    set({ usuario });
+    await get().inicializar();
   },
 }));
