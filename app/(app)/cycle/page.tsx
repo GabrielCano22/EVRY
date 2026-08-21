@@ -8,6 +8,7 @@ import { formatearFecha } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { civilDate, todayCivil } from '@/lib/civil-date';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
+import { recentRecordsState, type CycleLoadState } from '@/lib/cycle-view-state';
 
 const flujos: { valor: Flujo; etiqueta: string; clase: string }[] = [
   { valor: 'NONE', etiqueta: 'Ninguno', clase: 'bg-surface-dim' },
@@ -63,8 +64,9 @@ export default function PaginaCiclo() {
   });
   const [editandoFecha, setEditandoFecha] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState<string | null>(null);
-  const [estadoCarga, setEstadoCarga] = useState<'loading' | 'error' | 'empty' | 'success'>('loading');
+  const [mensajeAccion, setMensajeAccion] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [estadoCarga, setEstadoCarga] = useState<CycleLoadState>('loading');
   const solicitudActual = useRef(0);
   const controladorActual = useRef<AbortController | null>(null);
 
@@ -90,6 +92,7 @@ export default function PaginaCiclo() {
     controladorActual.current = controlador;
     const solicitud = ++solicitudActual.current;
     setEstadoCarga('loading');
+    setErrorCarga(null);
     const [f, r] = await Promise.all([
       request<InfoFase | null>('/cycle/today', { signal: controlador.signal }),
       request<RegistroCiclo[]>('/cycle/entries', { signal: controlador.signal }),
@@ -99,7 +102,7 @@ export default function PaginaCiclo() {
     if (r.ok) setRegistros(r.data);
     const error = !f.ok ? f.error : !r.ok ? r.error : null;
     if (error && error.code !== 'aborted') {
-      setMensaje(error.message);
+      setErrorCarga(error.message);
       setEstadoCarga('error');
     } else if (f.ok && r.ok) {
       setEstadoCarga(f.data === null && r.data.length === 0 ? 'empty' : 'success');
@@ -123,13 +126,13 @@ export default function PaginaCiclo() {
       isPeriodStart: registro.isPeriodStart,
     });
     setEditandoFecha(date);
-    setMensaje(null);
+    setMensajeAccion(null);
   }
 
   function nuevoRegistro() {
     setHoy(formularioVacio());
     setEditandoFecha(null);
-    setMensaje(null);
+    setMensajeAccion(null);
   }
 
   function alternarSintoma(sintoma: string) {
@@ -143,7 +146,7 @@ export default function PaginaCiclo() {
 
   async function guardar() {
     setGuardando(true);
-    setMensaje(null);
+    setMensajeAccion(null);
     try {
       const payload = editandoFecha
         ? { ...hoy, previousDate: editandoFecha }
@@ -151,14 +154,14 @@ export default function PaginaCiclo() {
       await api('/cycle/entries', { method: 'POST', json: payload });
       await cargar();
       setEditandoFecha(hoy.date);
-      setMensaje('Registro guardado. El calendario se actualizó.');
+      setMensajeAccion('Registro guardado. El calendario se actualizó.');
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('evry:cycle-updated', { detail: { date: hoy.date } }),
         );
       }
     } catch (error) {
-      setMensaje(error instanceof Error ? error.message : 'No se pudo guardar el registro.');
+      setMensajeAccion(error instanceof Error ? error.message : 'No se pudo guardar el registro.');
     } finally {
       setGuardando(false);
     }
@@ -181,10 +184,7 @@ export default function PaginaCiclo() {
         </div>
       </header>
       {estadoCarga === 'loading' && <p role="status" className="text-on-surface-variant">Cargando datos del ciclo…</p>}
-      {estadoCarga === 'error' && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>}
-      {mensaje && mensaje !== 'Registro guardado. El calendario se actualizó.' && (
-        <p role="alert" className="text-error">No pudimos cargar todos los datos. {mensaje} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>
-      )}
+      {estadoCarga === 'error' && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. {errorCarga} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>}
 
       {estadoCarga === 'success' && fase ? (
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">
@@ -350,15 +350,15 @@ export default function PaginaCiclo() {
           <Icon name="save" />
           {guardando ? 'Guardando…' : 'Guardar registro'}
         </Button>
-        {mensaje && (
+        {mensajeAccion && (
           <p
-            role="status"
+            role={mensajeAccion.includes('No se pudo') ? 'alert' : 'status'}
             className={cn(
               'mt-sm text-center font-body-md text-sm',
-              mensaje.includes('No se pudo') ? 'text-error' : 'text-secondary',
+              mensajeAccion.includes('No se pudo') ? 'text-error' : 'text-secondary',
             )}
           >
-            {mensaje}
+            {mensajeAccion}
           </p>
         )}
       </div>
@@ -368,11 +368,11 @@ export default function PaginaCiclo() {
       <div>
         <h2 className="font-headline-md text-headline-md text-on-surface mb-md">Recientes</h2>
         <div className="bg-surface-container-low rounded-xl border border-white/5 divide-y divide-white/5">
-          {registros.length === 0 ? (
+          {recentRecordsState(estadoCarga, registros.length) === 'empty' ? (
             <p className="text-on-surface-variant font-body-md p-lg text-center">
               Sin registros aún.
             </p>
-          ) : (
+          ) : recentRecordsState(estadoCarga, registros.length) === 'items' ? (
             registros.slice(0, 14).map((r) => (
               <div key={r.id} className="flex flex-wrap justify-between items-center gap-sm p-md">
                 <div className="flex items-center gap-sm">
@@ -401,7 +401,7 @@ export default function PaginaCiclo() {
                 </div>
               </div>
             ))
-          )}
+          ) : null}
         </div>
       </div>
     </div>

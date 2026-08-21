@@ -16,6 +16,7 @@ export default function PaginaIngreso() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [recordarUsuario, setRecordarUsuario] = useState(false);
+  const [errorLocal, setErrorLocal] = useState<string | null>(null);
 
   useEffect(() => {
     const emailGuardado = window.localStorage.getItem(EMAIL_RECORDADO_KEY);
@@ -27,6 +28,7 @@ export default function PaginaIngreso() {
 
   async function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
+    setErrorLocal(null);
     try {
       await ingresar(email.trim(), password);
       if (recordarUsuario) {
@@ -35,7 +37,9 @@ export default function PaginaIngreso() {
         window.localStorage.removeItem(EMAIL_RECORDADO_KEY);
       }
       router.push('/dashboard');
-    } catch {}
+    } catch (causa) {
+      setErrorLocal(causa instanceof Error ? causa.message : 'No se pudo ingresar. Inténtalo de nuevo.');
+    }
   }
 
   return (
@@ -106,10 +110,10 @@ export default function PaginaIngreso() {
             <span>Recordar usuario en este dispositivo</span>
           </label>
 
-          {error && (
+          {(error ?? errorLocal) && (
             <div role="alert" className="flex items-start gap-sm rounded-lg border border-error/30 bg-error/10 p-md">
               <Icon name="error" className="mt-px text-error" size={18} />
-              <p className="text-sm text-error">{error}</p>
+              <p className="text-sm text-error">{error ?? errorLocal}</p>
             </div>
           )}
 

@@ -21,6 +21,7 @@ describe('ExerciseChart remote state', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Cargando evolución');
     resolve({ ok: false, error: { status: 0, code: 'network_error', message: 'Temporal', retryable: true } });
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos cargar la evolución');
+    expect(screen.queryByText('Sin datos para graficar.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());

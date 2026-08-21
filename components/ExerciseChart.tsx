@@ -51,7 +51,7 @@ export function ExerciseChart({ exerciseId }: { exerciseId: string }) {
       </h3>
       {estado.status === 'loading' && <p role="status" className="text-on-surface-variant">Cargando evolución…</p>}
       {estado.status === 'error' && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar la evolución. <button type="button" onClick={() => setIntento((value) => value + 1)} className="underline">Reintentar</button></p>}
-      {estado.status !== 'loading' && serie.length === 0 ? (
+      {estado.status === 'empty' ? (
         <p className="text-on-surface-variant font-body-md text-center py-xl">
           Sin datos para graficar.
         </p>
