@@ -16,13 +16,13 @@ El servidor de desarrollo queda en `http://localhost:3000`; la API local usa el 
 
 ## Configuración
 
-La variable que lee el cliente es `NEXT_PUBLIC_API_URL`:
+La variable pública canónica que lee el cliente es `NEXT_PUBLIC_API_BASE_URL`:
 
 ```dotenv
-NEXT_PUBLIC_API_URL=http://localhost:4000/api
+NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api
 ```
 
-Para los procesos de prueba existe `.env.test.example`, que declara `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:4000/api`. El cliente implementado lee `NEXT_PUBLIC_API_URL`; si no está definida, usa ese mismo origen local por defecto. No incluya archivos `.env` reales en Git.
+Para los procesos de prueba existe `.env.test.example`, con `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:4000/api`. Los espacios y la barra final se normalizan; si falta la variable, el cliente usa el origen local por defecto. No incluya archivos `.env` reales en Git.
 
 ## Comandos verificables
 
@@ -33,10 +33,9 @@ npm.cmd run test:a11y
 npm.cmd run test
 npm.cmd run type-check
 npm.cmd run build
-npm.cmd run test:e2e
 ```
 
-`test` ejecuta unidad y accesibilidad. `test:e2e` es el comando de Playwright para Chromium de escritorio y móvil; no forma parte de la puerta documentada aquí.
+`test` ejecuta unidad y accesibilidad. La infraestructura de Playwright está preparada, pero todavía no hay especificaciones E2E ni una ejecución Chromium verificada.
 
 Ejecute `type-check` y `build` en ese orden y de forma secuencial. Desarrollo usa `.next-dev` y producción usa `.next`; no se deben mezclar ni versionar esos directorios, igual que `coverage` y los artefactos de Playwright.
 

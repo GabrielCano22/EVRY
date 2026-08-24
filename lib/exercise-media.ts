@@ -1,14 +1,10 @@
 import type { Ejercicio } from './types';
-
-function apiOrigin() {
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api').trim();
-  return apiUrl.replace(/\/api(?:\/.*)?\/?$/, '').replace(/\/$/, '');
-}
+import { resolveApiOrigin } from './api-origin';
 
 export function getExerciseMediaUrl(url: string | null | undefined) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
-  return `${apiOrigin()}/${url.trim().replace(/^\/+/, '')}`;
+  return `${resolveApiOrigin()}/${url.trim().replace(/^\/+/, '')}`;
 }
 
 export function getExerciseInstruction(exercise: Ejercicio, locale = 'es') {

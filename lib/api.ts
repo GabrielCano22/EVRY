@@ -1,8 +1,9 @@
 'use client';
 
 import { currentSessionGeneration, isCurrentSessionGeneration } from './auth-session';
+import { resolveApiBaseUrl } from './api-origin';
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+const BASE = resolveApiBaseUrl();
 const TOKEN_KEY = 'evry_access';
 const DEFAULT_TIMEOUT_MS = 15_000;
 

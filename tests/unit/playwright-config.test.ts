@@ -47,6 +47,26 @@ test('starts e2e servers without reuse and probes backend health', () => {
   });
 });
 
+test('prepara el origen público canónico y fixtures JWT de prueba seguros para sus servidores', () => {
+  const config = buildPlaywrightConfig({
+    frontendRoot,
+    backendRoot,
+    environment: createEnvironment(),
+  });
+  const webServers = config.webServer;
+
+  expect(Array.isArray(webServers)).toBe(true);
+  const [frontendServer, backendServer] = webServers as WebServer[];
+  const accessSecret = backendServer?.env?.JWT_ACCESS_SECRET;
+  const refreshSecret = backendServer?.env?.JWT_REFRESH_SECRET;
+
+  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api');
+  expect(frontendServer?.env?.NEXT_PUBLIC_API_URL).toBeUndefined();
+  expect(accessSecret).not.toBe(refreshSecret);
+  expect(accessSecret?.length).toBeGreaterThanOrEqual(32);
+  expect(refreshSecret?.length).toBeGreaterThanOrEqual(32);
+});
+
 test('rejects equivalent PostgreSQL database identities in Playwright configuration', () => {
   expect(() => buildPlaywrightConfig({
     frontendRoot,

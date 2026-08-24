@@ -14,6 +14,9 @@ type PlaywrightConfigOptions = {
 };
 
 const testTimeZone = 'America/Bogota';
+const testApiBaseUrl = 'http://127.0.0.1:4000/api';
+const testAccessSecret = 'evry-playwright-access-secret-fixture-2026';
+const testRefreshSecret = 'evry-playwright-refresh-secret-fixture-2026';
 
 function parsePostgresDatabaseUrl(url: string, variableName: string): DatabaseIdentity {
   let parsed: URL;
@@ -80,9 +83,11 @@ export function buildPlaywrightConfig({
     throw new Error('TEST_DATABASE_URL must contain an explicit test marker.');
   }
 
+  const { NEXT_PUBLIC_API_URL: _legacyApiUrl, ...canonicalEnvironment } = environment;
   const frontendEnvironment = {
-    ...environment,
+    ...canonicalEnvironment,
     TZ: testTimeZone,
+    NEXT_PUBLIC_API_BASE_URL: environment.NEXT_PUBLIC_API_BASE_URL?.trim() || testApiBaseUrl,
   };
   const backendEnvironment = {
     ...environment,
@@ -90,8 +95,8 @@ export function buildPlaywrightConfig({
     NODE_ENV: 'test',
     PORT: '4000',
     APP_TIME_ZONE: testTimeZone,
-    JWT_ACCESS_SECRET: 'evry-test-access-secret-only',
-    JWT_REFRESH_SECRET: 'evry-test-refresh-secret-only',
+    JWT_ACCESS_SECRET: testAccessSecret,
+    JWT_REFRESH_SECRET: testRefreshSecret,
     SWAGGER_ENABLED: 'false',
     DATABASE_URL: testDatabaseUrl,
   };

@@ -63,4 +63,4 @@ npm.cmd run build
 
 ## Límite de esta puerta
 
-Esta puerta no ejecuta Playwright/Chromium. El comando `test:e2e` queda disponible, pero su resultado no se afirma en este documento.
+Esta puerta no ejecuta Playwright/Chromium. La infraestructura de Playwright está preparada, pero aún no existen especificaciones E2E; por ello no se considera ejecutable ni verificada hasta los planes posteriores que las agreguen.
