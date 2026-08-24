@@ -1,73 +1,55 @@
-# EVRY — Web App
+# EVRY — Frontend
 
-Frontend Next.js 15 (App Router) + Tailwind. Mobile-first, dark mode por defecto, registro de sets en un pulgar.
+Interfaz web de EVRY construida con Next.js 15, React 19 y TypeScript. El cliente consume la API REST de EVRY y conserva una única frontera HTTP tipada.
 
-## Stack
+## Requisitos e instalación
 
-- **Next.js 15** + React 19 + TypeScript
-- **Tailwind CSS** — design system propio
-- **Zustand** — auth store ligero
-- **Recharts** — gráficas de progreso
-- **Zod** — validación
+Se requiere Node.js y npm. En Windows use `npm.cmd`:
 
-## Setup
-
-```bash
-cp .env.example .env
-npm install
-npm run dev
+```powershell
+Copy-Item .env.example .env
+npm.cmd install
+npm.cmd run dev
 ```
 
-App en `http://localhost:3000`. Backend debe correr en `http://localhost:4000`.
+El servidor de desarrollo queda en `http://localhost:3000`; la API local usa el puerto 4000 y el prefijo `/api`.
 
-## Catálogo completo de ejercicios
+## Configuración
 
-El selector consume el catálogo enriquecido del backend: 1.324 ejercicios con
-nombre, grupo muscular, equipo, miniatura, GIF e instrucciones. Los medios se
-sirven desde el backend local en `/media/exercises`, por lo que el frontend no
-depende de imágenes remotas ni mantiene una segunda copia de los archivos.
+La variable que lee el cliente es `NEXT_PUBLIC_API_URL`:
 
-La atribución de los medios se muestra en el detalle del ejercicio. Consulta
-`EVRY-Backend/NOTICE-MEDIA.md` para los términos de Gym visual antes de
-redistribuir la aplicación.
-
-## Estructura
-
-```
-app/
-├── (auth)/           login, register
-├── (app)/            rutas protegidas
-│   ├── dashboard/
-│   ├── workout/      lista + detalle (logger)
-│   ├── cycle/        tracking de ciclo (solo si trackCycle)
-│   ├── progress/     resumen + gráficas 1RM
-│   └── profile/      perfil, metas, opciones de ciclo
-├── layout.tsx
-└── page.tsx          landing
-components/
-├── ui/               Button, Input, Card, Stepper
-├── ExercisePicker
-├── RestTimer
-├── CyclePhaseBadge
-├── ReadinessCheckin
-└── ExerciseChart
-lib/
-├── api.ts            fetch wrapper con refresh automático
-├── auth-store.ts     zustand
-├── types.ts
-└── utils.ts
-```
-
-## Diferenciadores UX
-
-1. **Logger 1-thumb:** stepper grande para peso/reps/RPE, cero teclado.
-2. **Sugerencia adaptativa visible:** muestra acción (PROGRESS/HOLD/DELOAD) y razones, no caja negra.
-3. **Tab "Ciclo" condicional:** solo aparece si la usuaria activa `trackCycle`.
-4. **Readiness check-in en dashboard:** 4 sliders, 10 segundos, modula recomendaciones.
-5. **Filtros inclusivos:** ejercicios tagueados `accessibility_seated`, `joint_friendly`, `pregnancy_safe`, `equipment_free`.
-
-## Variables de entorno
-
-```
+```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:4000/api
 ```
+
+Para los procesos de prueba existe `.env.test.example`, que declara `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:4000/api`. El cliente implementado lee `NEXT_PUBLIC_API_URL`; si no está definida, usa ese mismo origen local por defecto. No incluya archivos `.env` reales en Git.
+
+## Comandos verificables
+
+```powershell
+npm.cmd run lint
+npm.cmd run test:unit
+npm.cmd run test:a11y
+npm.cmd run test
+npm.cmd run type-check
+npm.cmd run build
+npm.cmd run test:e2e
+```
+
+`test` ejecuta unidad y accesibilidad. `test:e2e` es el comando de Playwright para Chromium de escritorio y móvil; no forma parte de la puerta documentada aquí.
+
+Ejecute `type-check` y `build` en ese orden y de forma secuencial. Desarrollo usa `.next-dev` y producción usa `.next`; no se deben mezclar ni versionar esos directorios, igual que `coverage` y los artefactos de Playwright.
+
+## Fechas civiles
+
+Las fechas de calendario se representan como `AAAA-MM-DD` y se validan por componentes. La utilidad `lib/civil-date.ts` usa `America/Bogota` para obtener el día actual y convertir timestamps; una fecha civil no se convierte mediante UTC. Los rangos que se muestran al usuario son inclusivos; la API los transforma a un límite exclusivo solo al consultar la base de datos.
+
+## Frontera HTTP y sesión
+
+`lib/api.ts` devuelve `ApiResult<T>`: éxito con `data` o fallo normalizado con estado HTTP, código, mensaje seguro y marca de reintento. No convierte una falla en una lista vacía, `null` ni cero. `RemoteData<T>` distingue `idle`, `loading`, `success`, `empty` y `error`; puede preservar datos previos al fallar una recarga.
+
+La autenticación modela `checking`, `authenticated`, `anonymous` y `error`. El token de acceso se renueva mediante cookie; solo un 401 o 403 invalida las credenciales. Si falla temporalmente la lectura de sesión, el cliente conserva la sesión conocida o muestra recuperación. La opción de recordar sesión persiste únicamente el correo y su indicador.
+
+## Catálogo de ejercicios
+
+El selector consulta el catálogo del backend. Las miniaturas, GIF e instrucciones proceden de la API; el frontend no conserva otra copia de los medios. La atribución se muestra en el detalle del ejercicio. Consulte `NOTICE-MEDIA.md` del backend antes de redistribuir medios de Gym visual.
