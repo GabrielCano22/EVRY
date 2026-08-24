@@ -67,6 +67,23 @@ test('prepara el origen público canónico y fixtures JWT de prueba seguros para
   expect(refreshSecret?.length).toBeGreaterThanOrEqual(32);
 });
 
+test('aísla el origen del frontend E2E aunque el entorno reciba un valor externo', () => {
+  const config = buildPlaywrightConfig({
+    frontendRoot,
+    backendRoot,
+    environment: {
+      ...createEnvironment(),
+      NEXT_PUBLIC_API_BASE_URL: 'https://externo.example.test/api',
+    },
+  });
+  const webServers = config.webServer;
+
+  expect(Array.isArray(webServers)).toBe(true);
+  const [frontendServer] = webServers as WebServer[];
+
+  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api');
+});
+
 test('rejects equivalent PostgreSQL database identities in Playwright configuration', () => {
   expect(() => buildPlaywrightConfig({
     frontendRoot,

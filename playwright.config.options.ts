@@ -87,7 +87,7 @@ export function buildPlaywrightConfig({
   const frontendEnvironment = {
     ...canonicalEnvironment,
     TZ: testTimeZone,
-    NEXT_PUBLIC_API_BASE_URL: environment.NEXT_PUBLIC_API_BASE_URL?.trim() || testApiBaseUrl,
+    NEXT_PUBLIC_API_BASE_URL: testApiBaseUrl,
   };
   const backendEnvironment = {
     ...environment,
