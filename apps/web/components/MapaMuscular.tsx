@@ -140,6 +140,7 @@ function Region({
 }) {
   return (
     <path
+      data-muscle={id}
       d={d}
       fill={active ? '#1597ff' : '#263746'}
       stroke={active ? '#9bd7ff' : '#425364'}

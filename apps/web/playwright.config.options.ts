@@ -83,7 +83,8 @@ export function buildPlaywrightConfig({
     throw new Error('TEST_DATABASE_URL must contain an explicit test marker.');
   }
 
-  const { NEXT_PUBLIC_API_URL: _legacyApiUrl, ...canonicalEnvironment } = environment;
+  const canonicalEnvironment = { ...environment };
+  delete canonicalEnvironment.NEXT_PUBLIC_API_URL;
   const frontendEnvironment = {
     ...canonicalEnvironment,
     TZ: testTimeZone,

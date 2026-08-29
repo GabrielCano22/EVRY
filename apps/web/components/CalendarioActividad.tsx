@@ -168,7 +168,7 @@ export function CalendarioActividad() {
   return (
       <div className="bg-surface-container rounded-xl p-sm border border-white/5 max-w-md">
       {estadoCarga === 'loading' && <p role="status" className="px-xs pb-sm text-xs text-on-surface-variant">Cargando calendario…</p>}
-      {estadoCarga === 'error' && <p role="alert" className="px-xs pb-sm text-xs text-error">No pudimos cargar el calendario. <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('evry:cycle-updated'))} className="underline">Reintentar</button></p>}
+      {estadoCarga === 'error' && <p role="alert" className="px-xs pb-sm text-xs text-error">{errorCarga ?? 'No pudimos cargar el calendario.'} <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('evry:cycle-updated'))} className="underline">Reintentar</button></p>}
       {estadoCarga === 'empty' && <p className="px-xs pb-sm text-xs text-on-surface-variant">Aún no hay actividad registrada.</p>}
       <div className="flex items-center justify-between mb-sm px-xs">
         <h3 className="font-grotesk text-label-caps tracking-wider uppercase text-on-surface-variant text-[10px]">

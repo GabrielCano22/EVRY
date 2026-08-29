@@ -48,8 +48,8 @@ export default function ListaEntrenamientos() {
         json: { name: nombre },
       });
       router.push(`/workout/${nuevo.id}`);
-    } catch (error: any) {
-      setErrorInicio(error?.message ?? 'No se pudo iniciar la sesión. Comprueba que el backend esté activo.');
+    } catch (error: unknown) {
+      setErrorInicio(error instanceof Error ? error.message : 'No se pudo iniciar la sesión. Comprueba que el backend esté activo.');
     } finally {
       setCreando(false);
     }
@@ -62,8 +62,8 @@ export default function ListaEntrenamientos() {
     try {
       const nuevo = await api<Entrenamiento>(`/routines/${rutina.id}/start`, { method: 'POST' });
       router.push(`/workout/${nuevo.id}`);
-    } catch (error: any) {
-      setErrorInicio(error?.message ?? 'No se pudo iniciar la rutina. Comprueba tu conexión e inténtalo de nuevo.');
+    } catch (error: unknown) {
+      setErrorInicio(error instanceof Error ? error.message : 'No se pudo iniciar la rutina. Comprueba tu conexión e inténtalo de nuevo.');
     } finally {
       setIniciandoRutinaId(null);
     }

@@ -108,8 +108,8 @@ export default function DetalleEntrenamiento({
       });
       setResetTimer((k) => k + 1);
       await recargar();
-    } catch (error: any) {
-      setErrorSerie(error?.message ?? 'No se pudo registrar la serie. Inténtalo de nuevo.');
+    } catch (error: unknown) {
+      setErrorSerie(error instanceof Error ? error.message : 'No se pudo registrar la serie. Inténtalo de nuevo.');
     } finally {
       setGuardandoSerie(false);
     }

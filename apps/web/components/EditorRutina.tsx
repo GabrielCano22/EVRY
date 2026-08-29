@@ -168,8 +168,8 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
         await api('/routines', { method: 'POST', json: payload });
       }
       onListo();
-    } catch (e: any) {
-      setError(e?.message ?? 'No se pudo guardar la rutina.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar la rutina.');
     } finally {
       setGuardando(false);
     }
