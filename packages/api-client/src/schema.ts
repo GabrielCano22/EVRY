@@ -399,9 +399,14 @@ export interface components {
             name: string;
             /** Format: date-time */
             startedAt: string;
+            /** Format: date-time */
+            endedAt?: string;
+            /** Format: date-time */
+            cancelledAt?: string;
             /** @enum {string} */
             status: "ACTIVE" | "COMPLETED" | "CANCELLED";
             notes?: string;
+            routineId?: string;
             sets: components["schemas"]["SyncWorkoutSetInput"][];
             deletedSetClientIds: string[];
         };

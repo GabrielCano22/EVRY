@@ -14,17 +14,22 @@
   "scripts": {
     "dev": "npm run dev --workspace @evry/web",
     "dev:web": "npm run dev --workspace @evry/web",
+    "dev:mobile": "npm run start --workspace @evry/mobile",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "npm run type-check --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:web": "npm run test --workspace @evry/web",
     "test:e2e": "npm run test:e2e --workspace @evry/web",
+    "expo:doctor": "npm run doctor --workspace @evry/mobile",
+    "export:mobile": "npm run export --workspace @evry/mobile",
     "api:generate": "openapi-typescript packages/api-client/openapi/evry-v1.yaml -o packages/api-client/src/schema.ts",
     "api:check": "npm run api:generate && git diff --exit-code -- packages/api-client/src/schema.ts"
   },
   "devDependencies": {
     "openapi-typescript": "7.10.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "typescript": "^5.9.2",
     "vitest": "4.1.11"
   }
