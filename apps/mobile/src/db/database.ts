@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import type { LocalWorkout } from '../training/workout-domain';
-import type { SyncQueueState } from '../sync/queue-policy';
+import { aggregateSyncState, type SyncQueueState } from '../sync/queue-policy';
 
 const DATABASE_NAME = 'evry.db';
 const DATABASE_VERSION = 1;
@@ -143,6 +143,15 @@ export async function pendingSyncRows(): Promise<PendingSyncRow[]> {
       payload, attempts FROM sync_queue
      WHERE state = 'pending' ORDER BY created_at ASC LIMIT 20`,
   );
+}
+
+export async function currentSyncState(): Promise<SyncQueueState> {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<{ syncState: SyncQueueState }>(
+    `SELECT DISTINCT sync_state AS syncState FROM workouts
+     WHERE sync_state <> 'synced'`,
+  );
+  return aggregateSyncState(rows.map((row) => row.syncState));
 }
 
 export async function markSyncAttempt(id: number): Promise<void> {

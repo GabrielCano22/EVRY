@@ -5,22 +5,38 @@ import { cacheEntities, cachedEntities } from '../db/database';
 export type Exercise = components['schemas']['Exercise'];
 export type Routine = components['schemas']['Routine'];
 
-export async function loadExercises(): Promise<Exercise[]> {
+export async function loadExercises(options: {
+  search?: string;
+  signal?: AbortSignal;
+} = {}): Promise<Exercise[]> {
   const cached = await cachedEntities<Exercise>('exercise_cache');
   try {
-    let response = await apiClient.GET('/exercises', { params: { query: { limit: 30 } } });
+    const query = {
+      limit: 30,
+      ...(options.search?.trim() ? { search: options.search.trim() } : {}),
+    };
+    let response = await apiClient.GET('/exercises', {
+      params: { query },
+      signal: options.signal,
+    });
     if (response.response.status === 401 && await refreshMobileSession()) {
-      response = await apiClient.GET('/exercises', { params: { query: { limit: 30 } } });
+      response = await apiClient.GET('/exercises', {
+        params: { query },
+        signal: options.signal,
+      });
     }
     const items = response.data?.items;
-    if (items?.length) {
+    if (items) {
       await cacheEntities('exercise_cache', items);
       return items;
     }
   } catch {
     // The local catalog remains usable while offline.
   }
-  return cached;
+  const search = options.search?.trim().toLocaleLowerCase('es');
+  return search
+    ? cached.filter((exercise) => exercise.name.toLocaleLowerCase('es').includes(search))
+    : cached;
 }
 
 export async function loadRoutines(): Promise<Routine[]> {

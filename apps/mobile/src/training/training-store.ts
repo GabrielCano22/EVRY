@@ -1,7 +1,13 @@
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 import type { SyncWorkoutInput } from '../api/client';
-import { enqueueWorkout, getDatabase, loadActiveWorkout, saveWorkout } from '../db/database';
+import {
+  currentSyncState,
+  enqueueWorkout,
+  getDatabase,
+  loadActiveWorkout,
+  saveWorkout,
+} from '../db/database';
 import { syncPendingWorkouts } from '../sync/sync-engine';
 import type { SyncQueueState } from '../sync/queue-policy';
 import {
@@ -16,10 +22,12 @@ interface TrainingState {
   syncState: SyncQueueState;
   error: string | null;
   initialize: () => Promise<void>;
-  startWorkout: (name?: string) => Promise<void>;
+  startWorkout: (name?: string, routineId?: string) => Promise<void>;
   addSet: (exerciseId: string) => Promise<void>;
   updateSet: (clientId: string, changes: Partial<LocalWorkoutSet>) => Promise<void>;
+  deleteSet: (clientId: string) => Promise<void>;
   finishWorkout: () => Promise<void>;
+  refreshSyncState: () => Promise<void>;
 }
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
@@ -30,9 +38,14 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   async initialize() {
     await getDatabase();
     const activeWorkout = await loadActiveWorkout();
-    set({ ready: true, activeWorkout, error: null });
+    set({
+      ready: true,
+      activeWorkout,
+      syncState: await currentSyncState(),
+      error: null,
+    });
   },
-  async startWorkout(name = 'Entrenamiento libre') {
+  async startWorkout(name = 'Entrenamiento libre', routineId) {
     if (get().activeWorkout) return;
     const workout: LocalWorkout = {
       clientId: Crypto.randomUUID(),
@@ -41,6 +54,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       startedAt: new Date().toISOString(),
       status: 'ACTIVE',
       notes: null,
+      ...(routineId ? { routineId } : {}),
       sets: [],
       deletedSetClientIds: [],
     };
@@ -80,6 +94,29 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     await saveWorkout(next, 'synced');
     set({ activeWorkout: next });
   },
+  async deleteSet(clientId) {
+    const workout = get().activeWorkout;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    const removed = workout.sets.find((item) => item.clientId === clientId);
+    if (!removed) return;
+    const exerciseOrders = new Map<string, number>();
+    const remainingSets = workout.sets
+      .filter((item) => item.clientId !== clientId)
+      .map((item) => {
+        const order = exerciseOrders.get(item.exerciseId) ?? 0;
+        exerciseOrders.set(item.exerciseId, order + 1);
+        return { ...item, order };
+      });
+    const next: LocalWorkout = {
+      ...workout,
+      sets: remainingSets,
+      deletedSetClientIds: removed.revision > 0
+        ? [...new Set([...workout.deletedSetClientIds, removed.clientId])]
+        : workout.deletedSetClientIds,
+    };
+    await saveWorkout(next, 'synced');
+    set({ activeWorkout: next });
+  },
   async finishWorkout() {
     const workout = get().activeWorkout;
     if (!workout) return;
@@ -93,6 +130,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       set({ error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
       throw error;
     }
+  },
+  async refreshSyncState() {
+    set({ syncState: await currentSyncState() });
   },
 }));
 

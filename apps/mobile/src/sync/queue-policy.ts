@@ -20,3 +20,14 @@ export function nextSyncState(
   }
   return 'requires_review';
 }
+
+const SYNC_PRIORITY: SyncQueueState[] = [
+  'requires_review',
+  'syncing',
+  'pending',
+  'synced',
+];
+
+export function aggregateSyncState(states: SyncQueueState[]): SyncQueueState {
+  return SYNC_PRIORITY.find((state) => states.includes(state)) ?? 'synced';
+}

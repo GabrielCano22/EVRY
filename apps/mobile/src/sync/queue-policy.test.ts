@@ -1,4 +1,4 @@
-import { nextSyncState } from './queue-policy';
+import { aggregateSyncState, nextSyncState } from './queue-policy';
 
 describe('nextSyncState', () => {
   it('marks revision and active-workout conflicts for human review', () => {
@@ -10,5 +10,16 @@ describe('nextSyncState', () => {
     expect(nextSyncState({ status: 0, code: 'network_error' })).toBe('pending');
     expect(nextSyncState({ status: 503, code: 'SERVICE_UNAVAILABLE' })).toBe('pending');
     expect(nextSyncState({ status: 400, code: 'VALIDATION_ERROR' })).toBe('requires_review');
+  });
+});
+
+describe('aggregateSyncState', () => {
+  it('surfaces review conflicts before transient or completed work', () => {
+    expect(aggregateSyncState(['synced', 'pending', 'requires_review'])).toBe('requires_review');
+    expect(aggregateSyncState(['synced', 'syncing', 'pending'])).toBe('syncing');
+  });
+
+  it('reports synced when there is no queued work', () => {
+    expect(aggregateSyncState([])).toBe('synced');
   });
 });
