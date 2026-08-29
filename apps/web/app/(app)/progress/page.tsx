@@ -1,13 +1,25 @@
 'use client';
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { request } from '@/lib/api';
 import { remoteFromResult, type RemoteData } from '@/lib/remote-data';
 import type { ResumenProgreso } from '@/lib/types';
 import { Icon } from '@/components/ui/Icon';
-import { ExerciseChart } from '@/components/ExerciseChart';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { cn } from '@/lib/utils';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
+
+const ExerciseChart = dynamic(
+  () => import('@/components/ExerciseChart').then((module) => module.ExerciseChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div role="status" className="h-72 animate-pulse rounded-xl bg-surface-container">
+        Cargando gráfica…
+      </div>
+    ),
+  },
+);
 
 export default function PaginaProgreso() {
   const [estado, setEstado] = useState<RemoteData<ResumenProgreso>>({ status: 'loading' });

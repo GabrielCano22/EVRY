@@ -1,48 +1,31 @@
 {
-  "name": "evry-web",
-  "version": "0.1.0",
+  "name": "evry",
+  "version": "0.2.0",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint . --max-warnings 0",
-    "type-check": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:a11y",
-    "test:unit": "vitest run --exclude tests/a11y/**",
-    "test:a11y": "vitest run --config vitest.a11y.config.ts",
-    "test:e2e": "playwright test"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": "24.14.x",
+    "npm": "11.x"
   },
-  "dependencies": {
-    "clsx": "^2.1.0",
-    "next": "15.1.6",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
-    "recharts": "^2.12.7",
-    "tailwind-merge": "^2.2.1",
-    "zod": "^3.22.4",
-    "zustand": "^4.5.2"
+  "packageManager": "npm@11.9.0",
+  "scripts": {
+    "dev": "npm run dev --workspace @evry/web",
+    "dev:web": "npm run dev --workspace @evry/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:web": "npm run test --workspace @evry/web",
+    "test:e2e": "npm run test:e2e --workspace @evry/web",
+    "api:generate": "openapi-typescript packages/api-client/openapi/evry-v1.yaml -o packages/api-client/src/schema.ts",
+    "api:check": "npm run api:generate && git diff --exit-code -- packages/api-client/src/schema.ts"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.62.1",
-    "@testing-library/jest-dom": "7.0.1",
-    "@testing-library/react": "16.3.2",
-    "@testing-library/user-event": "14.6.5",
-    "@types/node": "^20.11.16",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "6.0.5",
-    "autoprefixer": "^10.4.17",
-    "eslint": "9.39.1",
-    "eslint-config-next": "15.1.6",
-    "jsdom": "29.1.1",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3",
-    "vite-tsconfig-paths": "6.1.1",
-    "vitest": "4.1.11",
-    "vitest-axe": "0.1.0"
+    "openapi-typescript": "7.10.1",
+    "typescript": "^5.9.2",
+    "vitest": "4.1.11"
   }
 }

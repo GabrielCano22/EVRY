@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  transpilePackages: ['@evry/api-client', '@evry/design-tokens', '@evry/domain'],
   // Desarrollo y producción no deben compartir chunks: cuando ambos
   // procesos apuntan a `.next`, una compilación en caliente puede dejar al
   // servidor cargando un runtime que referencia archivos ya reemplazados.

@@ -71,12 +71,12 @@ const config: Config = {
         warn: '#FF9F0A',
       },
       fontFamily: {
-        manrope: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        manrope: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif'],
         // Alias heredados: mantienen consistencia visual sin obligar a
         // reescribir cada componente que ya utiliza estas clases.
-        lexend: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
-        grotesk: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
-        sans: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        lexend: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif'],
+        grotesk: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif'],
+        sans: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         'display-xl': ['72px', { lineHeight: '76px', letterSpacing: '-0.03em', fontWeight: '800' }],

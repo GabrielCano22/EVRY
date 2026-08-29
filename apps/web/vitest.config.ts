@@ -11,6 +11,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    maxWorkers: 2,
+    pool: 'threads',
     setupFiles: ['./vitest.setup.ts'],
     env: {
       TZ: 'America/Bogota',

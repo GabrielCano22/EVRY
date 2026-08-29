@@ -4,8 +4,8 @@ import { currentSessionGeneration, isCurrentSessionGeneration } from './auth-ses
 import { resolveApiBaseUrl } from './api-origin';
 
 const BASE = resolveApiBaseUrl();
-const TOKEN_KEY = 'evry_access';
 const DEFAULT_TIMEOUT_MS = 15_000;
+let accessToken: string | null = null;
 
 export interface ApiFailure {
   status: number;
@@ -28,15 +28,12 @@ export interface RequestOptions {
 }
 
 export function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setAccessToken(token: string | null, generation?: number): boolean {
   if (generation !== undefined && !isCurrentSessionGeneration(generation)) return false;
-  if (typeof window === 'undefined') return false;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  accessToken = token;
   return true;
 }
 

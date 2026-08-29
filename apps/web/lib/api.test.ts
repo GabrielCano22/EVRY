@@ -3,7 +3,7 @@ import { request, requestOrThrow } from './api';
 import { beginNewSession } from './auth-session';
 import { getAccessToken, setAccessToken } from './api';
 
-const apiUrl = 'http://localhost:4000/api';
+const apiUrl = 'http://localhost:4000/api/v1';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -13,11 +13,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 afterEach(() => {
+  setAccessToken(null);
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe('request', () => {
+  it('mantiene el access token solo en memoria', () => {
+    setAccessToken('memory-only');
+
+    expect(getAccessToken()).toBe('memory-only');
+    expect(window.localStorage.getItem('evry_access')).toBeNull();
+  });
   it('returns a discriminated success result for a JSON response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ id: 'user-1' })));
 
