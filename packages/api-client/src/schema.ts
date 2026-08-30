@@ -398,6 +398,89 @@ export interface components {
                 percentage: number;
             }[];
         };
+        ExerciseProgress: {
+            exerciseId: string;
+            period: components["schemas"]["ProgressOverview"]["period"];
+            summary: {
+                sessionsCount: number;
+                workingSetsCount: number;
+                volumeKg: number;
+                bestWeight: {
+                    weightKg: number;
+                    /** Format: date-time */
+                    achievedAt: string;
+                    workoutId: string;
+                } | null;
+                repetitionRecord: {
+                    reps: number;
+                    weightKg: number | null;
+                    /** Format: date-time */
+                    achievedAt: string;
+                    workoutId: string;
+                } | null;
+                estimated1RM: {
+                    valueKg: number;
+                    weightKg: number;
+                    reps: number;
+                    /** Format: date-time */
+                    achievedAt: string;
+                    workoutId: string;
+                    /** @constant */
+                    formula: "EPLEY";
+                } | null;
+            };
+            comparison: {
+                period: {
+                    /** Format: date */
+                    from: string;
+                    /** Format: date */
+                    to: string;
+                };
+                previous: components["schemas"]["ExercisePeriodMetrics"];
+                delta: components["schemas"]["ExercisePeriodMetrics"];
+            } | null;
+            points: {
+                workoutId: string;
+                workoutName: string;
+                /** Format: date-time */
+                completedAt: string;
+                maxWeightKg: number | null;
+                estimated1RMKg: number | null;
+                volumeKg: number;
+            }[];
+            history: {
+                page: number | null;
+                limit: number;
+                total: number;
+                hasMore: boolean;
+                nextCursor: string | null;
+                items: {
+                    workoutId: string;
+                    workoutName: string;
+                    /** Format: date-time */
+                    startedAt: string;
+                    /** Format: date-time */
+                    endedAt: string;
+                    sets: {
+                        id: string;
+                        order: number;
+                        weightKg: number | null;
+                        reps: number | null;
+                        durationS: number | null;
+                        rpe: number | null;
+                        /** Format: date-time */
+                        completedAt: string;
+                    }[];
+                }[];
+            };
+        };
+        ExercisePeriodMetrics: {
+            sessionsCount: number;
+            workingSetsCount: number;
+            volumeKg: number;
+            bestWeightKg: number | null;
+            estimated1RMKg: number | null;
+        };
         ReadinessInput: {
             sleepHrs?: number;
             stress?: number;
@@ -927,9 +1010,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ExerciseProgress"];
                 };
             };
         };

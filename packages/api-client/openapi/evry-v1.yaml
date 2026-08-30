@@ -199,14 +199,14 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - $ref: '#/components/parameters/Period'
-        - { name: cursor, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 512 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 25 } }
       responses:
         '200':
           description: Paginated exercise progress
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema: { $ref: '#/components/schemas/ExerciseProgress' }
   /cycle/entries:
     get:
       operationId: listCycleEntries
@@ -423,6 +423,117 @@ components:
               muscleGroup: { type: string }
               workingSets: { type: integer, minimum: 0 }
               percentage: { type: number, minimum: 0, maximum: 100 }
+    ExerciseProgress:
+      type: object
+      required: [exerciseId, period, summary, comparison, points, history]
+      properties:
+        exerciseId: { type: string }
+        period: { $ref: '#/components/schemas/ProgressOverview/properties/period' }
+        summary:
+          type: object
+          required: [sessionsCount, workingSetsCount, volumeKg, bestWeight, repetitionRecord, estimated1RM]
+          properties:
+            sessionsCount: { type: integer }
+            workingSetsCount: { type: integer }
+            volumeKg: { type: number }
+            bestWeight:
+              oneOf:
+                - type: object
+                  required: [weightKg, achievedAt, workoutId]
+                  properties:
+                    weightKg: { type: number }
+                    achievedAt: { type: string, format: date-time }
+                    workoutId: { type: string }
+                - { type: 'null' }
+            repetitionRecord:
+              oneOf:
+                - type: object
+                  required: [reps, weightKg, achievedAt, workoutId]
+                  properties:
+                    reps: { type: integer }
+                    weightKg: { type: [number, 'null'] }
+                    achievedAt: { type: string, format: date-time }
+                    workoutId: { type: string }
+                - { type: 'null' }
+            estimated1RM:
+              oneOf:
+                - type: object
+                  required: [valueKg, weightKg, reps, achievedAt, workoutId, formula]
+                  properties:
+                    valueKg: { type: number }
+                    weightKg: { type: number }
+                    reps: { type: integer }
+                    achievedAt: { type: string, format: date-time }
+                    workoutId: { type: string }
+                    formula: { type: string, const: EPLEY }
+                - { type: 'null' }
+        comparison:
+          oneOf:
+            - type: object
+              required: [period, previous, delta]
+              properties:
+                period:
+                  type: object
+                  required: [from, to]
+                  properties:
+                    from: { type: string, format: date }
+                    to: { type: string, format: date }
+                previous: { $ref: '#/components/schemas/ExercisePeriodMetrics' }
+                delta: { $ref: '#/components/schemas/ExercisePeriodMetrics' }
+            - { type: 'null' }
+        points:
+          type: array
+          items:
+            type: object
+            required: [workoutId, workoutName, completedAt, maxWeightKg, estimated1RMKg, volumeKg]
+            properties:
+              workoutId: { type: string }
+              workoutName: { type: string }
+              completedAt: { type: string, format: date-time }
+              maxWeightKg: { type: [number, 'null'] }
+              estimated1RMKg: { type: [number, 'null'] }
+              volumeKg: { type: number }
+        history:
+          type: object
+          required: [items, page, limit, total, hasMore, nextCursor]
+          properties:
+            page: { type: [integer, 'null'] }
+            limit: { type: integer }
+            total: { type: integer }
+            hasMore: { type: boolean }
+            nextCursor: { type: [string, 'null'] }
+            items:
+              type: array
+              items:
+                type: object
+                required: [workoutId, workoutName, startedAt, endedAt, sets]
+                properties:
+                  workoutId: { type: string }
+                  workoutName: { type: string }
+                  startedAt: { type: string, format: date-time }
+                  endedAt: { type: string, format: date-time }
+                  sets:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, order, weightKg, reps, durationS, rpe, completedAt]
+                      properties:
+                        id: { type: string }
+                        order: { type: integer }
+                        weightKg: { type: [number, 'null'] }
+                        reps: { type: [integer, 'null'] }
+                        durationS: { type: [integer, 'null'] }
+                        rpe: { type: [integer, 'null'] }
+                        completedAt: { type: string, format: date-time }
+    ExercisePeriodMetrics:
+      type: object
+      required: [sessionsCount, workingSetsCount, volumeKg, bestWeightKg, estimated1RMKg]
+      properties:
+        sessionsCount: { type: integer }
+        workingSetsCount: { type: integer }
+        volumeKg: { type: number }
+        bestWeightKg: { type: [number, 'null'] }
+        estimated1RMKg: { type: [number, 'null'] }
     ReadinessInput:
       type: object
       properties:
