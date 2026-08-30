@@ -1,5 +1,7 @@
 # EVRY 03: ciclo, privacidad e inclusión
 
+> Reemplazado por la hoja de ruta integral de mejora y optimización solicitada por el usuario. Se conserva como referencia histórica; consultar el estado vigente en `docs/operations/implementation-status.md`.
+
 > **Para agentes de implementación:** SUB-SKILL OBLIGATORIA: usar `superpowers:subagent-driven-development` o `superpowers:executing-plans`. Aplicar TDD y completar después de los fundamentos.
 
 **Goal:** Hacer que registro, perfil y diario menstrual sean inclusivos, voluntarios, coherentes con fechas civiles y plenamente gestionables por la persona usuaria, incluida exportación y eliminación.

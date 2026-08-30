@@ -1,5 +1,7 @@
 # EVRY 04: experiencia, accesibilidad y rendimiento
 
+> Reemplazado por la hoja de ruta integral de mejora y optimización solicitada por el usuario. Se conserva como referencia histórica; consultar el estado vigente en `docs/operations/implementation-status.md`.
+
 > **Para agentes de implementación:** SUB-SKILL OBLIGATORIA: usar `superpowers:subagent-driven-development` o `superpowers:executing-plans`. Completar después de que los contratos funcionales de los planes 01–03 estén estables.
 
 **Goal:** Dar a EVRY una identidad editorial propia, accesible y rápida, sin contenido ficticio ni dependencias remotas de interfaz.

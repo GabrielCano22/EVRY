@@ -1,5 +1,7 @@
 # EVRY 01: fundamentos, contratos y seguridad
 
+> Reemplazado por la hoja de ruta integral de mejora y optimización solicitada por el usuario. Se conserva como referencia histórica; consultar el estado vigente en `docs/operations/implementation-status.md`.
+
 > **Para agentes de implementación:** SUB-SKILL OBLIGATORIA: usar `superpowers:subagent-driven-development` o `superpowers:executing-plans` y completar cada casilla en orden. Aplicar TDD con `superpowers:test-driven-development` y verificar antes de cerrar cada tarea.
 
 **Goal:** Establecer una base verificable para EVRY: fechas civiles correctas, estados HTTP honestos, pruebas frontend/backend, configuración segura e invariantes de base de datos.

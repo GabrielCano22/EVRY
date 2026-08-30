@@ -1,5 +1,7 @@
 # EVRY 02: entrenamiento, progreso y ficha transversal
 
+> Reemplazado por la hoja de ruta integral de mejora y optimización solicitada por el usuario. Se conserva como referencia histórica; consultar el estado vigente en `docs/operations/implementation-status.md`.
+
 > **Para agentes de implementación:** SUB-SKILL OBLIGATORIA: usar `superpowers:subagent-driven-development` o `superpowers:executing-plans`. Aplicar TDD y completar este plan después de `EVRY 01`.
 
 **Goal:** Convertir el núcleo de entrenamiento en un flujo transaccional e idempotente, mostrar progreso real y ofrecer una ficha reutilizable para los 1.324 ejercicios desde selector, rutina, sesión, dashboard y progreso.

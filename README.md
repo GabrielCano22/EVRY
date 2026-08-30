@@ -2,6 +2,8 @@
 
 Monorepo npm de EVRY. `apps/web` contiene Next.js; `apps/mobile` contiene Expo; `packages/api-client`, `packages/domain` y `packages/design-tokens` comparten contrato, reglas puras y tokens sin forzar componentes DOM dentro de React Native.
 
+La hoja de ruta sigue en ejecución: consulte [estado, verificaciones y pendientes](docs/operations/implementation-status.md) antes de desplegar o dar por aceptada la aplicación.
+
 ## Requisitos e instalación
 
 Se requieren Node 24.14.x y npm 11.x. En Windows use `npm.cmd`:

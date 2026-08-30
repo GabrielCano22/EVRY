@@ -1,5 +1,7 @@
 # EVRY 05: verificación, documentación y publicación
 
+> Reemplazado por la hoja de ruta integral de mejora y optimización solicitada por el usuario. Se conserva como referencia histórica; consultar el estado vigente en `docs/operations/implementation-status.md`.
+
 > **Para agentes de implementación:** SUB-SKILL OBLIGATORIA: usar `superpowers:executing-plans` y, antes de afirmar terminado, `superpowers:verification-before-completion`. Este plan solo comienza cuando 01–04 están implementados.
 
 **Goal:** Probar que EVRY cumple el candidato aprobado en móvil y escritorio, documentar exactamente el producto real y publicar ambos repositorios limpios en GitHub, sin desplegar.
