@@ -1,33 +1,36 @@
 {
-  "name": "evry-web",
-  "version": "0.1.0",
+  "name": "evry",
+  "version": "0.2.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": "24.14.x",
+    "npm": "11.x"
   },
-  "dependencies": {
-    "clsx": "^2.1.0",
-    "next": "15.1.6",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
-    "recharts": "^2.12.7",
-    "tailwind-merge": "^2.2.1",
-    "zod": "^3.22.4",
-    "zustand": "^4.5.2"
+  "packageManager": "npm@11.9.0",
+  "scripts": {
+    "dev": "npm run dev --workspace @evry/web",
+    "dev:web": "npm run dev --workspace @evry/web",
+    "dev:mobile": "npm run start --workspace @evry/mobile",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:web": "npm run test --workspace @evry/web",
+    "test:e2e": "npm run test:e2e --workspace @evry/web",
+    "expo:doctor": "npm run doctor --workspace @evry/mobile",
+    "export:mobile": "npm run export --workspace @evry/mobile",
+    "api:generate": "openapi-typescript packages/api-client/openapi/evry-v1.yaml -o packages/api-client/src/schema.ts",
+    "api:check": "npm run api:generate && git diff --exit-code -- packages/api-client/src/schema.ts"
   },
   "devDependencies": {
-    "@types/node": "^20.11.16",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "autoprefixer": "^10.4.17",
-    "eslint": "^9.0.0",
-    "eslint-config-next": "15.1.6",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "openapi-typescript": "7.10.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "typescript": "^5.9.2",
+    "vitest": "4.1.11"
   }
 }

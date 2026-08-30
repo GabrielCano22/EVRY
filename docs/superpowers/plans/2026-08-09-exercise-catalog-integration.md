@@ -187,7 +187,7 @@
 **Interfaces:**
 - `Ejercicio` gains optional source metadata, localized instructions, `imageUrl`, and `gifUrl` while remaining compatible with custom exercise responses.
 - `getExerciseInstruction(exercise, locale = 'es'): string[]` returns localized steps with `es -> en -> []` fallback.
-- `getExerciseMediaUrl(url: string | null): string | null` resolves backend-relative media paths against `NEXT_PUBLIC_API_URL`.
+- `getExerciseMediaUrl(url: string | null): string | null` resolves backend-relative media paths against `NEXT_PUBLIC_API_BASE_URL`.
 
 - [ ] **Step 1: Write utility tests.**
 
