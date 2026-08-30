@@ -15,6 +15,15 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - Progreso web migrado al formato actual y tipos compartidos; periodos, comparación real, consulta cancelable y carga incremental del historial.
 - Configuraciones CI, PostgreSQL de pruebas en CI, Render, EAS APK y guía Vercel/Neon.
 
+## Última verificación local
+
+- Backend: 45 suites / 236 pruebas unitarias, lint y comprobación de tipos de tests/scripts correctos.
+- Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
+- Móvil: 10 suites / 26 pruebas correctas; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release).
+- Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
+- Regeneración sin diferencias de cada snapshot OpenAPI por separado. Todavía no existe una comprobación cruzada backend/clientes.
+- No ejecutados: PostgreSQL/Supertest, Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
+
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
@@ -42,6 +51,10 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - Validar accesibilidad con navegador, teclado, zoom, lector de pantalla y movimiento reducido.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; no se han alcanzado ni demostrado esos presupuestos.
 - Crear recursos de staging y configurar credenciales/orígenes; publicar en orden, ensayar backup/restauración y contrastar conteos/estadísticas.
+
+## Auditoría de dependencias
+
+La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transitivo de ESLint. Se actualizó únicamente esa dependencia a 1.1.18, una versión corregida según el [aviso del mantenedor](https://github.com/advisories/GHSA-rgw5-rvv9-x895). Quedan 11 avisos moderados en la cadena de herramientas Expo/xcode/uuid, asociados al [aviso de uuid](https://github.com/advisories/GHSA-w5hq-g745-h8pq); requieren revisar compatibilidad y alcance antes de aplicar una actualización. No se ejecutó `npm audit fix --force` ni se degradó Expo.
 
 ## Preservación de datos y límites
 
