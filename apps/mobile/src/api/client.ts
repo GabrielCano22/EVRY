@@ -14,6 +14,9 @@ export type ApiErrorBody = components['schemas']['ApiError'];
 export type CurrentUser = components['schemas']['User'];
 export type SyncWorkoutInput = components['schemas']['SyncWorkoutInput'];
 export type SyncWorkoutResult = components['schemas']['SyncWorkoutResult'];
+export type SyncConflictBody = ApiErrorBody & {
+  serverVersion?: components['schemas']['Workout'] | null;
+};
 
 export function setMobileAccessToken(token: string | null): void {
   accessToken = token;
@@ -75,14 +78,14 @@ export async function currentUserWithRefresh(): Promise<CurrentUser> {
 
 export async function syncWorkoutWithRefresh(
   body: SyncWorkoutInput,
-): Promise<{ data?: SyncWorkoutResult; error?: ApiErrorBody; status: number }> {
+): Promise<{ data?: SyncWorkoutResult; error?: SyncConflictBody; status: number }> {
   let response = await apiClient.POST('/sync/workouts', { body });
   if (response.response.status === 401 && await refreshMobileSession()) {
     response = await apiClient.POST('/sync/workouts', { body });
   }
   return {
     data: response.data,
-    error: response.error as ApiErrorBody | undefined,
+    error: response.error as SyncConflictBody | undefined,
     status: response.response.status,
   };
 }

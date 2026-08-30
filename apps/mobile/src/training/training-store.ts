@@ -3,10 +3,10 @@ import { create } from 'zustand';
 import type { SyncWorkoutInput } from '../api/client';
 import {
   currentSyncState,
+  archiveRecoveredDraft,
   enqueueWorkout,
   getDatabase,
   loadActiveWorkout,
-  saveWorkout,
 } from '../db/database';
 import { syncPendingWorkouts } from '../sync/sync-engine';
 import type { SyncQueueState } from '../sync/queue-policy';
@@ -23,12 +23,15 @@ interface TrainingState {
   error: string | null;
   initialize: () => Promise<void>;
   startWorkout: (name?: string, routineId?: string) => Promise<void>;
+  recoverDraft: (draft: LocalWorkout) => Promise<void>;
   addSet: (exerciseId: string) => Promise<void>;
   updateSet: (clientId: string, changes: Partial<LocalWorkoutSet>) => Promise<void>;
   deleteSet: (clientId: string) => Promise<void>;
   finishWorkout: () => Promise<void>;
   refreshSyncState: () => Promise<void>;
 }
+
+let localWriteQueue: Promise<void> = Promise.resolve();
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
   ready: false,
@@ -58,8 +61,28 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: [],
       deletedSetClientIds: [],
     };
-    await saveWorkout(workout, 'synced');
-    set({ activeWorkout: workout, syncState: 'synced', error: null });
+    set({ activeWorkout: workout, syncState: 'pending', error: null });
+    const syncState = await queueWorkout(workout);
+    set({ syncState });
+    scheduleSync();
+  },
+  async recoverDraft(draft) {
+    if (get().activeWorkout) throw new Error('Finaliza la sesión activa antes de recuperar un borrador.');
+    const workout: LocalWorkout = {
+      ...draft,
+      clientId: Crypto.randomUUID(),
+      revision: 0,
+      status: 'ACTIVE',
+      endedAt: undefined,
+      cancelledAt: undefined,
+      sets: draft.sets.map((item) => ({ ...item, clientId: Crypto.randomUUID(), revision: 0 })),
+      deletedSetClientIds: [],
+    };
+    set({ activeWorkout: workout, syncState: 'pending', error: null });
+    const syncState = await queueWorkout(workout);
+    await archiveRecoveredDraft(draft);
+    set({ syncState });
+    scheduleSync();
   },
   async addSet(exerciseId) {
     const workout = get().activeWorkout;
@@ -81,8 +104,10 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         completedAt: new Date().toISOString(),
       }],
     };
-    await saveWorkout(next, 'synced');
-    set({ activeWorkout: next });
+    set({ activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(next);
+    set({ syncState });
+    scheduleSync();
   },
   async updateSet(clientId, changes) {
     const workout = get().activeWorkout;
@@ -91,8 +116,10 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       ...workout,
       sets: workout.sets.map((item) => item.clientId === clientId ? { ...item, ...changes } : item),
     };
-    await saveWorkout(next, 'synced');
-    set({ activeWorkout: next });
+    set({ activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(next);
+    set({ syncState });
+    scheduleSync();
   },
   async deleteSet(clientId) {
     const workout = get().activeWorkout;
@@ -110,33 +137,50 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     const next: LocalWorkout = {
       ...workout,
       sets: remainingSets,
-      deletedSetClientIds: removed.revision > 0
-        ? [...new Set([...workout.deletedSetClientIds, removed.clientId])]
-        : workout.deletedSetClientIds,
+      // Revision zero may already be in flight: the server must see the deletion
+      // even when its acknowledgement has not reached this device yet.
+      deletedSetClientIds: [...new Set([...workout.deletedSetClientIds, removed.clientId])],
     };
-    await saveWorkout(next, 'synced');
-    set({ activeWorkout: next });
+    set({ activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(next);
+    set({ syncState });
+    scheduleSync();
   },
   async finishWorkout() {
     const workout = get().activeWorkout;
     if (!workout) return;
     try {
       const completed = finishLocalWorkout(workout);
-      const syncId = Crypto.randomUUID();
-      await enqueueWorkout(completed, syncId, syncPayload(completed, syncId));
       set({ activeWorkout: null, syncState: 'pending', error: null });
-      void syncPendingWorkouts();
+      const syncState = await queueWorkout(completed);
+      set({ syncState });
+      scheduleSync();
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
+      set({ activeWorkout: workout, error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
       throw error;
     }
   },
   async refreshSyncState() {
-    set({ syncState: await currentSyncState() });
+    await localWriteQueue;
+    set({ activeWorkout: await loadActiveWorkout(), syncState: await currentSyncState() });
   },
 }));
 
+async function queueWorkout(workout: LocalWorkout): Promise<SyncQueueState> {
+  const syncId = Crypto.randomUUID();
+  const write = localWriteQueue.then(() => enqueueWorkout(workout, syncId, syncPayload(workout, syncId)));
+  localWriteQueue = write.then(() => undefined, () => undefined);
+  return write;
+}
+
+function scheduleSync(): void {
+  void syncPendingWorkouts().finally(() => useTrainingStore.getState().refreshSyncState());
+}
+
 function syncPayload(workout: LocalWorkout, syncId: string): SyncWorkoutInput {
+  if (workout.status === 'DRAFT') {
+    throw new Error('Un borrador recuperado debe revisarse antes de sincronizarse.');
+  }
   return {
     clientId: workout.clientId,
     syncId,
@@ -157,6 +201,9 @@ function syncPayload(workout: LocalWorkout, syncId: string): SyncWorkoutInput {
       reps: item.reps,
       durationS: item.durationS,
       rpe: item.rpe,
+      isWarmup: item.isWarmup,
+      techniqueStable: item.techniqueStable,
+      completedAt: item.completedAt,
     })),
     deletedSetClientIds: workout.deletedSetClientIds,
   };

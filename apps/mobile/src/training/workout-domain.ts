@@ -1,4 +1,4 @@
-export type LocalWorkoutStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+export type LocalWorkoutStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DRAFT';
 
 export interface LocalWorkoutSet {
   clientId: string;

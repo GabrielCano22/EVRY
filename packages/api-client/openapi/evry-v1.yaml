@@ -81,7 +81,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema: { $ref: '#/components/schemas/UserUpdateInput' }
       responses:
         '200':
           description: Updated user
@@ -192,7 +192,7 @@ paths:
           description: Aggregated progress overview
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema: { $ref: '#/components/schemas/ProgressOverview' }
   /progress/exercises/{id}:
     get:
       operationId: exerciseProgress
@@ -246,13 +246,25 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema: { $ref: '#/components/schemas/ReadinessInput' }
       responses:
         '201':
           description: Daily readiness
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema: { $ref: '#/components/schemas/Readiness' }
+  /readiness/latest:
+    get:
+      operationId: latestReadiness
+      responses:
+        '200':
+          description: Readiness for the current civil day, if recorded
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/Readiness' }
+                  - { type: 'null' }
   /health/live:
     get:
       operationId: healthLive
@@ -343,6 +355,93 @@ components:
         name: { type: string }
         trackCycle: { type: boolean }
         biologicalSex: { type: string, enum: [MALE, FEMALE, OTHER, PREFER_NOT_SAY] }
+        birthDate: { type: [string, 'null'], format: date-time }
+        goals:
+          type: array
+          items: { type: string, enum: [STRENGTH, HYPERTROPHY, ENDURANCE, FAT_LOSS, GENERAL_FITNESS, MOBILITY] }
+        avgCycleLen: { type: [integer, 'null'] }
+        avgPeriodLen: { type: [integer, 'null'] }
+    UserUpdateInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        biologicalSex: { type: string, enum: [MALE, FEMALE, OTHER, PREFER_NOT_SAY] }
+        birthDate: { type: string, format: date }
+        goals:
+          type: array
+          maxItems: 10
+          items: { type: string, enum: [STRENGTH, HYPERTROPHY, ENDURANCE, FAT_LOSS, GENERAL_FITNESS, MOBILITY] }
+        trackCycle: { type: boolean }
+        avgCycleLen: { type: integer, minimum: 20, maximum: 45 }
+        avgPeriodLen: { type: integer, minimum: 2, maximum: 10 }
+    OverviewMetrics:
+      type: object
+      required: [sessionsCompleted, volumeKg, activeDays, weeklyFrequency]
+      properties:
+        sessionsCompleted: { type: integer, minimum: 0 }
+        volumeKg: { type: number, minimum: 0 }
+        activeDays: { type: integer, minimum: 0 }
+        weeklyFrequency: { type: number, minimum: 0 }
+    ProgressOverview:
+      type: object
+      required: [period, summary, comparison, records, muscleDistribution]
+      properties:
+        period:
+          type: object
+          required: [key, from, to, timezone]
+          properties:
+            key: { type: string, enum: [30d, 90d, 6m, 1y, all] }
+            from: { type: [string, 'null'], format: date }
+            to: { type: string, format: date }
+            timezone: { type: string, const: America/Bogota }
+        summary: { $ref: '#/components/schemas/OverviewMetrics' }
+        comparison:
+          oneOf:
+            - type: object
+              required: [previous, delta]
+              properties:
+                previous: { $ref: '#/components/schemas/OverviewMetrics' }
+                delta: { $ref: '#/components/schemas/OverviewMetrics' }
+            - { type: 'null' }
+        records:
+          type: array
+          items:
+            type: object
+            required: [exerciseId, exerciseName, kind, value, achievedAt]
+            properties:
+              exerciseId: { type: string }
+              exerciseName: { type: string }
+              kind: { type: string, enum: [WEIGHT, REPS, ESTIMATED_1RM] }
+              value: { type: number }
+              achievedAt: { type: string, format: date-time }
+        muscleDistribution:
+          type: array
+          items:
+            type: object
+            required: [muscleGroup, workingSets, percentage]
+            properties:
+              muscleGroup: { type: string }
+              workingSets: { type: integer, minimum: 0 }
+              percentage: { type: number, minimum: 0, maximum: 100 }
+    ReadinessInput:
+      type: object
+      properties:
+        sleepHrs: { type: number, minimum: 0, maximum: 16 }
+        stress: { type: integer, minimum: 1, maximum: 5 }
+        soreness: { type: integer, minimum: 1, maximum: 5 }
+        motivation: { type: integer, minimum: 1, maximum: 5 }
+    Readiness:
+      type: object
+      required: [id, userId, civilDate, score]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        civilDate: { type: string, format: date-time }
+        sleepHrs: { type: [number, 'null'] }
+        stress: { type: [integer, 'null'] }
+        soreness: { type: [integer, 'null'] }
+        motivation: { type: [integer, 'null'] }
+        score: { type: integer, minimum: 0, maximum: 100 }
     Exercise:
       type: object
       required: [id, name]
@@ -380,6 +479,9 @@ components:
         reps: { type: [integer, 'null'] }
         durationS: { type: [integer, 'null'] }
         rpe: { type: [integer, 'null'] }
+        isWarmup: { type: boolean }
+        techniqueStable: { type: [boolean, 'null'] }
+        completedAt: { type: string, format: date-time }
     Workout:
       type: object
       required: [id, name, status, revision, sets, startedAt]
@@ -405,6 +507,9 @@ components:
         reps: { type: [integer, 'null'], minimum: 0 }
         durationS: { type: [integer, 'null'], minimum: 0 }
         rpe: { type: [integer, 'null'], minimum: 1, maximum: 10 }
+        isWarmup: { type: boolean }
+        techniqueStable: { type: [boolean, 'null'] }
+        completedAt: { type: string, format: date-time }
     SyncWorkoutInput:
       type: object
       required: [clientId, syncId, baseRevision, name, startedAt, status, sets, deletedSetClientIds]
@@ -427,7 +532,25 @@ components:
       properties:
         workout: { $ref: '#/components/schemas/Workout' }
         revision: { type: integer }
-        mapping: { type: object, additionalProperties: true }
+        mapping:
+          type: object
+          required: [workout, sets]
+          properties:
+            workout:
+              type: object
+              required: [clientId, serverId]
+              properties:
+                clientId: { type: [string, 'null'] }
+                serverId: { type: string }
+            sets:
+              type: array
+              items:
+                type: object
+                required: [clientId, serverId, revision]
+                properties:
+                  clientId: { type: string }
+                  serverId: { type: string }
+                  revision: { type: integer, minimum: 0 }
     CycleEntry:
       type: object
       required: [id, date]

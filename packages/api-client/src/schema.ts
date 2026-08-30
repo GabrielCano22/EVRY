@@ -260,6 +260,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readiness/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["latestReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -328,6 +344,76 @@ export interface components {
             trackCycle: boolean;
             /** @enum {string} */
             biologicalSex?: "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_SAY";
+            /** Format: date-time */
+            birthDate?: string | null;
+            goals?: ("STRENGTH" | "HYPERTROPHY" | "ENDURANCE" | "FAT_LOSS" | "GENERAL_FITNESS" | "MOBILITY")[];
+            avgCycleLen?: number | null;
+            avgPeriodLen?: number | null;
+        };
+        UserUpdateInput: {
+            name?: string;
+            /** @enum {string} */
+            biologicalSex?: "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_SAY";
+            /** Format: date */
+            birthDate?: string;
+            goals?: ("STRENGTH" | "HYPERTROPHY" | "ENDURANCE" | "FAT_LOSS" | "GENERAL_FITNESS" | "MOBILITY")[];
+            trackCycle?: boolean;
+            avgCycleLen?: number;
+            avgPeriodLen?: number;
+        };
+        OverviewMetrics: {
+            sessionsCompleted: number;
+            volumeKg: number;
+            activeDays: number;
+            weeklyFrequency: number;
+        };
+        ProgressOverview: {
+            period: {
+                /** @enum {string} */
+                key: "30d" | "90d" | "6m" | "1y" | "all";
+                /** Format: date */
+                from: string | null;
+                /** Format: date */
+                to: string;
+                /** @constant */
+                timezone: "America/Bogota";
+            };
+            summary: components["schemas"]["OverviewMetrics"];
+            comparison: {
+                previous: components["schemas"]["OverviewMetrics"];
+                delta: components["schemas"]["OverviewMetrics"];
+            } | null;
+            records: {
+                exerciseId: string;
+                exerciseName: string;
+                /** @enum {string} */
+                kind: "WEIGHT" | "REPS" | "ESTIMATED_1RM";
+                value: number;
+                /** Format: date-time */
+                achievedAt: string;
+            }[];
+            muscleDistribution: {
+                muscleGroup: string;
+                workingSets: number;
+                percentage: number;
+            }[];
+        };
+        ReadinessInput: {
+            sleepHrs?: number;
+            stress?: number;
+            soreness?: number;
+            motivation?: number;
+        };
+        Readiness: {
+            id: string;
+            userId: string;
+            /** Format: date-time */
+            civilDate: string;
+            sleepHrs?: number | null;
+            stress?: number | null;
+            soreness?: number | null;
+            motivation?: number | null;
+            score: number;
         };
         Exercise: {
             id: string;
@@ -362,6 +448,10 @@ export interface components {
             reps?: number | null;
             durationS?: number | null;
             rpe?: number | null;
+            isWarmup?: boolean;
+            techniqueStable?: boolean | null;
+            /** Format: date-time */
+            completedAt?: string;
         };
         Workout: {
             id: string;
@@ -389,6 +479,10 @@ export interface components {
             reps?: number | null;
             durationS?: number | null;
             rpe?: number | null;
+            isWarmup?: boolean;
+            techniqueStable?: boolean | null;
+            /** Format: date-time */
+            completedAt?: string;
         };
         SyncWorkoutInput: {
             /** Format: uuid */
@@ -414,7 +508,15 @@ export interface components {
             workout: components["schemas"]["Workout"];
             revision: number;
             mapping: {
-                [key: string]: unknown;
+                workout: {
+                    clientId: string | null;
+                    serverId: string;
+                };
+                sets: {
+                    clientId: string;
+                    serverId: string;
+                    revision: number;
+                }[];
             };
         };
         CycleEntry: {
@@ -610,9 +712,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["UserUpdateInput"];
             };
         };
         responses: {
@@ -801,9 +901,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ProgressOverview"];
                 };
             };
         };
@@ -906,9 +1004,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["ReadinessInput"];
             };
         };
         responses: {
@@ -918,9 +1014,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["Readiness"];
+                };
+            };
+        };
+    };
+    latestReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Readiness for the current civil day, if recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Readiness"] | null;
                 };
             };
         };
