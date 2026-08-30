@@ -2,31 +2,26 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { todayCivil } from '@evry/domain';
-import { apiClient, refreshMobileSession } from '@/src/api/client';
+import { withMobileAuth } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 
 async function loadEntries() {
-  let response = await apiClient.GET('/cycle/entries');
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.GET('/cycle/entries');
+  const response = await withMobileAuth((client) => client.GET('/cycle/entries'));
   if (!response.data || response.error) throw new Error('No se pudo cargar el ciclo.');
   return response.data;
 }
 
 async function addToday() {
   const request = { body: { date: todayCivil(), flow: 'NONE' as const, symptoms: [] } };
-  let response = await apiClient.POST('/cycle/entries', request);
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.POST('/cycle/entries', request);
+  const response = await withMobileAuth((client) => client.POST('/cycle/entries', request));
   if (!response.data || response.error) throw new Error('No se pudo guardar el registro de hoy.');
   return response.data;
 }
 
 async function removeEntry(id: string) {
-  let response = await apiClient.DELETE('/cycle/entries/{id}', { params: { path: { id } } });
-  if (response.response.status === 401 && await refreshMobileSession()) {
-    response = await apiClient.DELETE('/cycle/entries/{id}', { params: { path: { id } } });
-  }
+  const response = await withMobileAuth((client) => client.DELETE('/cycle/entries/{id}', { params: { path: { id } } }));
   if (response.error) throw new Error('No se pudo eliminar el registro.');
 }
 

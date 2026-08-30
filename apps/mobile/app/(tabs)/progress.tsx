@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { components } from '@evry/api-client';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { apiClient, refreshMobileSession } from '@/src/api/client';
+import { withMobileAuth } from '@/src/api/client';
 import { buildOverviewCards, signedMetric } from '@/src/progress/progress-view';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
@@ -19,10 +19,7 @@ const periods: { key: Period; label: string }[] = [
 ];
 
 async function loadOverview(period: Period): Promise<ProgressOverview> {
-  let response = await apiClient.GET('/progress/overview', { params: { query: { period } } });
-  if (response.response.status === 401 && await refreshMobileSession()) {
-    response = await apiClient.GET('/progress/overview', { params: { query: { period } } });
-  }
+  const response = await withMobileAuth((client) => client.GET('/progress/overview', { params: { query: { period } } }));
   if (!response.data || response.error) throw new Error('No se pudo cargar el progreso.');
   return response.data;
 }

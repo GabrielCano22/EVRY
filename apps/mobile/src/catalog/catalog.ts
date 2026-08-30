@@ -1,5 +1,5 @@
 import type { components } from '@evry/api-client';
-import { apiClient, refreshMobileSession } from '../api/client';
+import { withMobileAuth } from '../api/client';
 import { cacheEntities, cachedEntities } from '../db/database';
 
 export type Exercise = components['schemas']['Exercise'];
@@ -15,16 +15,10 @@ export async function loadExercises(options: {
       limit: 30,
       ...(options.search?.trim() ? { search: options.search.trim() } : {}),
     };
-    let response = await apiClient.GET('/exercises', {
+    const response = await withMobileAuth((client) => client.GET('/exercises', {
       params: { query },
       signal: options.signal,
-    });
-    if (response.response.status === 401 && await refreshMobileSession()) {
-      response = await apiClient.GET('/exercises', {
-        params: { query },
-        signal: options.signal,
-      });
-    }
+    }));
     const items = response.data?.items;
     if (items) {
       await cacheEntities('exercise_cache', items);
@@ -42,10 +36,7 @@ export async function loadExercises(options: {
 export async function loadRoutines(): Promise<Routine[]> {
   const cached = await cachedEntities<Routine>('routine_cache');
   try {
-    let response = await apiClient.GET('/routines');
-    if (response.response.status === 401 && await refreshMobileSession()) {
-      response = await apiClient.GET('/routines');
-    }
+    const response = await withMobileAuth((client) => client.GET('/routines'));
     if (response.data?.length) {
       await cacheEntities('routine_cache', response.data);
       return response.data;

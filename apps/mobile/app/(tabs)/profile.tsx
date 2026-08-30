@@ -2,31 +2,26 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { apiClient, refreshMobileSession } from '@/src/api/client';
+import { withMobileAuth } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 
 async function loadReadiness() {
-  let response = await apiClient.GET('/readiness/latest');
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.GET('/readiness/latest');
+  const response = await withMobileAuth((client) => client.GET('/readiness/latest'));
   if (response.error) throw new Error('No se pudo cargar el readiness de hoy.');
   return response.data ?? null;
 }
 
 async function updateProfile(name: string, trackCycle: boolean) {
   const request = { body: { name: name.trim(), trackCycle } };
-  let response = await apiClient.PATCH('/users/me', request);
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.PATCH('/users/me', request);
+  const response = await withMobileAuth((client) => client.PATCH('/users/me', request));
   if (!response.data || response.error) throw new Error('No se pudo guardar el perfil.');
   return response.data;
 }
 
 async function saveReadiness(values: { sleepHrs: number; stress: number; soreness: number; motivation: number }) {
-  let response = await apiClient.POST('/readiness/checkin', { body: values });
-  if (response.response.status === 401 && await refreshMobileSession()) {
-    response = await apiClient.POST('/readiness/checkin', { body: values });
-  }
+  const response = await withMobileAuth((client) => client.POST('/readiness/checkin', { body: values }));
   if (!response.data || response.error) throw new Error('No se pudo guardar el readiness.');
   return response.data;
 }
