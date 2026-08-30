@@ -1,0 +1,14 @@
+appId: com.gabrielcano.evry
+---
+- launchApp:
+    clearState: true
+- assertVisible: "EVRY"
+- tapOn: "Correo electrónico"
+- inputText: ${MAESTRO_EMAIL}
+- tapOn: "Contraseña"
+- inputText: ${MAESTRO_PASSWORD}
+- tapOn: "Ingresar"
+- assertVisible: "Inicio"
+- assertVisible: "Entrenar"
+- assertVisible: "Progreso"
+- assertVisible: "Perfil"

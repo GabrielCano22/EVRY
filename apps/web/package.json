@@ -10,7 +10,7 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:a11y",
-    "test:unit": "vitest run --exclude tests/a11y/**",
+    "test:unit": "vitest run --exclude tests/a11y/** --exclude tests/e2e/**",
     "test:a11y": "vitest run --config vitest.a11y.config.ts",
     "test:e2e": "playwright test"
   },

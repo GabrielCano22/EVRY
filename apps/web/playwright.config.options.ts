@@ -14,7 +14,7 @@ type PlaywrightConfigOptions = {
 };
 
 const testTimeZone = 'America/Bogota';
-const testApiBaseUrl = 'http://127.0.0.1:4000/api';
+const testApiBaseUrl = 'http://127.0.0.1:4000/api/v1';
 const testAccessSecret = 'evry-playwright-access-secret-fixture-2026';
 const testRefreshSecret = 'evry-playwright-refresh-secret-fixture-2026';
 
@@ -99,6 +99,7 @@ export function buildPlaywrightConfig({
     JWT_ACCESS_SECRET: testAccessSecret,
     JWT_REFRESH_SECRET: testRefreshSecret,
     SWAGGER_ENABLED: 'false',
+    CORS_ORIGIN: 'http://127.0.0.1:3000',
     DATABASE_URL: testDatabaseUrl,
   };
 
@@ -124,7 +125,7 @@ export function buildPlaywrightConfig({
       {
         command: 'npm run start:dev',
         cwd: backendRoot,
-        url: 'http://127.0.0.1:4000/health',
+        url: 'http://127.0.0.1:4000/api/v1/health/ready',
         env: backendEnvironment,
         reuseExistingServer: false,
       },

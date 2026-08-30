@@ -42,7 +42,7 @@ test('starts e2e servers without reuse and probes backend health', () => {
   const [, backendServer] = webServers as WebServer[];
 
   expect(backendServer).toMatchObject({
-    url: 'http://127.0.0.1:4000/health',
+    url: 'http://127.0.0.1:4000/api/v1/health/ready',
     reuseExistingServer: false,
   });
 });
@@ -60,7 +60,7 @@ test('prepara el origen público canónico y fixtures JWT de prueba seguros para
   const accessSecret = backendServer?.env?.JWT_ACCESS_SECRET;
   const refreshSecret = backendServer?.env?.JWT_REFRESH_SECRET;
 
-  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api');
+  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api/v1');
   expect(frontendServer?.env?.NEXT_PUBLIC_API_URL).toBeUndefined();
   expect(accessSecret).not.toBe(refreshSecret);
   expect(accessSecret?.length).toBeGreaterThanOrEqual(32);
@@ -81,7 +81,7 @@ test('aísla el origen del frontend E2E aunque el entorno reciba un valor extern
   expect(Array.isArray(webServers)).toBe(true);
   const [frontendServer] = webServers as WebServer[];
 
-  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api');
+  expect(frontendServer?.env?.NEXT_PUBLIC_API_BASE_URL).toBe('http://127.0.0.1:4000/api/v1');
 });
 
 test('rejects equivalent PostgreSQL database identities in Playwright configuration', () => {

@@ -1,5 +1,7 @@
 # EVRY: índice del plan de candidato de lanzamiento
 
+> **Reemplazado el 30 de agosto de 2026.** Este conjunto se conserva como historial. La implementación vigente es la hoja de ruta integral web/móvil/backend y su estado verificable se documenta en `README.md`, `docs/quality/fundamentos.md` y `docs/operations/staging.md`.
+
 > **Para agentes de implementación:** ejecutar con `superpowers:subagent-driven-development` tarea por tarea. No comenzar un plan si su dependencia anterior no está verde.
 
 **Goal:** Coordinar el cierre aprobado de EVRY en cinco planes verificables y publicarlo en GitHub sin despliegue.

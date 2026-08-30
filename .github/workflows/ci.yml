@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run api:check
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000/api/v1
+      - run: npm run expo:doctor
+      - run: npm run export:mobile
+        env:
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:4000/api/v1
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: evry_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d evry_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/evry_test?schema=public
+      DATABASE_URL: postgresql://blocked:blocked@127.0.0.1:1/evry_runtime_blocked
+      EVRY_BACKEND_ROOT: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: frontend
+      - uses: actions/checkout@v4
+        with:
+          repository: GabrielCano22/EVRY-Backend
+          path: backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: backend
+      - run: npm run test:db:migrate
+        working-directory: backend
+        env:
+          NODE_ENV: test
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend/apps/web
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          NODE_ENV: test
+          CORS_ORIGIN: http://127.0.0.1:3000
+          PORT: 4000
+          SWAGGER_ENABLED: "false"
