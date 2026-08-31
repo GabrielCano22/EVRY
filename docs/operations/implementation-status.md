@@ -20,6 +20,8 @@ Actualizado: 31 de agosto de 2026. Este documento distingue implementación, ver
 - Colas de escritura separadas por conexión SQLite: se mantiene la serialización dentro de una cuenta, sin bloquear la apertura de otra cuenta por una escritura demorada.
 - Fuente OpenAPI única: 44 operaciones en 33 rutas y 70 esquemas generados desde Nest. El frontend importa el JSON y el cliente del commit fijado del backend; se retiró el YAML manual. Se corrigieron la paginación opcional numérica y la generación de entradas con valores por defecto.
 - Importador reproducible: lee artefactos confirmados en Git, verifica origen y hashes, normaliza LF/CRLF y rechaza referencias externas y entradas/respuestas sin tipos. `api:check` no modifica archivos ni consulta la red; CI obtiene el backend por la revisión del lock.
+- Recuperación móvil desde el contrato canónico sin perder notas, rutina, calentamiento, técnica ni fecha de las series. Las versiones de servidor malformadas se rechazan antes de reemplazar datos locales; los errores normales de API conservan su mensaje.
+- Conflictos únicos compatibles con los metadatos del adaptador PostgreSQL de Prisma 7: los inicios simultáneos recuperan la sesión ganadora y los reintentos de series conservan su idempotencia.
 - Autenticación móvil: refresh compartido entre peticiones concurrentes, reintento único ligado a la sesión original, credenciales inmutables por intento y rechazo de respuestas tardías tras logout/cambio de cuenta. Las escrituras SecureStore están serializadas y el logout borra las credenciales locales antes de esperar al servidor.
 - Errores de login/logout visibles sin promesas rechazadas sin manejar; protección del estado de usuario frente a inicializaciones y consultas de perfil obsoletas. Los fallos temporales de refresh conservan credenciales; los rechazos definitivos y fallos de persistencia del token rotado las invalidan.
 - Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
@@ -29,12 +31,13 @@ Actualizado: 31 de agosto de 2026. Este documento distingue implementación, ver
 
 ## Última verificación local
 
-- Backend: 52 suites / 293 pruebas unitarias, lint, build, tipos de tests/scripts y `openapi:check` correctos.
+- Backend: 52 suites / 296 pruebas unitarias, lint, build, tipos de tests/scripts y `openapi:check` correctos.
 - Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
-- Móvil: la base anterior tenía 16 suites / 77 pruebas, lint, tipos y exportaciones Android/iOS correctos. La adaptación al contrato canónico y la recuperación sin pérdida de campos se están verificando; no hay todavía prueba en dispositivo ni APK release.
+- Móvil: 16 suites / 83 pruebas, lint y tipos correctos. Las exportaciones Android/iOS y Expo Doctor (21/21) pasaron antes de la última validación defensiva de conflictos; no hay todavía prueba en dispositivo ni APK release.
 - Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
-- `api:verify-backend` correcto contra `c595451`; tres pruebas del cliente compartido correctas, incluidos registro con campos opcionales, paginación y errores normalizados. El importador pasó sus 30 regresiones iniciales y las nuevas pruebas de entradas sin tipos; la ejecución conjunta ampliada está en curso.
-- No ejecutados: PostgreSQL/Supertest, Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
+- `api:verify-backend` correcto contra `f291aee`; tres pruebas del cliente compartido correctas, incluidos registro con campos opcionales, paginación y errores normalizados. El importador pasó sus 33 pruebas y `api:check` confirmó que no hay diferencias en los artefactos generados.
+- PostgreSQL 17.11 aislado: ocho migraciones aplicadas sobre una base nueva de pruebas; 5 suites / 41 pruebas de integración Supertest/PostgreSQL correctas. Se usaron únicamente datos sintéticos y el servidor temporal se detuvo al terminar.
+- No ejecutados: Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
 
 ## Pendiente de cerrar antes de aceptar el plan
 
@@ -43,7 +46,7 @@ Actualizado: 31 de agosto de 2026. Este documento distingue implementación, ver
 - Ejecutar la nueva CI cruzada en GitHub tras publicar primero el commit del backend fijado por el lock. La fuente y la generación ya están unificadas localmente; falta comprobar el flujo remoto completo.
 - Revisar todos los consumidores web restantes: no basta con que TypeScript compile; todavía hay contratos antiguos en pantallas y calendario.
 - El catálogo móvil ya usa `q/page` y el contrato canónico; falta comprobar el contrato completo de extremo a extremo contra PostgreSQL.
-- Ejecutar integración/Supertest y migraciones sobre PostgreSQL aislado. No se ha configurado `TEST_DATABASE_URL` local ni ejecutado sobre datos reales.
+- Ampliar integración PostgreSQL para autenticación rotativa y sincronización offline; ensayar migración sobre una base poblada y backup/restauración. Las cinco suites actuales ya pasaron en PostgreSQL aislado, sin tocar datos reales.
 - Ejecutar Playwright y Maestro; los archivos y jobs existen pero no prueban por sí mismos que los escenarios pasen.
 
 ### Móvil
@@ -71,6 +74,6 @@ La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transit
 
 ## Preservación de datos y límites
 
-No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `a7cfe38` y backend hasta `b2407c4`, incluido el punto de control OpenAPI aún en desarrollo. Las correcciones posteriores se conservan localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
+No se ha reiniciado ni migrado una base real ni desplegado recursos externos. Este punto de control reúne los avances para el push solicitado por el usuario en ambas ramas `codex/evry-optimization`; no supone la aceptación del plan completo. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
 
 El job frontend obtiene `EVRY-Backend` por el commit exacto de `packages/api-client/openapi/backend.lock.json`. Al publicar, ese commit debe existir primero en el remoto backend. Si el repositorio es privado, configure un token de lectura cruzada mediante `EVRY_REPOSITORY_TOKEN`.
