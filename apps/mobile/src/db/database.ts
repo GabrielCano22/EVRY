@@ -29,17 +29,18 @@ export interface SyncReview {
 }
 
 const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
-let writeQueue: Promise<void> = Promise.resolve();
+const writeQueues = new WeakMap<SQLite.SQLiteDatabase, Promise<void>>();
 
 // Expo's async transactions share a connection. Serialize complete write units so
 // a network acknowledgement cannot commit/rollback an unrelated local edit.
+// Separate account connections must not wait for each other's pending writes.
 function writeTransaction<T>(database: SQLite.SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
-  const write = writeQueue.then(async () => {
+  const write = (writeQueues.get(database) ?? Promise.resolve()).then(async () => {
     let result!: T;
     await database.withTransactionAsync(async () => { result = await operation(); });
     return result;
   });
-  writeQueue = write.then(() => undefined, () => undefined);
+  writeQueues.set(database, write.then(() => undefined, () => undefined));
   return write;
 }
 
