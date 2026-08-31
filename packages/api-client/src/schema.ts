@@ -498,6 +498,13 @@ export interface components {
             motivation?: number | null;
             score: number;
         };
+        ExercisePage: {
+            items: components["schemas"]["Exercise"][];
+            page: number;
+            limit: number;
+            total: number;
+            hasMore: boolean;
+        };
         Exercise: {
             id: string;
             name: string;
@@ -505,6 +512,12 @@ export interface components {
             gifPath?: string | null;
             muscleGroup?: string;
             equipment?: string;
+            imageUrl?: string | null;
+            gifUrl?: string | null;
+            target?: string | null;
+            bodyPart?: string | null;
+            equipmentLabel?: string | null;
+            isCustom?: boolean;
         };
         Routine: {
             id: string;
@@ -813,8 +826,8 @@ export interface operations {
     listExercises: {
         parameters: {
             query?: {
-                search?: string;
-                cursor?: string;
+                q?: string;
+                page?: number;
                 limit?: number;
             };
             header?: never;
@@ -829,12 +842,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        items: components["schemas"]["Exercise"][];
-                        nextCursor?: string | null;
-                    };
+                    "application/json": components["schemas"]["ExercisePage"];
                 };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listRoutines: {
@@ -855,6 +869,10 @@ export interface operations {
                     "application/json": components["schemas"]["Routine"][];
                 };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     createRoutine: {

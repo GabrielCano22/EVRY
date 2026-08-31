@@ -11,7 +11,7 @@ export interface DatabaseOwner {
   readonly userId: string;
   readonly serverUrl: string;
 }
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export interface PendingSyncRow {
   id: number;
@@ -124,8 +124,30 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       bytes INTEGER NOT NULL DEFAULT 0,
       last_access_at TEXT NOT NULL
     );
-    PRAGMA user_version = ${DATABASE_VERSION};
+    PRAGMA user_version = 1;
   `);
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS cache_metadata (table_name TEXT PRIMARY KEY NOT NULL, saved_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS exercise_search (
+        exercise_id TEXT PRIMARY KEY NOT NULL,
+        search_text TEXT NOT NULL,
+        FOREIGN KEY(exercise_id) REFERENCES exercise_cache(id) ON DELETE CASCADE
+      );
+    `);
+    let cursor = '';
+    for (;;) {
+      const rows = await database.getAllAsync<{ id: string; payload: string }>(
+        'SELECT id, payload FROM exercise_cache WHERE id > ? ORDER BY id LIMIT 100', cursor,
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await indexExercise(database, row.id, JSON.parse(row.payload) as object);
+      }
+      cursor = rows[rows.length - 1].id;
+    }
+    await database.execAsync('PRAGMA user_version = 2;');
+  });
 }
 
 export async function saveWorkout(
@@ -444,45 +466,91 @@ export async function markSyncSuccess(
   });
 }
 
-export async function cacheEntities(
-  owner: DatabaseOwner,
-  table: 'exercise_cache' | 'routine_cache',
-  entities: { id: string }[],
-): Promise<void> {
+type CacheTable = 'exercise_cache' | 'routine_cache';
+
+async function indexExercise(database: SQLite.SQLiteDatabase, id: string, entity: object): Promise<void> {
+  const fields = entity as Record<string, unknown>;
+  const searchable = ['name', 'target', 'bodyPart', 'equipmentLabel']
+    .map((key) => typeof fields[key] === 'string' ? fields[key] : '')
+    .join('\n').normalize('NFC').toLocaleLowerCase('es');
+  await database.runAsync(
+    'INSERT INTO exercise_search (exercise_id, search_text) VALUES (?, ?) ON CONFLICT(exercise_id) DO UPDATE SET search_text = excluded.search_text',
+    id, searchable,
+  );
+}
+
+async function storeCachedEntity(database: SQLite.SQLiteDatabase, table: CacheTable, entity: { id: string }, now: string): Promise<void> {
+  if (table === 'exercise_cache') {
+    await database.runAsync(
+      `INSERT INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at, last_access_at = excluded.last_access_at`,
+      entity.id, JSON.stringify(entity), now, now,
+    );
+    await indexExercise(database, entity.id, entity);
+  } else {
+    await database.runAsync(
+      `INSERT INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
+      entity.id, JSON.stringify(entity), now,
+    );
+  }
+}
+
+async function markCacheSnapshot(database: SQLite.SQLiteDatabase, table: CacheTable, now: string): Promise<void> {
+  await database.runAsync(
+    'INSERT INTO cache_metadata (table_name, saved_at) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET saved_at = excluded.saved_at',
+    table, now,
+  );
+}
+
+export async function cacheEntities(owner: DatabaseOwner, table: CacheTable, entities: { id: string }[]): Promise<void> {
   const database = await getDatabase(owner);
   const now = new Date().toISOString();
   await writeTransaction(database, async () => {
-    for (const entity of entities) {
-      if (table === 'exercise_cache') {
-        await database.runAsync(
-          `INSERT INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET payload = excluded.payload,
-             updated_at = excluded.updated_at, last_access_at = excluded.last_access_at`,
-          entity.id,
-          JSON.stringify(entity),
-          now,
-          now,
-        );
-      } else {
-        await database.runAsync(
-          `INSERT INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-          entity.id,
-          JSON.stringify(entity),
-          now,
-        );
-      }
-    }
+    for (const entity of entities) await storeCachedEntity(database, table, entity, now);
+    await markCacheSnapshot(database, table, now);
   });
 }
 
-export async function cachedEntities<T>(
-  owner: DatabaseOwner,
-  table: 'exercise_cache' | 'routine_cache',
-): Promise<T[]> {
+/** A routines GET is a full snapshot, including the authoritative empty list. */
+export async function replaceCachedRoutines(owner: DatabaseOwner, entities: { id: string }[]): Promise<void> {
   const database = await getDatabase(owner);
-  const rows = await database.getAllAsync<{ payload: string }>(
-    `SELECT payload FROM ${table} ORDER BY updated_at DESC`,
+  const now = new Date().toISOString();
+  await writeTransaction(database, async () => {
+    await database.runAsync('DELETE FROM routine_cache');
+    for (const entity of entities) await storeCachedEntity(database, 'routine_cache', entity, now);
+    await markCacheSnapshot(database, 'routine_cache', now);
+  });
+}
+
+async function cacheAvailability(database: SQLite.SQLiteDatabase, table: CacheTable) {
+  const snapshot = await database.getFirstAsync<{ savedAt: string }>(
+    'SELECT saved_at AS savedAt FROM cache_metadata WHERE table_name = ?', table,
   );
-  return rows.map(({ payload }) => JSON.parse(payload) as T);
+  const saved = await database.getFirstAsync<{ savedAt: string | null }>(`SELECT MAX(updated_at) AS savedAt FROM ${table}`);
+  return { available: Boolean(snapshot || saved?.savedAt), updatedAt: snapshot?.savedAt ?? saved?.savedAt ?? null };
+}
+
+export async function cachedCollection<T>(owner: DatabaseOwner, table: CacheTable) {
+  const database = await getDatabase(owner);
+  const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM ${table} ORDER BY updated_at DESC, id`);
+  return { items: rows.map(({ payload }) => JSON.parse(payload) as T), ...await cacheAvailability(database, table) };
+}
+
+export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: number, limit = 30) {
+  const database = await getDatabase(owner);
+  const search = q.normalize('NFC').toLocaleLowerCase('es');
+  const from = "FROM exercise_cache c LEFT JOIN exercise_search s ON s.exercise_id = c.id WHERE ? = '' OR instr(s.search_text, ?) > 0";
+  const count = await database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total ${from}`, search, search);
+  const rows = await database.getAllAsync<{ payload: string }>(
+    `SELECT c.payload ${from}
+     ORDER BY COALESCE(json_extract(c.payload, '$.isCustom'), 0), lower(json_extract(c.payload, '$.name')), c.id
+     LIMIT ? OFFSET ?`, search, search, limit, (page - 1) * limit,
+  );
+  const total = count?.total ?? 0;
+  return {
+    items: rows.map(({ payload }) => JSON.parse(payload) as components['schemas']['Exercise']),
+    page, limit, total, hasMore: page * limit < total,
+    ...await cacheAvailability(database, 'exercise_cache'),
+  };
 }

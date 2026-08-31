@@ -92,20 +92,24 @@ paths:
     get:
       operationId: listExercises
       parameters:
-        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
-        - { name: cursor, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string, maxLength: 80 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 10000, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 30, default: 30 } }
+        - { name: muscleGroup, in: query, schema: { type: string, enum: [CHEST, BACK, SHOULDERS, BICEPS, TRICEPS, FOREARMS, CORE, QUADS, HAMSTRINGS, GLUTES, CALVES, FULL_BODY, CARDIO] } }
+        - { name: equipment, in: query, schema: { type: string, enum: [BARBELL, DUMBBELL, MACHINE, CABLE, BODYWEIGHT, KETTLEBELL, BAND, OTHER] } }
+        - { name: category, in: query, schema: { type: string, maxLength: 80 } }
+        - { name: target, in: query, schema: { type: string, maxLength: 80 } }
+        - { name: tag, in: query, schema: { type: string, maxLength: 80 } }
       responses:
         '200':
           description: Paginated exercise catalog
           content:
             application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Exercise' } }
-                  nextCursor: { type: [string, 'null'] }
+              schema: { $ref: '#/components/schemas/ExercisePage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
   /routines:
     get:
       operationId: listRoutines
@@ -115,6 +119,10 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/Routine' } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
     post:
       operationId: createRoutine
       requestBody:
@@ -553,6 +561,15 @@ components:
         soreness: { type: [integer, 'null'] }
         motivation: { type: [integer, 'null'] }
         score: { type: integer, minimum: 0, maximum: 100 }
+    ExercisePage:
+      type: object
+      required: [items, page, limit, total, hasMore]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Exercise' } }
+        page: { type: integer, minimum: 1, maximum: 10000 }
+        limit: { type: integer, minimum: 1, maximum: 30 }
+        total: { type: integer, minimum: 0 }
+        hasMore: { type: boolean }
     Exercise:
       type: object
       required: [id, name]
@@ -563,6 +580,12 @@ components:
         gifPath: { type: [string, 'null'] }
         muscleGroup: { type: string }
         equipment: { type: string }
+        imageUrl: { type: [string, 'null'] }
+        gifUrl: { type: [string, 'null'] }
+        target: { type: [string, 'null'] }
+        bodyPart: { type: [string, 'null'] }
+        equipmentLabel: { type: [string, 'null'] }
+        isCustom: { type: boolean }
     Routine:
       type: object
       required: [id, name, exercises]
