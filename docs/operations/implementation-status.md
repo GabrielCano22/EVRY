@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 30 de agosto de 2026. Este documento distingue implementación, verificación local y aceptación final. No constituye una declaración de preparación para producción.
+Actualizado: 31 de agosto de 2026. Este documento distingue implementación, verificación local y aceptación final. No constituye una declaración de preparación para producción.
 
 ## Implementado y comprobado localmente
 
@@ -18,7 +18,8 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - Miniaturas JPG en el selector, GIF solo tras pulsar reproducir, URLs del servidor/CDN respetadas y avisos de atribución visibles en la ficha.
 - Migración SQLite v1→v2 con índice de búsqueda y metadatos de caché: ensayada sobre 205 ejercicios y datos de sesión, series, cola, rutinas, mapeos y medios. Un fallo durante el índice revierte la transacción sin modificar esos datos; se verificó reintento tras reparar el registro de caché inválido.
 - Colas de escritura separadas por conexión SQLite: se mantiene la serialización dentro de una cuenta, sin bloquear la apertura de otra cuenta por una escritura demorada.
-- Respuesta del catálogo documentada con DTO real en Nest/OpenAPI, incluidos paginación, multimedia y atribución; prueba de generación desde el controlador real. Esto no unifica todavía la fuente de todos los contratos.
+- Fuente OpenAPI única: 44 operaciones en 33 rutas y 70 esquemas generados desde Nest. El frontend importa el JSON y el cliente del commit fijado del backend; se retiró el YAML manual. Se corrigieron la paginación opcional numérica y la generación de entradas con valores por defecto.
+- Importador reproducible: lee artefactos confirmados en Git, verifica origen y hashes, normaliza LF/CRLF y rechaza referencias externas y entradas/respuestas sin tipos. `api:check` no modifica archivos ni consulta la red; CI obtiene el backend por la revisión del lock.
 - Autenticación móvil: refresh compartido entre peticiones concurrentes, reintento único ligado a la sesión original, credenciales inmutables por intento y rechazo de respuestas tardías tras logout/cambio de cuenta. Las escrituras SecureStore están serializadas y el logout borra las credenciales locales antes de esperar al servidor.
 - Errores de login/logout visibles sin promesas rechazadas sin manejar; protección del estado de usuario frente a inicializaciones y consultas de perfil obsoletas. Los fallos temporales de refresh conservan credenciales; los rechazos definitivos y fallos de persistencia del token rotado las invalidan.
 - Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
@@ -28,20 +29,20 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 
 ## Última verificación local
 
-- Backend: 47 suites / 244 pruebas unitarias, lint, build y comprobación de tipos de tests/scripts correctos.
+- Backend: 52 suites / 293 pruebas unitarias, lint, build, tipos de tests/scripts y `openapi:check` correctos.
 - Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
-- Móvil: 16 suites / 77 pruebas correctas, lint y tipos correctos; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release). Incluye autenticación, SQL SQLite real, migración v1 poblada y rollback, reapertura de un proceso JS simulado, cambio de cuenta con escritura pendiente, catálogo paginado y medios bajo demanda.
+- Móvil: la base anterior tenía 16 suites / 77 pruebas, lint, tipos y exportaciones Android/iOS correctos. La adaptación al contrato canónico y la recuperación sin pérdida de campos se están verificando; no hay todavía prueba en dispositivo ni APK release.
 - Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
-- Regeneración sin diferencias de cada snapshot OpenAPI por separado. Todavía no existe una comprobación cruzada backend/clientes.
+- `api:verify-backend` correcto contra `c595451`; tres pruebas del cliente compartido correctas, incluidos registro con campos opcionales, paginación y errores normalizados. El importador pasó sus 30 regresiones iniciales y las nuevas pruebas de entradas sin tipos; la ejecución conjunta ampliada está en curso.
 - No ejecutados: PostgreSQL/Supertest, Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
 
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
 
-- Unificar la fuente OpenAPI: el snapshot generado por Nest y el YAML consumido por los clientes aún son distintos. Completar respuestas DTO y hacer que CI detecte diferencias entre repositorios.
+- Ejecutar la nueva CI cruzada en GitHub tras publicar primero el commit del backend fijado por el lock. La fuente y la generación ya están unificadas localmente; falta comprobar el flujo remoto completo.
 - Revisar todos los consumidores web restantes: no basta con que TypeScript compile; todavía hay contratos antiguos en pantallas y calendario.
-- El catálogo móvil ya usa `q/page`, pero falta comprobar el contrato completo de extremo a extremo contra PostgreSQL y sustituir el YAML manual por la fuente única del backend.
+- El catálogo móvil ya usa `q/page` y el contrato canónico; falta comprobar el contrato completo de extremo a extremo contra PostgreSQL.
 - Ejecutar integración/Supertest y migraciones sobre PostgreSQL aislado. No se ha configurado `TEST_DATABASE_URL` local ni ejecutado sobre datos reales.
 - Ejecutar Playwright y Maestro; los archivos y jobs existen pero no prueban por sí mismos que los escenarios pasen.
 
@@ -70,6 +71,6 @@ La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transit
 
 ## Preservación de datos y límites
 
-No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `4286215` y backend hasta `726d6fb`, incluido el punto de control del catálogo aún en desarrollo. La corrección posterior de pantalla, medios, migración y documentación OpenAPI se conserva localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
+No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `a7cfe38` y backend hasta `b2407c4`, incluido el punto de control OpenAPI aún en desarrollo. Las correcciones posteriores se conservan localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
 
-Las configuraciones de CI deben revisarse al publicar ambas ramas: el job frontend que obtiene `EVRY-Backend` usa su rama predeterminada, por lo que necesita que los cambios compatibles del backend estén disponibles allí o un ref explícito coordinado.
+El job frontend obtiene `EVRY-Backend` por el commit exacto de `packages/api-client/openapi/backend.lock.json`. Al publicar, ese commit debe existir primero en el remoto backend. Si el repositorio es privado, configure un token de lectura cruzada mediante `EVRY_REPOSITORY_TOKEN`.

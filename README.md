@@ -38,7 +38,30 @@ npm.cmd run expo:doctor
 npm.cmd run export:mobile
 ```
 
-`test` ejecuta las suites de todos los workspaces, incluida accesibilidad web. `api:check` regenera los tipos OpenAPI y falla si el resultado no está confirmado.
+`test` ejecuta las suites de todos los workspaces, incluida accesibilidad web. `api:check` verifica sin modificar archivos que el snapshot y los tipos coincidan con su revisión fijada del backend. `api:test` prueba el importador con repositorios Git temporales.
+
+## Actualizar el contrato API
+
+La única fuente es `openapi/evry-v1.json` generado por Nest en EVRY-Backend. No edite el snapshot JSON, `backend.lock.json` ni `src/schema.ts` a mano.
+
+1. En el backend, cambie los DTO/controladores y sus pruebas, ejecute `npm.cmd run openapi:generate` y confirme la implementación junto con `openapi/evry-v1.json` y `openapi/client.generated.ts`.
+2. Con el checkout del backend limpio, importe desde el frontend:
+
+   ```powershell
+   npm.cmd run api:sync -- --backend C:\ruta\EVRY-Backend
+   npm.cmd run api:verify-backend -- --backend C:\ruta\EVRY-Backend
+   npm.cmd run api:check
+   npm.cmd run type-check
+   npm.cmd run test
+   ```
+
+3. Confirme el snapshot, el lock y los tipos junto con las adaptaciones web/móvil. Cuando se autorice publicar, suba primero el commit del backend y después el frontend: CI obtiene exactamente la revisión del lock, no la rama predeterminada.
+
+`api:generate` restaura únicamente los tipos a partir del snapshot fijado. `api:check` no consulta la red y rechaza referencias externas; la importación lee los artefactos del commit, no archivos ignorados ni reemplazos locales. Los finales de línea LF/CRLF son equivalentes. `api:verify-backend` requiere el checkout mediante `--backend` o `EVRY_BACKEND_ROOT`.
+
+Los dos generadores usan `defaultNonNullable: false` para conservar campos de entrada opcionales aunque tengan un valor por defecto en el servidor; la [guía de migración de openapi-typescript](https://openapi-ts.dev/migration-guide) explica el cambio de comportamiento de esa opción. Los campos obligatorios de respuesta siguen definidos por `required` en los DTO.
+
+Si el backend es privado, configure `EVRY_REPOSITORY_TOKEN` en GitHub Actions con acceso de lectura a ese repositorio. El token del repositorio frontend no concede acceso automático a otro repositorio privado. No guarde credenciales en archivos del proyecto.
 
 Ejecute `type-check` y `build` en ese orden y de forma secuencial. Desarrollo usa `.next-dev` y producción usa `.next`; no se deben mezclar ni versionar esos directorios, igual que `coverage` y los artefactos de Playwright.
 

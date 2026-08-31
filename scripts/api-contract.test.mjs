@@ -236,6 +236,28 @@ test('accepts concrete local response references, composed records and typed dic
   assert.equal(checked.status, 0, checked.stderr);
 });
 
+test('rejects untyped request parameters and bodies even when the response is typed', async (t) => {
+  const { front, back } = await workspace(t);
+  for (const kind of ['parameter', 'body']) {
+    await t.test(kind, async () => {
+      const document = fixture();
+      const operation = document.paths['/api/v1/things'].get;
+      if (kind === 'parameter') {
+        operation.parameters = [{ name: 'page', in: 'query', schema: { type: 'object' } }];
+      } else {
+        operation.requestBody = { content: { 'application/json': { schema: {} } } };
+      }
+      await writeFile(join(back, 'openapi/evry-v1.json'), `${JSON.stringify(document)}\n`);
+      await writeFile(join(back, 'openapi/client.generated.ts'), astToString(await openapiTS(document)));
+      git(back, 'add', '.');
+      git(back, 'commit', '-m', `Untyped ${kind}`);
+      const result = run(front, 'sync', back);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /input schema/);
+    });
+  }
+});
+
 test('rejects external references before offline checks can perform network requests', async (t) => {
   const { front, back } = await workspace(t);
   assert.equal(run(front, 'sync', back).status, 0);

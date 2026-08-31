@@ -10,12 +10,91 @@ const contractDir = join(root, 'packages/api-client/openapi');
 const documentPath = join(contractDir, 'evry-v1.json');
 const lockPath = join(contractDir, 'backend.lock.json');
 const clientPath = join(root, 'packages/api-client/src/schema.ts');
+const lf = (value) => value.replace(/\r\n/g, '\n');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
-const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const gitBytes = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+const git = (cwd, ...args) => gitBytes(cwd, ...args).trim();
 const fail = (message) => { throw new Error(message); };
+
+function canonicalOrigin(origin) {
+  const scp = /^git@github\.com:(.+)$/.exec(origin);
+  if (scp) return scp[1].replace(/\/$/, '').replace(/\.git$/, '') === repository;
+  try {
+    const url = new URL(origin);
+    return ['https:', 'ssh:'].includes(url.protocol) && url.hostname === 'github.com'
+      && !url.port && !url.search && !url.hash
+      && url.pathname.replace(/^\//, '').replace(/\/$/, '').replace(/\.git$/, '') === repository;
+  } catch { return false; }
+}
+
+function localReference(document, ref) {
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) fail('Non-local OpenAPI reference is forbidden.');
+  let value = document;
+  for (const token of ref.slice(2).split('/')) {
+    const key = decodeURIComponent(token).replace(/~1/g, '/').replace(/~0/g, '~');
+    if (!value || typeof value !== 'object' || !Object.hasOwn(value, key)) fail(`Missing local OpenAPI reference: ${ref}`);
+    value = value[key];
+  }
+  return value;
+}
+
+function validateReferences(document, value = document) {
+  if (!value || typeof value !== 'object') return;
+  if (Object.hasOwn(value, 'externalValue')) fail('External OpenAPI examples are forbidden.');
+  if (Object.hasOwn(value, '$ref')) localReference(document, value.$ref);
+  for (const child of Object.values(value)) validateReferences(document, child);
+}
+
+// Explicit arbitrary JSON is legitimate for legacy database JSON fields, but
+// cannot stand in for an undocumented successful response or unknown property.
+function isJsonValue(schema) {
+  const variants = schema.oneOf ?? schema.anyOf;
+  return Array.isArray(variants) && variants.length === 5
+    && ['string', 'number', 'boolean'].every((type) => variants.some((item) => item.type === type))
+    && variants.some((item) => item.type === 'object' && item.additionalProperties === true)
+    && variants.some((item) => item.type === 'array' && item.items && Object.keys(item.items).length === 0);
+}
+
+function typedSchema(document, schema, refs = new Map(), depth = 0) {
+  if (!schema || typeof schema !== 'object') return false;
+  if (schema.$ref) {
+    if (refs.has(schema.$ref)) return depth > refs.get(schema.$ref);
+    return typedSchema(document, localReference(document, schema.$ref), new Map(refs).set(schema.$ref, depth), depth);
+  }
+  if (depth > 0 && isJsonValue(schema)) return true;
+  const compositions = ['allOf', 'oneOf', 'anyOf'].filter((key) => schema[key]);
+  if (compositions.length) {
+    return compositions.every((key) => Array.isArray(schema[key]) && schema[key].length
+      && schema[key].every((child) => typedSchema(document, child, refs, depth)))
+      && Object.values(schema.properties ?? {}).every((child) => typedSchema(document, child, refs, depth + 1));
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length) return true;
+  if (['string', 'number', 'integer', 'boolean', 'null'].includes(schema.type)) return true;
+  if (schema.type === 'array') return typedSchema(document, schema.items, refs, depth + 1);
+  if (schema.type === 'object') {
+    const fields = Object.values(schema.properties ?? {});
+    return (fields.length > 0 && fields.every((child) => typedSchema(document, child, refs, depth + 1)))
+      || (!fields.length && schema.additionalProperties === false)
+      || (!fields.length && typedSchema(document, schema.additionalProperties, refs, depth + 1));
+  }
+  return false;
+}
+
+function responseSchema(document, response, refs = new Set()) {
+  if (!response?.$ref) return response?.content?.['application/json']?.schema;
+  if (refs.has(response.$ref)) return undefined;
+  return responseSchema(document, localReference(document, response.$ref), new Set(refs).add(response.$ref));
+}
+
+function parameterSchema(document, parameter, refs = new Set()) {
+  if (!parameter?.$ref) return parameter?.schema;
+  if (refs.has(parameter.$ref)) return undefined;
+  return parameterSchema(document, localReference(document, parameter.$ref), new Set(refs).add(parameter.$ref));
+}
 
 function validate(document) {
   if (!document.openapi?.startsWith('3.') || !Object.keys(document.paths ?? {}).length) fail('Missing OpenAPI 3 paths.');
+  validateReferences(document);
   const ids = new Set();
   for (const [path, item] of Object.entries(document.paths)) {
     if (!path.startsWith('/api/v1/')) fail(`Unexpected unversioned path: ${path}`);
@@ -24,10 +103,16 @@ function validate(document) {
       if (!operation) continue;
       if (!operation.operationId || ids.has(operation.operationId)) fail(`Missing or duplicated operationId: ${method} ${path}`);
       ids.add(operation.operationId);
+      for (const parameter of [...(item.parameters ?? []), ...(operation.parameters ?? [])]) {
+        if (!typedSchema(document, parameterSchema(document, parameter))) fail(`Missing input schema: ${method} ${path} parameter`);
+      }
+      if (operation.requestBody && !typedSchema(document, responseSchema(document, operation.requestBody))) {
+        fail(`Missing input schema: ${method} ${path} request body`);
+      }
       const success = Object.entries(operation.responses ?? {}).filter(([status]) => /^2\d\d$/.test(status));
       if (!success.length) fail(`Missing success schema: ${method} ${path}`);
       for (const [status, response] of success) {
-        if (status !== '204' && !response.content?.['application/json']?.schema && !response.$ref) {
+        if (status !== '204' && !typedSchema(document, responseSchema(document, response))) {
           fail(`Missing success schema: ${method} ${path} ${status}`);
         }
       }
@@ -38,13 +123,13 @@ function validate(document) {
 async function generate(bytes) {
   const document = JSON.parse(bytes);
   validate(document);
-  return astToString(await openapiTS(document));
+  return astToString(await openapiTS(document, { defaultNonNullable: false }));
 }
 
 async function local() {
   const lock = JSON.parse(await readFile(lockPath, 'utf8'));
   if (lock.repository !== repository || !/^[a-f0-9]{40}$/.test(lock.revision)) fail('Invalid backend revision lock.');
-  const bytes = await readFile(documentPath, 'utf8');
+  const bytes = lf(await readFile(documentPath, 'utf8'));
   if (sha256(bytes) !== lock.documentSha256) fail('Copied OpenAPI document does not match its locked hash; use api:sync.');
   return { lock, bytes };
 }
@@ -52,14 +137,17 @@ async function local() {
 async function source(backend) {
   if (!backend) fail('Pass --backend <checkout> or set EVRY_BACKEND_ROOT.');
   const cwd = resolve(backend);
-  const origin = git(cwd, 'remote', 'get-url', 'origin').replace(/\.git$/, '').replace(/\/$/, '');
-  if (!origin.endsWith(`github.com/${repository}`) && !origin.endsWith(`github.com:${repository}`)) fail('Unexpected backend repository origin.');
+  if (!canonicalOrigin(git(cwd, 'remote', 'get-url', 'origin'))) fail('Unexpected backend repository origin.');
   if (git(cwd, 'status', '--porcelain')) fail('Backend has uncommitted changes; commit generated contract and implementation before syncing.');
   const revision = git(cwd, 'rev-parse', 'HEAD');
-  const bytes = await readFile(join(cwd, 'openapi/evry-v1.json'), 'utf8');
+  const committed = (path) => {
+    try { return lf(gitBytes(cwd, 'show', `${revision}:${path}`)); }
+    catch { fail(`Missing committed backend artifact: ${path}`); }
+  };
+  const bytes = committed('openapi/evry-v1.json');
   const generated = await generate(bytes);
-  const sourceClient = await readFile(join(cwd, 'openapi/client.generated.ts'), 'utf8');
-  if (sourceClient.replace(/\r\n/g, '\n') !== generated) fail('Backend generated client differs from its OpenAPI schema.');
+  const sourceClient = committed('openapi/client.generated.ts');
+  if (sourceClient !== generated) fail('Backend generated client differs from its OpenAPI schema.');
   return { revision, bytes, generated };
 }
 
@@ -89,7 +177,7 @@ async function main() {
     await writeFile(clientPath, generated);
     return;
   }
-  if ((await readFile(clientPath, 'utf8')).replace(/\r\n/g, '\n') !== generated) fail('Generated client drift; run api:generate and commit it.');
+  if (lf(await readFile(clientPath, 'utf8')) !== generated) fail('Generated client drift; run api:generate and commit it.');
   if (command === 'verify-backend') {
     const data = await source(backend);
     if (data.revision !== lock.revision) fail('Backend revision differs from the pinned source.');

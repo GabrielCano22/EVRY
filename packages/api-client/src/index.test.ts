@@ -26,3 +26,17 @@ it('preserves normalized error bodies and HTTP status for both platform consumer
   expect(result.response.status).toBe(400);
   expect(result.error).toEqual(failure);
 });
+
+it('allows registration without optional server-defaulted fields', async () => {
+  let sent: unknown;
+  vi.stubGlobal('fetch', async (request: Request) => {
+    sent = await request.json();
+    return Response.json({ accessToken: 'registered-token' }, { status: 201 });
+  });
+  const client = createEvryApiClient('https://api.example.com/api/v1', () => null);
+  const result = await client.POST('/auth/register', {
+    body: { email: 'person@example.invalid', password: 'long-test-password', name: 'Persona' },
+  });
+  expect(sent).toEqual({ email: 'person@example.invalid', password: 'long-test-password', name: 'Persona' });
+  expect(result.data).toEqual({ accessToken: 'registered-token' });
+});
