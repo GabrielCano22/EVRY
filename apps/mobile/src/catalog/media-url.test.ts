@@ -10,5 +10,11 @@ describe('mediaUrl', () => {
 
   it('returns null when the catalog has no media', () => {
     expect(mediaUrl(null, 'https://api.example/api/v1')).toBeNull();
+    expect(mediaUrl('   ', 'https://api.example/api/v1')).toBeNull();
+  });
+
+  it('resolves raw catalog paths under the backend media route', () => {
+    expect(mediaUrl('images/1.jpg', 'https://api.example/api/v1')).toBe('https://api.example/media/exercises/images/1.jpg');
+    expect(mediaUrl('videos/1.gif', 'https://api.example/api/v1')).toBe('https://api.example/media/exercises/videos/1.gif');
   });
 });

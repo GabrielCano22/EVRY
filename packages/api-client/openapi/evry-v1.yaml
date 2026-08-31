@@ -585,6 +585,7 @@ components:
         target: { type: [string, 'null'] }
         bodyPart: { type: [string, 'null'] }
         equipmentLabel: { type: [string, 'null'] }
+        attribution: { type: [string, 'null'] }
         isCustom: { type: boolean }
     Routine:
       type: object

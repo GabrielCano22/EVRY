@@ -13,6 +13,12 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - Almacenamiento móvil por cuenta y servidor: todas las operaciones SQLite reciben un propietario explícito y usan una base con nombre derivado mediante SHA-256. Las escrituras pendientes y los acuses de sincronización conservan ese propietario, incluso después de un cambio de cuenta.
 - Reapertura offline con identidad previamente validada por `/users/me` y guardada en SecureStore. El estado de entrenamiento y TanStack Query se reinician al cambiar de sesión; un rechazo definitivo del servidor invalida también el estado visible.
 - El refresh token queda asociado a su servidor de origen; no se envía a otro entorno. Los tokens anteriores sin información de origen requieren un nuevo login, sin borrar entrenamientos.
+- Catálogo móvil con `q/page`, páginas de hasta 30 ejercicios y búsqueda local acotada en SQLite. La pantalla distingue resultados del servidor, copia local desactualizada, vacío, carga y error recuperable; cancelar o rechazar una consulta no se convierte en una lista vacía.
+- Rutinas en caché reemplazadas transaccionalmente por la respuesta completa del servidor, incluida la lista vacía. Los fallos de almacenamiento se propagan y no se confunden con fallos de red.
+- Miniaturas JPG en el selector, GIF solo tras pulsar reproducir, URLs del servidor/CDN respetadas y avisos de atribución visibles en la ficha.
+- Migración SQLite v1→v2 con índice de búsqueda y metadatos de caché: ensayada sobre 205 ejercicios y datos de sesión, series, cola, rutinas, mapeos y medios. Un fallo durante el índice revierte la transacción sin modificar esos datos; se verificó reintento tras reparar el registro de caché inválido.
+- Colas de escritura separadas por conexión SQLite: se mantiene la serialización dentro de una cuenta, sin bloquear la apertura de otra cuenta por una escritura demorada.
+- Respuesta del catálogo documentada con DTO real en Nest/OpenAPI, incluidos paginación, multimedia y atribución; prueba de generación desde el controlador real. Esto no unifica todavía la fuente de todos los contratos.
 - Autenticación móvil: refresh compartido entre peticiones concurrentes, reintento único ligado a la sesión original, credenciales inmutables por intento y rechazo de respuestas tardías tras logout/cambio de cuenta. Las escrituras SecureStore están serializadas y el logout borra las credenciales locales antes de esperar al servidor.
 - Errores de login/logout visibles sin promesas rechazadas sin manejar; protección del estado de usuario frente a inicializaciones y consultas de perfil obsoletas. Los fallos temporales de refresh conservan credenciales; los rechazos definitivos y fallos de persistencia del token rotado las invalidan.
 - Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
@@ -22,9 +28,9 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 
 ## Última verificación local
 
-- Backend: 45 suites / 236 pruebas unitarias, lint y comprobación de tipos de tests/scripts correctos.
+- Backend: 47 suites / 244 pruebas unitarias, lint, build y comprobación de tipos de tests/scripts correctos.
 - Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
-- Móvil: 13 suites / 59 pruebas correctas, lint y tipos correctos; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release). Incluye 24 escenarios de autenticación, SQL SQLite real, reapertura de un proceso JS simulado, cambio de cuenta con escritura pendiente y separación de caché de consultas.
+- Móvil: 16 suites / 77 pruebas correctas, lint y tipos correctos; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release). Incluye autenticación, SQL SQLite real, migración v1 poblada y rollback, reapertura de un proceso JS simulado, cambio de cuenta con escritura pendiente, catálogo paginado y medios bajo demanda.
 - Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
 - Regeneración sin diferencias de cada snapshot OpenAPI por separado. Todavía no existe una comprobación cruzada backend/clientes.
 - No ejecutados: PostgreSQL/Supertest, Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
@@ -35,7 +41,7 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 
 - Unificar la fuente OpenAPI: el snapshot generado por Nest y el YAML consumido por los clientes aún son distintos. Completar respuestas DTO y hacer que CI detecte diferencias entre repositorios.
 - Revisar todos los consumidores web restantes: no basta con que TypeScript compile; todavía hay contratos antiguos en pantallas y calendario.
-- Corregir el contrato del catálogo móvil (`q/page` del servidor frente a `search/cursor` del YAML) y no ocultar fallos HTTP como cachés vacías.
+- El catálogo móvil ya usa `q/page`, pero falta comprobar el contrato completo de extremo a extremo contra PostgreSQL y sustituir el YAML manual por la fuente única del backend.
 - Ejecutar integración/Supertest y migraciones sobre PostgreSQL aislado. No se ha configurado `TEST_DATABASE_URL` local ni ejecutado sobre datos reales.
 - Ejecutar Playwright y Maestro; los archivos y jobs existen pero no prueban por sí mismos que los escenarios pasen.
 
@@ -44,6 +50,7 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - Paridad completa: registro, creación/edición de rutinas, detalle de progreso, edición de ciclo y campos completos de perfil.
 - Validar en dispositivo el aislamiento y la reapertura offline ya cubiertos por pruebas locales. La simulación del proceso JS no prueba todavía el ciclo de vida real de Android/iOS, el almacenamiento del sistema ni la sincronización contra PostgreSQL.
 - Si existe un `evry.db` de una versión anterior, se conserva intacto y sin propietario asignado. La recuperación requiere identificar al propietario y una importación explícita; no se copiarán sus datos automáticamente a la siguiente cuenta.
+- La migración conserva los datos ante una caché malformada, pero aún falta una recuperación de caché dañada orientada al usuario; el ensayo de reparación fue controlado en una base de prueba.
 - Completar feedback de errores al guardar localmente, reconexión y servidor gratuito en arranque frío.
 - Límite explícito y expulsión LRU de miniaturas; actualmente no se descargan GIF en listas pero falta el presupuesto de caché.
 - Pruebas de cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.
@@ -63,6 +70,6 @@ La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transit
 
 ## Preservación de datos y límites
 
-No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `1a160d3` y backend hasta `9be6fce`; los cambios posteriores de autenticación y aislamiento móvil se conservan localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
+No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `4286215` y backend hasta `726d6fb`, incluido el punto de control del catálogo aún en desarrollo. La corrección posterior de pantalla, medios, migración y documentación OpenAPI se conserva localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
 
 Las configuraciones de CI deben revisarse al publicar ambas ramas: el job frontend que obtiene `EVRY-Backend` usa su rama predeterminada, por lo que necesita que los cambios compatibles del backend estén disponibles allí o un ref explícito coordinado.

@@ -517,6 +517,7 @@ export interface components {
             target?: string | null;
             bodyPart?: string | null;
             equipmentLabel?: string | null;
+            attribution?: string | null;
             isCustom?: boolean;
         };
         Routine: {
@@ -829,6 +830,11 @@ export interface operations {
                 q?: string;
                 page?: number;
                 limit?: number;
+                muscleGroup?: "CHEST" | "BACK" | "SHOULDERS" | "BICEPS" | "TRICEPS" | "FOREARMS" | "CORE" | "QUADS" | "HAMSTRINGS" | "GLUTES" | "CALVES" | "FULL_BODY" | "CARDIO";
+                equipment?: "BARBELL" | "DUMBBELL" | "MACHINE" | "CABLE" | "BODYWEIGHT" | "KETTLEBELL" | "BAND" | "OTHER";
+                category?: string;
+                target?: string;
+                tag?: string;
             };
             header?: never;
             path?: never;
