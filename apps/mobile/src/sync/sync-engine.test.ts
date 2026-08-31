@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import type { components } from '@evry/api-client';
 import { isCurrentMobileSession, syncWorkoutWithRefresh } from '../api/client';
 import { markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows } from '../db/database';
 import { syncPendingWorkouts } from './sync-engine';
@@ -11,6 +12,12 @@ jest.mock('../db/database', () => ({
 
 const row = (id: number) => ({ id, syncId: `sync-${id}`, workoutClientId: 'workout-1', payload: JSON.stringify({ syncId: `sync-${id}` }), attempts: 0 });
 const session = { userId: 'user-a', serverUrl: 'https://api.example.com/api/v1', version: 1 };
+const canonicalWorkout = (revision: number): components['schemas']['SyncCanonicalWorkout'] => ({
+  id: 'server-1', userId: 'user-a', name: 'Fuerza', startedAt: '2026-08-30T10:00:00.000Z',
+  endedAt: null, cancelledAt: null, status: 'ACTIVE', clientId: 'workout-1', lastSyncId: null,
+  revision, cyclePhase: null, notes: null, routineId: null,
+  createdAt: '2026-08-30T10:00:00.000Z', updatedAt: '2026-08-30T10:00:00.000Z', sets: [], routine: null,
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -44,7 +51,7 @@ it('drains edits queued during a sync and shares one in-flight operation', async
     data: {
       revision: 2,
       mapping: { workout: { clientId: 'workout-1', serverId: 'server-1' }, sets: [] },
-      workout: { id: 'server-1', name: 'Fuerza', status: 'ACTIVE', revision: 2, sets: [], startedAt: '2026-08-30T10:00:00.000Z' },
+      workout: canonicalWorkout(2),
     },
   });
   const first = syncPendingWorkouts(session);
@@ -76,7 +83,7 @@ it('honors a sync request arriving while an empty queue read is completing', asy
     data: {
       revision: 1,
       mapping: { workout: { clientId: 'workout-1', serverId: 'server-1' }, sets: [] },
-      workout: { id: 'server-1', name: 'Fuerza', status: 'ACTIVE', revision: 1, sets: [], startedAt: '2026-08-30T10:00:00.000Z' },
+      workout: canonicalWorkout(1),
     },
   });
   await syncPendingWorkouts(session);

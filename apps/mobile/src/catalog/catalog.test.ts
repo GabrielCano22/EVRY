@@ -23,14 +23,28 @@ let catalog: typeof Catalog;
 let session: Api.MobileSession;
 let http: jest.Mock<Promise<Response>, [Request]>;
 const originalFetch = globalThis.fetch;
-const exercise = { id: 'exercise-1', name: 'Sentadilla', muscleGroup: 'QUADS', equipment: 'BARBELL', imagePath: 'images/1.jpg', gifPath: 'videos/1.gif', target: 'Cuádriceps', bodyPart: 'Piernas', equipmentLabel: 'Barra' };
-const routine = { id: 'routine-1', name: 'Piernas', exercises: [] };
+const exercise: Catalog.Exercise = {
+  id: 'exercise-1', sourceId: null, name: 'Sentadilla', muscleGroup: 'QUADS', equipment: 'BARBELL',
+  category: null, imagePath: 'images/1.jpg', gifPath: 'videos/1.gif', target: 'Cuádriceps',
+  bodyPart: 'Piernas', secondaryMuscles: [], equipmentLabel: 'Barra', isCustom: false,
+  ownerId: null, isCompound: true, tags: [], description: null, mediaId: null, attribution: null,
+  imageUrl: null, gifUrl: null,
+};
+const routine: Catalog.Routine = {
+  id: 'routine-1', userId: 'test-user', name: 'Piernas', dayOfWeek: null, notes: null,
+  createdAt: '2026-08-30T10:00:00.000Z', updatedAt: '2026-08-30T10:00:00.000Z', exercises: [],
+};
+const currentUser: Api.CurrentUser = {
+  id: 'test-user', name: 'Test', email: 'test@example.com', biologicalSex: 'PREFER_NOT_SAY',
+  birthDate: null, goals: [], trackCycle: false, avgCycleLen: 28, avgPeriodLen: 5,
+  createdAt: '2026-08-30T10:00:00.000Z',
+};
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 beforeEach(async () => {
   http = jest.fn(async (request: Request) => request.url.endsWith('/login')
     ? json({ accessToken: 'access-test', refreshToken: 'refresh-test' })
-    : json({ id: 'test-user', name: 'Test', email: 'test@example.com', trackCycle: false }));
+    : json(currentUser));
   globalThis.fetch = http as typeof fetch;
   jest.isolateModules(() => {
     api = jest.requireActual('../api/client');

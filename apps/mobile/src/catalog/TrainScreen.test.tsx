@@ -3,12 +3,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TrainScreen from '../../app/(tabs)/train';
 import { useSessionStore } from '../auth/session-store';
 import { useTrainingStore } from '../training/training-store';
-import { loadExercises, loadRoutines, type ExerciseResult } from './catalog';
+import { loadExercises, loadRoutines, type Exercise, type ExerciseResult } from './catalog';
 
 jest.mock('./catalog', () => ({ loadExercises: jest.fn(), loadRoutines: jest.fn() }));
 
 let queryClient: QueryClient;
-const items = Array.from({ length: 31 }, (_, index) => ({ id: `exercise-${index + 1}`, name: `Ejercicio ${index + 1}`, imagePath: `images/${index + 1}.jpg`, gifPath: `videos/${index + 1}.gif` }));
+const exercise = (index: number): Exercise => ({
+  id: `exercise-${index}`, sourceId: null, name: `Ejercicio ${index}`, muscleGroup: 'QUADS', equipment: 'BARBELL',
+  category: null, imagePath: `images/${index}.jpg`, gifPath: `videos/${index}.gif`, target: null, bodyPart: null,
+  secondaryMuscles: [], equipmentLabel: null, isCustom: false, ownerId: null, isCompound: true, tags: [],
+  description: null, mediaId: null, attribution: null, imageUrl: null, gifUrl: null,
+});
+const items = Array.from({ length: 31 }, (_, index) => exercise(index + 1));
 const result = (page = 1): ExerciseResult => ({ items: items.slice((page - 1) * 30, page * 30), page, limit: 30, total: 31, hasMore: page === 1, source: 'server', stale: false, notice: null, updatedAt: '2026-08-30T10:00:00Z' });
 
 beforeEach(() => {

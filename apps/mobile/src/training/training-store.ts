@@ -243,8 +243,8 @@ function syncPayload(workout: LocalWorkout, syncId: string): SyncWorkoutInput {
     ...(workout.endedAt ? { endedAt: workout.endedAt } : {}),
     ...(workout.cancelledAt ? { cancelledAt: workout.cancelledAt } : {}),
     status: workout.status,
-    ...(workout.notes ? { notes: workout.notes } : {}),
-    ...(workout.routineId ? { routineId: workout.routineId } : {}),
+    notes: workout.notes,
+    routineId: workout.routineId ?? null,
     sets: workout.sets.map((item) => ({
       clientId: item.clientId,
       baseRevision: item.revision,

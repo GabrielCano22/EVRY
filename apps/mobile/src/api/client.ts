@@ -27,8 +27,17 @@ export interface MobileSession extends DatabaseOwner { readonly version: number 
 export type SyncWorkoutInput = components['schemas']['SyncWorkoutInput'];
 export type SyncWorkoutResult = components['schemas']['SyncWorkoutResult'];
 export type SyncConflictBody = ApiErrorBody & {
-  serverVersion?: components['schemas']['Workout'] | null;
+  serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null;
 };
+
+function isSyncConflictBody(error: unknown): error is SyncConflictBody {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && typeof error.code === 'string' &&
+    'message' in error && typeof error.message === 'string' &&
+    'retryable' in error && typeof error.retryable === 'boolean' &&
+    'requestId' in error && typeof error.requestId === 'string' &&
+    'serverVersion' in error;
+}
 
 function assertMobileSession(expected: number): void {
   if (expected !== sessionVersion) {
@@ -265,7 +274,7 @@ export async function syncWorkoutWithRefresh(
   const response = await withMobileAuth((client) => client.POST('/sync/workouts', { body }), session);
   return {
     data: response.data,
-    error: response.error as SyncConflictBody | undefined,
+    error: isSyncConflictBody(response.error) ? response.error : undefined,
     status: response.response.status,
   };
 }

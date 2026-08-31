@@ -25,7 +25,7 @@ export interface SyncReview {
   workoutClientId: string;
   workoutName: string;
   errorCode: string;
-  serverVersion: components['schemas']['Workout'] | null;
+  serverVersion: components['schemas']['SyncCanonicalWorkout'] | null;
 }
 
 const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
@@ -296,7 +296,7 @@ export async function markSyncFailure(
   workoutClientId: string,
   state: Extract<SyncQueueState, 'pending' | 'requires_review'>,
   errorCode: string,
-  serverVersion?: components['schemas']['Workout'] | null,
+  serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null,
 ): Promise<void> {
   const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
@@ -336,7 +336,7 @@ export async function syncReviews(owner: DatabaseOwner): Promise<SyncReview[]> {
   );
   return rows.map((row) => {
     const workout = JSON.parse(row.payload) as LocalWorkout;
-    let error: { code?: string; serverVersion?: components['schemas']['Workout'] | null } = {};
+    let error: { code?: string; serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null } = {};
     try { error = JSON.parse(row.lastError ?? '{}') as typeof error; } catch { error = { code: row.lastError ?? undefined }; }
     return {
       workoutClientId: row.workoutClientId,
@@ -550,7 +550,7 @@ export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: 
   );
   const total = count?.total ?? 0;
   return {
-    items: rows.map(({ payload }) => JSON.parse(payload) as components['schemas']['Exercise']),
+    items: rows.map(({ payload }) => JSON.parse(payload) as components['schemas']['ExerciseListItemDto']),
     page, limit, total, hasMore: page * limit < total,
     ...await cacheAvailability(database, 'exercise_cache'),
   };

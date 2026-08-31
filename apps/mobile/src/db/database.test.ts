@@ -1,4 +1,5 @@
-import { enqueueWorkout, getDatabase, loadActiveWorkout, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows } from './database';
+import type { components } from '@evry/api-client';
+import { continueServerWorkout, enqueueWorkout, getDatabase, loadActiveWorkout, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows, syncReviews } from './database';
 import type { LocalWorkout } from '../training/workout-domain';
 import type { SyncWorkoutInput } from '../api/client';
 import * as SQLite from 'expo-sqlite';
@@ -16,6 +17,25 @@ const bob = { userId: 'user-b', serverUrl: 'https://api.example.com/api/v1' };
 const workout: LocalWorkout = {
   clientId: 'local-workout', revision: 0, status: 'ACTIVE', name: 'Fuerza',
   startedAt: '2026-08-30T10:00:00.000Z', notes: null, sets: [], deletedSetClientIds: [],
+};
+const serverVersion: components['schemas']['SyncCanonicalWorkout'] = {
+  id: 'server-workout', userId: 'user-a', name: 'Fuerza del servidor', startedAt: '2026-08-30T10:00:00.000Z',
+  endedAt: null, cancelledAt: null, status: 'ACTIVE', clientId: null, lastSyncId: 'server-sync', revision: 4,
+  cyclePhase: null, notes: 'Controla el descenso', routineId: 'routine-1',
+  createdAt: '2026-08-30T10:00:00.000Z', updatedAt: '2026-08-30T10:30:00.000Z', routine: null,
+  sets: [{
+    id: 'server-set', workoutId: 'server-workout', exerciseId: 'exercise-1', order: 0,
+    weightKg: 50, reps: 5, durationS: null, rpe: 7, isWarmup: true,
+    completedAt: '2026-08-30T10:25:00.000Z', clientMutationId: 'mutation-1', clientId: null,
+    revision: 2, techniqueStable: false, updatedAt: '2026-08-30T10:25:00.000Z',
+    exercise: {
+      id: 'exercise-1', sourceId: null, name: 'Sentadilla', muscleGroup: 'QUADS', equipment: 'BARBELL',
+      category: null, bodyPart: null, target: null, secondaryMuscles: [], equipmentLabel: null,
+      isCustom: false, ownerId: null, isCompound: true, tags: [], description: null, mediaId: null,
+      imagePath: null, gifPath: null, attribution: null, instructions: null, instructionSteps: null,
+      createdAt: '2026-08-30T10:00:00.000Z',
+    },
+  }],
 };
 function payload(syncId: string, name = 'Fuerza'): SyncWorkoutInput {
   return { clientId: workout.clientId, syncId, baseRevision: 0, status: 'ACTIVE', name, startedAt: workout.startedAt, sets: [], deletedSetClientIds: [] };
@@ -50,6 +70,30 @@ it('replays an uncertain send unchanged before sending a newer edit with the ack
   expect(next.map((row) => row.syncId)).toEqual(['latest']);
   expect(JSON.parse(next[0].payload)).toMatchObject({ baseRevision: 1, name: 'Actualizado' });
   expect(await loadActiveWorkout(alice)).toMatchObject({ revision: 1, name: 'Actualizado' });
+});
+
+it('persists every canonical server field when a conflicted workout is continued', async () => {
+  await enqueueWorkout(alice, workout, 'conflicted-sync', payload('conflicted-sync'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  await markSyncFailure(alice, sent.id, workout.clientId, 'requires_review', 'REVISION_CONFLICT', serverVersion);
+
+  const [review] = await syncReviews(alice);
+  await continueServerWorkout(alice, review);
+
+  expect(await loadActiveWorkout(alice)).toMatchObject({
+    clientId: workout.clientId,
+    revision: 4,
+    notes: 'Controla el descenso',
+    routineId: 'routine-1',
+    sets: [{
+      clientId: 'server-set',
+      isWarmup: true,
+      techniqueStable: false,
+      completedAt: '2026-08-30T10:25:00.000Z',
+    }],
+  });
+  expect(await pendingSyncRows(alice)).toEqual([]);
 });
 
 it('does not expose a newer payload while the same workout has an in-flight send', async () => {

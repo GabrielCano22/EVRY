@@ -2,9 +2,9 @@ import type { components } from '@evry/api-client';
 import { apiError, assertCurrentMobileSession, withMobileAuth, type MobileSession } from '../api/client';
 import { cacheEntities, cachedCollection, cachedExercisePage, replaceCachedRoutines } from '../db/database';
 
-export type Exercise = components['schemas']['Exercise'];
+export type Exercise = components['schemas']['ExerciseListItemDto'];
 export type Routine = components['schemas']['Routine'];
-type ExercisePage = components['schemas']['ExercisePage'];
+type ExercisePage = components['schemas']['ExercisePageDto'];
 
 interface CacheInfo {
   source: 'server' | 'cache';
