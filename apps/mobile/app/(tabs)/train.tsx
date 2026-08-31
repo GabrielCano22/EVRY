@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { API_BASE_URL } from '@/src/api/client';
+import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
 import { mediaUrl } from '@/src/catalog/media-url';
 import { useTrainingStore } from '@/src/training/training-store';
@@ -11,14 +12,15 @@ import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/componen
 import { theme } from '@/src/ui/theme';
 
 export default function TrainScreen() {
+  const session = useSessionStore((state) => state.session)!;
   const [search, setSearch] = useState('');
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [playingGif, setPlayingGif] = useState(false);
   const { data: exercises = [], isError, isLoading, refetch } = useQuery({
     queryKey: ['exercises', search.trim()],
-    queryFn: ({ signal }) => loadExercises({ search, signal }),
+    queryFn: ({ signal }) => loadExercises(session, { search, signal }),
   });
-  const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: loadRoutines });
+  const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: () => loadRoutines(session) });
   const workout = useTrainingStore((state) => state.activeWorkout);
   const syncState = useTrainingStore((state) => state.syncState);
   const error = useTrainingStore((state) => state.error);

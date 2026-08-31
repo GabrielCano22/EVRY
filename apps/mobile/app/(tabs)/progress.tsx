@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { useSessionStore } from '@/src/auth/session-store';
 import { useQuery } from '@tanstack/react-query';
 import type { components } from '@evry/api-client';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { withMobileAuth } from '@/src/api/client';
+import { withMobileAuth, type MobileSession } from '@/src/api/client';
 import { buildOverviewCards, signedMetric } from '@/src/progress/progress-view';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
@@ -18,15 +19,16 @@ const periods: { key: Period; label: string }[] = [
   { key: 'all', label: 'Todo' },
 ];
 
-async function loadOverview(period: Period): Promise<ProgressOverview> {
-  const response = await withMobileAuth((client) => client.GET('/progress/overview', { params: { query: { period } } }));
+async function loadOverview(session: MobileSession, period: Period): Promise<ProgressOverview> {
+  const response = await withMobileAuth((client) => client.GET('/progress/overview', { params: { query: { period } } }), session);
   if (!response.data || response.error) throw new Error('No se pudo cargar el progreso.');
   return response.data;
 }
 
 export default function ProgressScreen() {
+  const session = useSessionStore((state) => state.session)!;
   const [period, setPeriod] = useState<Period>('30d');
-  const query = useQuery({ queryKey: ['progress', period], queryFn: () => loadOverview(period) });
+  const query = useQuery({ queryKey: ['progress', period], queryFn: () => loadOverview(session, period) });
   const overview = query.data;
 
   return (

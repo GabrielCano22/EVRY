@@ -10,6 +10,7 @@ jest.mock('../db/database', () => ({
   archiveRecoveredDraft: jest.fn(), getDatabase: jest.fn(),
 }));
 jest.mock('../sync/sync-engine', () => ({ syncPendingWorkouts: async () => undefined }));
+jest.mock('../api/client', () => ({ isCurrentMobileSession: () => true, onMobileSessionInvalidated: () => () => undefined }));
 
 it('sends a tombstone when a locally unacknowledged set is removed during a request', async () => {
   const workout: LocalWorkout = {
@@ -21,9 +22,9 @@ it('sends a tombstone when a locally unacknowledged set is removed during a requ
       techniqueStable: null, completedAt: '2026-08-30T10:05:00.000Z',
     }],
   };
-  useTrainingStore.setState({ activeWorkout: workout });
+  useTrainingStore.setState({ activeWorkout: workout, ready: true, session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
   await useTrainingStore.getState().deleteSet('set-in-flight');
-  expect(jest.mocked(enqueueWorkout).mock.calls.at(-1)?.[2]).toMatchObject({
+  expect(jest.mocked(enqueueWorkout).mock.calls.at(-1)?.[3]).toMatchObject({
     sets: [], deletedSetClientIds: ['set-in-flight'],
   });
 });

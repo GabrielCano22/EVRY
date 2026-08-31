@@ -10,6 +10,9 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 - API v1 con compatibilidad de rutas, errores normalizados, comprobaciones de salud, configuración obligatoria y límites de frecuencia.
 - Modelo de revisión/clientId y sincronización transaccional; autenticación móvil y refresh web sin token en localStorage.
 - SQLite móvil: sesión y cola persistidas, reintentos con la misma clave, conservación de envíos de resultado incierto, edición concurrente serializada, recuperación de borradores y conflictos explícitos.
+- Almacenamiento móvil por cuenta y servidor: todas las operaciones SQLite reciben un propietario explícito y usan una base con nombre derivado mediante SHA-256. Las escrituras pendientes y los acuses de sincronización conservan ese propietario, incluso después de un cambio de cuenta.
+- Reapertura offline con identidad previamente validada por `/users/me` y guardada en SecureStore. El estado de entrenamiento y TanStack Query se reinician al cambiar de sesión; un rechazo definitivo del servidor invalida también el estado visible.
+- El refresh token queda asociado a su servidor de origen; no se envía a otro entorno. Los tokens anteriores sin información de origen requieren un nuevo login, sin borrar entrenamientos.
 - Autenticación móvil: refresh compartido entre peticiones concurrentes, reintento único ligado a la sesión original, credenciales inmutables por intento y rechazo de respuestas tardías tras logout/cambio de cuenta. Las escrituras SecureStore están serializadas y el logout borra las credenciales locales antes de esperar al servidor.
 - Errores de login/logout visibles sin promesas rechazadas sin manejar; protección del estado de usuario frente a inicializaciones y consultas de perfil obsoletas. Los fallos temporales de refresh conservan credenciales; los rechazos definitivos y fallos de persistencia del token rotado las invalidan.
 - Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
@@ -21,7 +24,7 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 
 - Backend: 45 suites / 236 pruebas unitarias, lint y comprobación de tipos de tests/scripts correctos.
 - Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
-- Móvil: 11 suites / 44 pruebas correctas, lint y tipos correctos; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release). Incluye 18 escenarios de autenticación con el cliente OpenAPI real y únicamente HTTP/SecureStore sustituidos por límites controlados.
+- Móvil: 13 suites / 59 pruebas correctas, lint y tipos correctos; exportaciones Android/iOS verificadas (no equivalen a pruebas en dispositivo ni a un APK release). Incluye 24 escenarios de autenticación, SQL SQLite real, reapertura de un proceso JS simulado, cambio de cuenta con escritura pendiente y separación de caché de consultas.
 - Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
 - Regeneración sin diferencias de cada snapshot OpenAPI por separado. Todavía no existe una comprobación cruzada backend/clientes.
 - No ejecutados: PostgreSQL/Supertest, Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
@@ -39,8 +42,8 @@ Actualizado: 30 de agosto de 2026. Este documento distingue implementación, ver
 ### Móvil
 
 - Paridad completa: registro, creación/edición de rutinas, detalle de progreso, edición de ciclo y campos completos de perfil.
-- Aislar caché/SQLite y cola por usuario; probar cambio de cuenta sin mezclar entrenamientos.
-- Permitir reapertura offline con identidad local validada y distinguir falta de red de credenciales revocadas. El control de sesión en HTTP no sustituye el aislamiento de SQLite, del estado de entrenamiento ni de TanStack Query.
+- Validar en dispositivo el aislamiento y la reapertura offline ya cubiertos por pruebas locales. La simulación del proceso JS no prueba todavía el ciclo de vida real de Android/iOS, el almacenamiento del sistema ni la sincronización contra PostgreSQL.
+- Si existe un `evry.db` de una versión anterior, se conserva intacto y sin propietario asignado. La recuperación requiere identificar al propietario y una importación explícita; no se copiarán sus datos automáticamente a la siguiente cuenta.
 - Completar feedback de errores al guardar localmente, reconexión y servidor gratuito en arranque frío.
 - Límite explícito y expulsión LRU de miniaturas; actualmente no se descargan GIF en listas pero falta el presupuesto de caché.
 - Pruebas de cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.
@@ -60,6 +63,6 @@ La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transit
 
 ## Preservación de datos y límites
 
-No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `1a160d3` y backend hasta `9be6fce`; los cambios posteriores de autenticación móvil se conservan localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
+No se ha reiniciado ni migrado una base real ni desplegado recursos externos. A petición del usuario se publicaron las ramas `codex/evry-optimization`: frontend hasta `1a160d3` y backend hasta `9be6fce`; los cambios posteriores de autenticación y aislamiento móvil se conservan localmente hasta otro push. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
 
 Las configuraciones de CI deben revisarse al publicar ambas ramas: el job frontend que obtiene `EVRY-Backend` usa su rama predeterminada, por lo que necesita que los cambios compatibles del backend estén disponibles allí o un ref explícito coordinado.

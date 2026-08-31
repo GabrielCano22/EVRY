@@ -14,6 +14,8 @@ jest.mock('expo-secure-store', () => {
 });
 
 const refreshKey = 'evry.mobile.refresh-token';
+const profileKey = 'evry.mobile.profile-v1';
+const originKey = 'evry.mobile.token-origin';
 const originalFetch = globalThis.fetch;
 let client: typeof MobileClient;
 let sessionStore: typeof useSessionStore;
@@ -33,6 +35,7 @@ const tokens = (account: string) => ({ accessToken: `access-${account}`, refresh
 
 beforeEach(async () => {
   await SecureStore.deleteItemAsync(refreshKey);
+  await SecureStore.deleteItemAsync(profileKey);
   http = jest.fn();
   globalThis.fetch = http as typeof fetch;
   // Each test represents a fresh app process, with its own in-memory auth state.
@@ -40,6 +43,7 @@ beforeEach(async () => {
     client = jest.requireActual('./client');
     sessionStore = jest.requireActual('../auth/session-store').useSessionStore;
   });
+  await SecureStore.setItemAsync(originKey, client.API_BASE_URL);
 });
 
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -140,6 +144,7 @@ it('never retries an old workout with the credentials of the next account', asyn
       return json(tokens((await request.json()).email === 'first@example.com' ? 'first' : 'second'));
     }
     if (request.url.endsWith('/refresh')) return json(tokens('second'));
+    if (request.url.endsWith('/users/me')) return json({ id: 'user-first', email: 'first@example.com', name: 'First', trackCycle: false });
     workoutHeaders.push(request.headers.get('Authorization'));
     if (workoutHeaders.length === 1) {
       started.resolve();
@@ -148,10 +153,11 @@ it('never retries an old workout with the credentials of the next account', asyn
     return json({ revision: 1 });
   });
   await client.loginMobile('first@example.com', 'password-one');
+  await client.currentUserWithRefresh();
   const sync = client.syncWorkoutWithRefresh({
     syncId: 'batch-a', clientId: 'workout-a', baseRevision: 0, status: 'ACTIVE',
     name: 'Private workout A', startedAt: '2026-08-30T10:00:00.000Z', sets: [], deletedSetClientIds: [],
-  }).catch((error: unknown) => error);
+  }, client.captureMobileSession()).catch((error: unknown) => error);
   await started.promise;
   await client.loginMobile('second@example.com', 'password-two');
   response.resolve(json({ code: 'UNAUTHORIZED', message: 'Expired' }, 401));
@@ -322,4 +328,83 @@ it('removes a partially persisted login when native secure storage reports a wri
   await expect(client.loginMobile('original@example.com', 'password-one')).rejects.toThrow('keychain write failed');
   expect(await SecureStore.getItemAsync(refreshKey)).toBeNull();
   expect(await client.refreshMobileSession()).toBe(false);
+});
+
+it('reopens an already validated account offline after a fresh app process', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
+    id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: true,
+  }));
+  await sessionStore.getState().login('original@example.com', 'password-one');
+  http.mockRejectedValue(new TypeError('Network request failed'));
+  jest.isolateModules(() => {
+    client = jest.requireActual('./client');
+    sessionStore = jest.requireActual('../auth/session-store').useSessionStore;
+  });
+  await sessionStore.getState().initialize();
+  expect(sessionStore.getState()).toMatchObject({
+    status: 'authenticated', offline: true, user: { id: 'user-original', trackCycle: true },
+    session: { userId: 'user-original' },
+  });
+});
+
+it('does not restore a logged-out account offline after restarting the app', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
+    id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: false,
+  }));
+  await sessionStore.getState().login('original@example.com', 'password-one');
+  await sessionStore.getState().logout();
+  http.mockRejectedValue(new TypeError('Network request failed'));
+  jest.isolateModules(() => {
+    client = jest.requireActual('./client');
+    sessionStore = jest.requireActual('../auth/session-store').useSessionStore;
+  });
+  await sessionStore.getState().initialize();
+  expect(sessionStore.getState().user).toBeNull();
+  expect(sessionStore.getState().status).not.toBe('authenticated');
+  expect(await SecureStore.getItemAsync(profileKey)).toBeNull();
+});
+
+it('does not use a cached identity to bypass definitive server rejection', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
+    id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: false,
+  }));
+  await sessionStore.getState().login('original@example.com', 'password-one');
+  http.mockImplementation(async () => json({ code: 'UNAUTHORIZED', message: 'Revoked' }, 401));
+  await sessionStore.getState().initialize();
+  expect(sessionStore.getState()).toMatchObject({ status: 'anonymous', user: null });
+  expect(await SecureStore.getItemAsync(profileKey)).toBeNull();
+});
+
+it('invalidates visible account state when any authenticated request discovers revocation', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
+    id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: false,
+  }));
+  await sessionStore.getState().login('original@example.com', 'password-one');
+  const scope = client.captureMobileSession();
+  http.mockImplementation(async () => json({ code: 'UNAUTHORIZED', message: 'Revoked' }, 401));
+  await client.withMobileAuth((api) => api.GET('/progress/overview'), scope).catch(() => undefined);
+  expect(sessionStore.getState()).toMatchObject({ status: 'anonymous', user: null, session: null });
+});
+
+it('rejects a queued operation captured before a different account logged in', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
+    id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: false,
+  }));
+  await sessionStore.getState().login('original@example.com', 'password-one');
+  const scope = client.captureMobileSession();
+  await client.loginMobile('second@example.com', 'password-two');
+  const sentBefore = http.mock.calls.length;
+  await expect(client.withMobileAuth((api) => api.GET('/routines'), scope)).rejects.toMatchObject({ code: 'SESSION_CHANGED' });
+  expect(http.mock.calls.length).toBe(sentBefore);
+});
+
+it('never sends a refresh token saved for another API environment', async () => {
+  await SecureStore.setItemAsync(refreshKey, 'private-other-environment-token');
+  await SecureStore.setItemAsync(originKey, 'https://other.example.com/api/v1');
+  http.mockResolvedValue(json(tokens('wrong-server')));
+  expect(await client.refreshMobileSession()).toBe(false);
+  expect(http).not.toHaveBeenCalled();
+  expect(await SecureStore.getItemAsync(refreshKey)).toBe('private-other-environment-token');
+  await client.logoutMobile();
+  expect(http).not.toHaveBeenCalled();
 });

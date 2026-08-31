@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
-import type { SyncWorkoutInput } from '../api/client';
+import { isCurrentMobileSession, type MobileSession, type SyncWorkoutInput } from '../api/client';
+import { useSessionStore } from '../auth/session-store';
 import {
   currentSyncState,
   archiveRecoveredDraft,
@@ -17,11 +18,14 @@ import {
 } from './workout-domain';
 
 interface TrainingState {
+  session: MobileSession | null;
+  editVersion: number;
+  reset: () => void;
   ready: boolean;
   activeWorkout: LocalWorkout | null;
   syncState: SyncQueueState;
   error: string | null;
-  initialize: () => Promise<void>;
+  initialize: (session: MobileSession) => Promise<void>;
   startWorkout: (name?: string, routineId?: string) => Promise<void>;
   recoverDraft: (draft: LocalWorkout) => Promise<void>;
   addSet: (exerciseId: string) => Promise<void>;
@@ -34,21 +38,31 @@ interface TrainingState {
 let localWriteQueue: Promise<void> = Promise.resolve();
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
+  session: null,
+  editVersion: 0,
+  reset: () => set({ session: null, ready: false, activeWorkout: null, syncState: 'synced', error: null, editVersion: get().editVersion + 1 }),
   ready: false,
   activeWorkout: null,
   syncState: 'synced',
   error: null,
-  async initialize() {
-    await getDatabase();
-    const activeWorkout = await loadActiveWorkout();
-    set({
-      ready: true,
-      activeWorkout,
-      syncState: await currentSyncState(),
-      error: null,
-    });
+  async initialize(session) {
+    if (!isCurrentMobileSession(session)) return;
+    set({ session, ready: false, activeWorkout: null, error: null, editVersion: get().editVersion + 1 });
+    try {
+      await getDatabase(session);
+      const activeWorkout = await loadActiveWorkout(session);
+      const syncState = await currentSyncState(session);
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
+      set({ ready: true, activeWorkout, syncState, error: null });
+    } catch (error) {
+      if (get().session === session && isCurrentMobileSession(session)) {
+        set({ error: error instanceof Error ? error.message : 'No se pudo abrir el almacenamiento local.' });
+      }
+    }
   },
   async startWorkout(name = 'Entrenamiento libre', routineId) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     if (get().activeWorkout) return;
     const workout: LocalWorkout = {
       clientId: Crypto.randomUUID(),
@@ -61,12 +75,15 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: [],
       deletedSetClientIds: [],
     };
-    set({ activeWorkout: workout, syncState: 'pending', error: null });
-    const syncState = await queueWorkout(workout);
+    set({ editVersion: get().editVersion + 1, activeWorkout: workout, syncState: 'pending', error: null });
+    const syncState = await queueWorkout(session, workout);
+    if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
-    scheduleSync();
+    scheduleSync(session);
   },
   async recoverDraft(draft) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     if (get().activeWorkout) throw new Error('Finaliza la sesión activa antes de recuperar un borrador.');
     const workout: LocalWorkout = {
       ...draft,
@@ -78,13 +95,16 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: draft.sets.map((item) => ({ ...item, clientId: Crypto.randomUUID(), revision: 0 })),
       deletedSetClientIds: [],
     };
-    set({ activeWorkout: workout, syncState: 'pending', error: null });
-    const syncState = await queueWorkout(workout);
-    await archiveRecoveredDraft(draft);
+    set({ editVersion: get().editVersion + 1, activeWorkout: workout, syncState: 'pending', error: null });
+    const syncState = await queueWorkout(session, workout);
+    await archiveRecoveredDraft(session, draft);
+    if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
-    scheduleSync();
+    scheduleSync(session);
   },
   async addSet(exerciseId) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout || workout.status !== 'ACTIVE') return;
     const exerciseSets = workout.sets.filter((item) => item.exerciseId === exerciseId);
@@ -104,24 +124,30 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         completedAt: new Date().toISOString(),
       }],
     };
-    set({ activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(next);
+    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(session, next);
+    if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
-    scheduleSync();
+    scheduleSync(session);
   },
   async updateSet(clientId, changes) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout || workout.status !== 'ACTIVE') return;
     const next = {
       ...workout,
       sets: workout.sets.map((item) => item.clientId === clientId ? { ...item, ...changes } : item),
     };
-    set({ activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(next);
+    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(session, next);
+    if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
-    scheduleSync();
+    scheduleSync(session);
   },
   async deleteSet(clientId) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout || workout.status !== 'ACTIVE') return;
     const removed = workout.sets.find((item) => item.clientId === clientId);
@@ -141,40 +167,67 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       // even when its acknowledgement has not reached this device yet.
       deletedSetClientIds: [...new Set([...workout.deletedSetClientIds, removed.clientId])],
     };
-    set({ activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(next);
+    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
+    const syncState = await queueWorkout(session, next);
+    if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
-    scheduleSync();
+    scheduleSync(session);
   },
   async finishWorkout() {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout) return;
     try {
       const completed = finishLocalWorkout(workout);
-      set({ activeWorkout: null, syncState: 'pending', error: null });
-      const syncState = await queueWorkout(completed);
+      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState: 'pending', error: null });
+      const syncState = await queueWorkout(session, completed);
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
       set({ syncState });
-      scheduleSync();
+      scheduleSync(session);
     } catch (error) {
-      set({ activeWorkout: workout, error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
+      set({ editVersion: get().editVersion + 1, activeWorkout: workout, error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
       throw error;
     }
   },
   async refreshSyncState() {
+    const session = get().session;
+    const version = get().editVersion;
+    if (!session || !isCurrentMobileSession(session)) return;
     await localWriteQueue;
-    set({ activeWorkout: await loadActiveWorkout(), syncState: await currentSyncState() });
+    const activeWorkout = await loadActiveWorkout(session);
+    const syncState = await currentSyncState(session);
+    if (get().session !== session || !isCurrentMobileSession(session) || get().editVersion !== version) return;
+    set({ activeWorkout, syncState });
   },
 }));
 
-async function queueWorkout(workout: LocalWorkout): Promise<SyncQueueState> {
+async function queueWorkout(session: MobileSession, workout: LocalWorkout): Promise<SyncQueueState> {
   const syncId = Crypto.randomUUID();
-  const write = localWriteQueue.then(() => enqueueWorkout(workout, syncId, syncPayload(workout, syncId)));
+  const write = localWriteQueue.then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId)));
   localWriteQueue = write.then(() => undefined, () => undefined);
   return write;
 }
 
-function scheduleSync(): void {
-  void syncPendingWorkouts().finally(() => useTrainingStore.getState().refreshSyncState());
+// Clear visible state synchronously on logout/account change, before React effects.
+useSessionStore.subscribe((state) => {
+  const current = useTrainingStore.getState().session;
+  if (current && state.session !== current) useTrainingStore.getState().reset();
+});
+
+function scheduleSync(session: MobileSession): void {
+  void syncPendingWorkouts(session)
+    .then(() => {
+      if (useTrainingStore.getState().session === session && isCurrentMobileSession(session)) {
+        return useTrainingStore.getState().refreshSyncState();
+      }
+    })
+    .catch((error: unknown) => {
+      if (useTrainingStore.getState().session === session && isCurrentMobileSession(session)) {
+        useTrainingStore.setState({ error: error instanceof Error ? error.message : 'No se pudo sincronizar.' });
+      }
+    });
 }
 
 function syncPayload(workout: LocalWorkout, syncId: string): SyncWorkoutInput {
