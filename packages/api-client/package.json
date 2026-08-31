@@ -7,7 +7,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src"
   },
   "dependencies": {
     "openapi-fetch": "0.14.0"
