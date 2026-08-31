@@ -408,3 +408,44 @@ it('never sends a refresh token saved for another API environment', async () => 
   await client.logoutMobile();
   expect(http).not.toHaveBeenCalled();
 });
+
+async function authenticatedSessionForSync(): Promise<MobileClient.MobileSession> {
+  await client.loginMobile('sync@example.com', 'password-one');
+  await client.currentUserWithRefresh();
+  return client.captureMobileSession();
+}
+
+const syncBody: MobileClient.SyncWorkoutInput = {
+  syncId: 'sync-1', clientId: 'workout-1', baseRevision: 0, status: 'ACTIVE',
+  name: 'Fuerza', startedAt: '2026-08-30T10:00:00.000Z', sets: [], deletedSetClientIds: [],
+};
+
+it('rejects a malformed conflict server version while preserving the conflict error', async () => {
+  http.mockImplementation(async (request) => {
+    if (request.url.endsWith('/login')) return json(tokens('sync'));
+    if (request.url.endsWith('/users/me')) return json({ id: 'user-sync', email: 'sync@example.com', name: 'Sync', trackCycle: false });
+    return json({
+      code: 'REVISION_CONFLICT', message: 'Revisa la versión del servidor.', retryable: false, requestId: 'request-conflict',
+      serverVersion: {},
+    }, 409);
+  });
+
+  const result = await client.syncWorkoutWithRefresh(syncBody, await authenticatedSessionForSync());
+
+  expect(result).toMatchObject({ status: 409, error: { code: 'REVISION_CONFLICT', message: 'Revisa la versión del servidor.' } });
+  expect(result.error?.serverVersion).toBeUndefined();
+});
+
+it('preserves a normal API error when no conflict version is present', async () => {
+  http.mockImplementation(async (request) => {
+    if (request.url.endsWith('/login')) return json(tokens('sync'));
+    if (request.url.endsWith('/users/me')) return json({ id: 'user-sync', email: 'sync@example.com', name: 'Sync', trackCycle: false });
+    return json({
+      code: 'VALIDATION_ERROR', message: 'La serie no es válida.', retryable: false, requestId: 'request-validation',
+    }, 400);
+  });
+
+  const result = await client.syncWorkoutWithRefresh(syncBody, await authenticatedSessionForSync());
+
+  expect(result).toMatchObject({ status: 400, error: { code: 'VALIDATION_ERROR', message: 'La serie no es válida.' } });
+});

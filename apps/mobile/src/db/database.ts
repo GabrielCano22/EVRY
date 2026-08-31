@@ -5,7 +5,7 @@ import type { LocalWorkout } from '../training/workout-domain';
 import { aggregateSyncState, type SyncQueueState } from '../sync/queue-policy';
 import { canonicalWorkoutFromServer } from '../sync/conflict-resolution';
 import { rebaseSyncPayload, rebaseWorkoutRevisions } from '../sync/revisions';
-import type { SyncWorkoutInput } from '../api/client';
+import { recoveryWorkoutFromUnknown, type SyncCanonicalWorkoutForRecovery, type SyncWorkoutInput } from '../api/client';
 
 export interface DatabaseOwner {
   readonly userId: string;
@@ -25,7 +25,7 @@ export interface SyncReview {
   workoutClientId: string;
   workoutName: string;
   errorCode: string;
-  serverVersion: components['schemas']['SyncCanonicalWorkout'] | null;
+  serverVersion: SyncCanonicalWorkoutForRecovery | null;
 }
 
 const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
@@ -296,7 +296,7 @@ export async function markSyncFailure(
   workoutClientId: string,
   state: Extract<SyncQueueState, 'pending' | 'requires_review'>,
   errorCode: string,
-  serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null,
+  serverVersion?: SyncCanonicalWorkoutForRecovery | null,
 ): Promise<void> {
   const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
@@ -336,13 +336,19 @@ export async function syncReviews(owner: DatabaseOwner): Promise<SyncReview[]> {
   );
   return rows.map((row) => {
     const workout = JSON.parse(row.payload) as LocalWorkout;
-    let error: { code?: string; serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null } = {};
-    try { error = JSON.parse(row.lastError ?? '{}') as typeof error; } catch { error = { code: row.lastError ?? undefined }; }
+    let code: string | undefined;
+    let serverVersion: SyncCanonicalWorkoutForRecovery | null = null;
+    try {
+      const error = JSON.parse(row.lastError ?? '{}');
+      const record = typeof error === 'object' && error !== null && !Array.isArray(error) ? error : null;
+      code = record && typeof record.code === 'string' ? record.code : undefined;
+      serverVersion = record ? recoveryWorkoutFromUnknown(record.serverVersion) : null;
+    } catch { code = row.lastError ?? undefined; }
     return {
       workoutClientId: row.workoutClientId,
       workoutName: workout.name,
-      errorCode: error.code ?? 'CONFLICT',
-      serverVersion: error.serverVersion ?? null,
+      errorCode: code ?? 'CONFLICT',
+      serverVersion,
     };
   });
 }

@@ -26,17 +26,92 @@ export type CurrentUser = components['schemas']['User'];
 export interface MobileSession extends DatabaseOwner { readonly version: number }
 export type SyncWorkoutInput = components['schemas']['SyncWorkoutInput'];
 export type SyncWorkoutResult = components['schemas']['SyncWorkoutResult'];
-export type SyncConflictBody = ApiErrorBody & {
-  serverVersion?: components['schemas']['SyncCanonicalWorkout'] | null;
+export type SyncCanonicalWorkoutSetForRecovery = Pick<components['schemas']['WorkoutSet'],
+  'id' | 'clientId' | 'revision' | 'exerciseId' | 'order' | 'weightKg' | 'reps' | 'durationS' |
+  'rpe' | 'isWarmup' | 'techniqueStable' | 'completedAt'
+>;
+export type SyncCanonicalWorkoutForRecovery = Pick<components['schemas']['SyncCanonicalWorkout'],
+  'id' | 'clientId' | 'revision' | 'name' | 'startedAt' | 'endedAt' | 'cancelledAt' | 'status' |
+  'notes' | 'routineId'
+> & { sets: SyncCanonicalWorkoutSetForRecovery[] };
+export type SyncConflictBody = Pick<ApiErrorBody, 'code' | 'message' | 'retryable' | 'requestId'> & {
+  serverVersion?: SyncCanonicalWorkoutForRecovery | null;
 };
 
-function isSyncConflictBody(error: unknown): error is SyncConflictBody {
-  return typeof error === 'object' && error !== null &&
-    'code' in error && typeof error.code === 'string' &&
-    'message' in error && typeof error.message === 'string' &&
-    'retryable' in error && typeof error.retryable === 'boolean' &&
-    'requestId' in error && typeof error.requestId === 'string' &&
-    'serverVersion' in error;
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) record[key] = item;
+  return record;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null;
+}
+
+function isNullableBoolean(value: unknown): value is boolean | null {
+  return typeof value === 'boolean' || value === null;
+}
+
+function isWorkoutStatus(value: unknown): value is SyncCanonicalWorkoutForRecovery['status'] {
+  return value === 'ACTIVE' || value === 'COMPLETED' || value === 'CANCELLED';
+}
+
+function recoverySetFromUnknown(value: unknown): SyncCanonicalWorkoutSetForRecovery | null {
+  const record = recordFromUnknown(value);
+  if (!record || typeof record.id !== 'string' || !isNullableString(record.clientId) ||
+    !isFiniteNumber(record.revision) || typeof record.exerciseId !== 'string' || !isFiniteNumber(record.order) ||
+    !isFiniteNumber(record.weightKg) && record.weightKg !== null ||
+    !isFiniteNumber(record.reps) && record.reps !== null ||
+    !isFiniteNumber(record.durationS) && record.durationS !== null ||
+    !isFiniteNumber(record.rpe) && record.rpe !== null ||
+    typeof record.isWarmup !== 'boolean' || !isNullableBoolean(record.techniqueStable) ||
+    typeof record.completedAt !== 'string') return null;
+  return {
+    id: record.id, clientId: record.clientId, revision: record.revision, exerciseId: record.exerciseId,
+    order: record.order, weightKg: record.weightKg, reps: record.reps, durationS: record.durationS,
+    rpe: record.rpe, isWarmup: record.isWarmup, techniqueStable: record.techniqueStable,
+    completedAt: record.completedAt,
+  };
+}
+
+export function recoveryWorkoutFromUnknown(value: unknown): SyncCanonicalWorkoutForRecovery | null {
+  const record = recordFromUnknown(value);
+  if (!record || typeof record.id !== 'string' || !isNullableString(record.clientId) ||
+    !isFiniteNumber(record.revision) || typeof record.name !== 'string' || typeof record.startedAt !== 'string' ||
+    !isNullableString(record.endedAt) || !isNullableString(record.cancelledAt) || !isWorkoutStatus(record.status) ||
+    !isNullableString(record.notes) || !isNullableString(record.routineId) || !Array.isArray(record.sets)) return null;
+  const sets: SyncCanonicalWorkoutSetForRecovery[] = [];
+  for (const value of record.sets) {
+    const set = recoverySetFromUnknown(value);
+    if (!set) return null;
+    sets.push(set);
+  }
+  return {
+    id: record.id, clientId: record.clientId, revision: record.revision, name: record.name,
+    startedAt: record.startedAt, endedAt: record.endedAt, cancelledAt: record.cancelledAt,
+    status: record.status, notes: record.notes, routineId: record.routineId, sets,
+  };
+}
+
+function syncErrorFromUnknown(value: unknown): SyncConflictBody | undefined {
+  const record = recordFromUnknown(value);
+  if (!record || typeof record.code !== 'string' || typeof record.message !== 'string' ||
+    typeof record.retryable !== 'boolean' || typeof record.requestId !== 'string') return undefined;
+  const error = {
+    code: record.code,
+    message: record.message,
+    retryable: record.retryable,
+    requestId: record.requestId,
+  };
+  if (!Object.hasOwn(record, 'serverVersion')) return error;
+  if (record.serverVersion === null) return { ...error, serverVersion: null };
+  const serverVersion = recoveryWorkoutFromUnknown(record.serverVersion);
+  return serverVersion ? { ...error, serverVersion } : error;
 }
 
 function assertMobileSession(expected: number): void {
@@ -274,7 +349,7 @@ export async function syncWorkoutWithRefresh(
   const response = await withMobileAuth((client) => client.POST('/sync/workouts', { body }), session);
   return {
     data: response.data,
-    error: isSyncConflictBody(response.error) ? response.error : undefined,
+    error: syncErrorFromUnknown(response.error),
     status: response.response.status,
   };
 }

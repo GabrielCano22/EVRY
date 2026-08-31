@@ -96,6 +96,25 @@ it('persists every canonical server field when a conflicted workout is continued
   expect(await pendingSyncRows(alice)).toEqual([]);
 });
 
+it('keeps a conflicted local workout recoverable when a stored server version is malformed', async () => {
+  await enqueueWorkout(alice, workout, 'malformed-sync', payload('malformed-sync'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  const database = await getDatabase(alice);
+  await database.runAsync(
+    "UPDATE sync_queue SET state = 'requires_review', last_error = ? WHERE id = ?",
+    JSON.stringify({ code: 'REVISION_CONFLICT', serverVersion: {} }),
+    sent.id,
+  );
+
+  const [review] = await syncReviews(alice);
+
+  expect(review.serverVersion).toBeNull();
+  await expect(continueServerWorkout(alice, review)).rejects.toThrow('no devolvió una sesión recuperable');
+  expect(await loadActiveWorkout(alice)).toMatchObject({ clientId: workout.clientId, name: workout.name, revision: 0 });
+  expect(await syncReviews(alice)).toHaveLength(1);
+});
+
 it('does not expose a newer payload while the same workout has an in-flight send', async () => {
   await enqueueWorkout(alice, workout, 'in-flight', payload('in-flight'));
   const [sent] = await pendingSyncRows(alice);

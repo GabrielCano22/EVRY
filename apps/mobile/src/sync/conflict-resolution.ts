@@ -1,9 +1,9 @@
-import type { components } from '@evry/api-client';
+import type { SyncCanonicalWorkoutForRecovery } from '../api/client';
 import type { LocalWorkout } from '../training/workout-domain';
 
 export function canonicalWorkoutFromServer(
   fallbackClientId: string,
-  server: components['schemas']['SyncCanonicalWorkout'],
+  server: SyncCanonicalWorkoutForRecovery,
 ): LocalWorkout {
   return {
     clientId: server.clientId ?? fallbackClientId,
