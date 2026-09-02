@@ -111,6 +111,19 @@ jobs:
         working-directory: backend
         env:
           NODE_ENV: test
+      - run: npm run build
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          JWT_ACCESS_SECRET: evry-test-access-secret-for-ci-2026-123456
+          JWT_REFRESH_SECRET: evry-test-refresh-secret-for-ci-2026-654321
+          CORS_ORIGIN: http://127.0.0.1:3000
+          PORT: 4000
+          SWAGGER_ENABLED: "false"
+      - run: npm run build --workspace @evry/web
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000/api/v1
       - run: npx playwright install --with-deps chromium
         working-directory: frontend/apps/web
       - run: npm run test:e2e
