@@ -27,7 +27,7 @@ Actualizado: 31 de agosto de 2026. Este documento distingue implementación, ver
 - Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
 - Historial por cursor `(endedAt, id)` además de paginación anterior; frecuencia semanal calculada sobre todo el periodo seleccionado.
 - Progreso web migrado al formato actual y tipos compartidos; periodos, comparación real, consulta cancelable y carga incremental del historial.
-- Configuraciones CI, PostgreSQL de pruebas en CI, Render, EAS APK y guía Vercel/Neon.
+- Configuraciones CI, PostgreSQL aislado de pruebas y guía de política Vercel/EAS. La configuración anterior de Render se retiró; no hay despliegues autorizados.
 
 ## Última verificación local
 
@@ -66,7 +66,7 @@ Actualizado: 31 de agosto de 2026. Este documento distingue implementación, ver
 - Agregar puntos de progreso acotados/agregados en SQL: el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
 - Validar accesibilidad con navegador, teclado, zoom, lector de pantalla y movimiento reducido.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; no se han alcanzado ni demostrado esos presupuestos.
-- Crear recursos de staging y configurar credenciales/orígenes; publicar en orden, ensayar backup/restauración y contrastar conteos/estadísticas.
+- Si el propietario autoriza un despliegue futuro, diseñar y aprobar primero la operación completa desde Vercel; después configurar credenciales/orígenes, ensayar backup/restauración y contrastar conteos/estadísticas.
 
 ## Auditoría de dependencias
 
