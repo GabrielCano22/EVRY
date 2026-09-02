@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   },
   buttonPressed: { opacity: 0.82 },
   buttonDisabled: { opacity: 0.45 },
-  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  buttonText: { color: theme.colors.onPrimary, fontSize: 16, fontWeight: '700' },
   pill: {
     alignItems: 'center',
     alignSelf: 'flex-start',

@@ -115,6 +115,6 @@ const styles = StyleSheet.create({
   periodSelected: { backgroundColor: theme.colors.primary },
   periods: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   periodText: { color: theme.colors.textMuted, fontWeight: '700' },
-  periodTextSelected: { color: '#ffffff', fontWeight: '700' },
+  periodTextSelected: { color: theme.colors.onPrimary, fontWeight: '700' },
   row: { borderTopColor: theme.colors.surfaceHigh, borderTopWidth: 1, gap: 2, paddingTop: 10 },
 });

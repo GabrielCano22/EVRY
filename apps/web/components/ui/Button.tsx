@@ -24,9 +24,9 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: 'px-sm py-xs text-label-caps font-label-caps tracking-widest uppercase rounded',
-  md: 'px-md py-sm text-label-caps font-label-caps tracking-wider uppercase rounded-lg',
-  lg: 'px-md py-md text-label-caps font-label-caps tracking-wider uppercase rounded-xl',
+  sm: 'px-sm py-xs text-xs font-label-caps tracking-widest uppercase rounded',
+  md: 'px-md py-sm text-xs font-label-caps tracking-wider uppercase rounded-lg',
+  lg: 'px-md py-md text-xs font-label-caps tracking-wider uppercase rounded-xl',
 };
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(

@@ -97,3 +97,22 @@ test('rejects equivalent PostgreSQL database identities in Playwright configurat
     },
   })).toThrow('different');
 });
+
+test('uses Chromium for both desktop and mobile projects installed by CI', () => {
+  const config = buildPlaywrightConfig({
+    frontendRoot,
+    backendRoot,
+    environment: createEnvironment(),
+  });
+
+  expect(config.projects).toEqual([
+    expect.objectContaining({
+      name: 'desktop-chromium',
+      use: expect.objectContaining({ defaultBrowserType: 'chromium' }),
+    }),
+    expect.objectContaining({
+      name: 'mobile-chromium',
+      use: expect.objectContaining({ defaultBrowserType: 'chromium' }),
+    }),
+  ]);
+});
