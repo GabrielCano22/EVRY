@@ -1278,6 +1278,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Missing or untrusted browser Origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The email is already registered. */
             409: {
                 headers: {
@@ -1348,6 +1357,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Missing or untrusted browser Origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Límite de solicitudes alcanzado. */
             429: {
                 headers: {
@@ -1405,6 +1423,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Missing or untrusted browser Origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Límite de solicitudes alcanzado. */
             429: {
                 headers: {
@@ -1446,6 +1473,15 @@ export interface operations {
             };
             /** @description Solicitud inválida. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or untrusted browser Origin. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -44,6 +44,16 @@
               }
             }
           },
+          "403": {
+            "description": "Missing or untrusted browser Origin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "409": {
             "description": "The email is already registered.",
             "content": {
@@ -135,6 +145,16 @@
               }
             }
           },
+          "403": {
+            "description": "Missing or untrusted browser Origin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Límite de solicitudes alcanzado.",
             "content": {
@@ -207,6 +227,16 @@
               }
             }
           },
+          "403": {
+            "description": "Missing or untrusted browser Origin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Límite de solicitudes alcanzado.",
             "content": {
@@ -265,6 +295,16 @@
           },
           "400": {
             "description": "Solicitud inválida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing or untrusted browser Origin.",
             "content": {
               "application/json": {
                 "schema": {
