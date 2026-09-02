@@ -107,6 +107,8 @@ jobs:
         working-directory: frontend
       - run: npm ci
         working-directory: backend
+      - run: npm run prisma:generate
+        working-directory: backend
       - run: npm run test:db:migrate
         working-directory: backend
         env:
