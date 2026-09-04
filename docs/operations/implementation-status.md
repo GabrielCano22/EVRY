@@ -1,79 +1,79 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 31 de agosto de 2026. Este documento distingue implementación, verificación local y aceptación final. No constituye una declaración de preparación para producción.
+Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
-## Implementado y comprobado localmente
+## Implementado
 
-- Worktrees de frontend y backend fuera de OneDrive, rama `codex/evry-optimization`.
-- Monorepo npm: web, Expo móvil, contrato API, dominio y tokens.
-- Next.js 16, NestJS 12 y Prisma 7; Node 24.14 fijado.
-- API v1 con compatibilidad de rutas, errores normalizados, comprobaciones de salud, configuración obligatoria y límites de frecuencia.
-- Modelo de revisión/clientId y sincronización transaccional; autenticación móvil y refresh web sin token en localStorage.
-- SQLite móvil: sesión y cola persistidas, reintentos con la misma clave, conservación de envíos de resultado incierto, edición concurrente serializada, recuperación de borradores y conflictos explícitos.
-- Almacenamiento móvil por cuenta y servidor: todas las operaciones SQLite reciben un propietario explícito y usan una base con nombre derivado mediante SHA-256. Las escrituras pendientes y los acuses de sincronización conservan ese propietario, incluso después de un cambio de cuenta.
-- Reapertura offline con identidad previamente validada por `/users/me` y guardada en SecureStore. El estado de entrenamiento y TanStack Query se reinician al cambiar de sesión; un rechazo definitivo del servidor invalida también el estado visible.
-- El refresh token queda asociado a su servidor de origen; no se envía a otro entorno. Los tokens anteriores sin información de origen requieren un nuevo login, sin borrar entrenamientos.
-- Catálogo móvil con `q/page`, páginas de hasta 30 ejercicios y búsqueda local acotada en SQLite. La pantalla distingue resultados del servidor, copia local desactualizada, vacío, carga y error recuperable; cancelar o rechazar una consulta no se convierte en una lista vacía.
-- Rutinas en caché reemplazadas transaccionalmente por la respuesta completa del servidor, incluida la lista vacía. Los fallos de almacenamiento se propagan y no se confunden con fallos de red.
-- Miniaturas JPG en el selector, GIF solo tras pulsar reproducir, URLs del servidor/CDN respetadas y avisos de atribución visibles en la ficha.
-- Migración SQLite v1→v2 con índice de búsqueda y metadatos de caché: ensayada sobre 205 ejercicios y datos de sesión, series, cola, rutinas, mapeos y medios. Un fallo durante el índice revierte la transacción sin modificar esos datos; se verificó reintento tras reparar el registro de caché inválido.
-- Colas de escritura separadas por conexión SQLite: se mantiene la serialización dentro de una cuenta, sin bloquear la apertura de otra cuenta por una escritura demorada.
-- Fuente OpenAPI única: 44 operaciones en 33 rutas y 70 esquemas generados desde Nest. El frontend importa el JSON y el cliente del commit fijado del backend; se retiró el YAML manual. Se corrigieron la paginación opcional numérica y la generación de entradas con valores por defecto.
-- Importador reproducible: lee artefactos confirmados en Git, verifica origen y hashes, normaliza LF/CRLF y rechaza referencias externas y entradas/respuestas sin tipos. `api:check` no modifica archivos ni consulta la red; CI obtiene el backend por la revisión del lock.
-- Recuperación móvil desde el contrato canónico sin perder notas, rutina, calentamiento, técnica ni fecha de las series. Las versiones de servidor malformadas se rechazan antes de reemplazar datos locales; los errores normales de API conservan su mensaje.
-- Conflictos únicos compatibles con los metadatos del adaptador PostgreSQL de Prisma 7: los inicios simultáneos recuperan la sesión ganadora y los reintentos de series conservan su idempotencia.
-- Autenticación móvil: refresh compartido entre peticiones concurrentes, reintento único ligado a la sesión original, credenciales inmutables por intento y rechazo de respuestas tardías tras logout/cambio de cuenta. Las escrituras SecureStore están serializadas y el logout borra las credenciales locales antes de esperar al servidor.
-- Errores de login/logout visibles sin promesas rechazadas sin manejar; protección del estado de usuario frente a inicializaciones y consultas de perfil obsoletas. Los fallos temporales de refresh conservan credenciales; los rechazos definitivos y fallos de persistencia del token rotado las invalidan.
-- Pruebas de SQL SQLite reales sustituyendo únicamente el puente nativo; pruebas unitarias backend y de componentes web/móvil.
-- Historial por cursor `(endedAt, id)` además de paginación anterior; frecuencia semanal calculada sobre todo el periodo seleccionado.
-- Progreso web migrado al formato actual y tipos compartidos; periodos, comparación real, consulta cancelable y carga incremental del historial.
-- Configuraciones CI, PostgreSQL aislado de pruebas y guía de política Vercel/EAS. La configuración anterior de Render se retiró; no hay despliegues autorizados.
+- Monorepo npm con web, Expo móvil, contrato API, dominio y tokens; Next.js 16, NestJS 12, Prisma 7 y Node 24.14 fijado.
+- API v1 con rutas compatibles, errores normalizados, salud, configuración requerida y límites de frecuencia.
+- Sincronización transaccional por `clientId` y revisión; autenticación móvil y refresh web sin token en `localStorage`.
+- El móvil persiste sesión y cola SQLite por cuenta/origen, conserva reintentos y resultados inciertos, serializa edición concurrente y muestra conflictos. El catálogo usa `q/page`, caché transaccional, búsqueda acotada y medios diferidos.
+- La fuente OpenAPI es única. El frontend importa el JSON y cliente generados desde el backend fijado; el importador verifica origen, hashes, normalización LF/CRLF, tipos y ausencia de referencias externas.
+- Historial por cursor `(endedAt, id)`, frecuencia semanal de todo el periodo y progreso web con tipos compartidos, periodos, comparación real, consulta cancelable y carga incremental.
+- Configuraciones de CI y política Vercel/EAS presentes. Render fue retirado. No hay despliegues autorizados.
 
-## Última verificación local
+## Evidencia observada
 
-- Backend: 52 suites / 296 pruebas unitarias, lint, build, tipos de tests/scripts y `openapi:check` correctos.
-- Web: 14 archivos / 50 pruebas unitarias y 1 prueba automatizada de accesibilidad correctos; build Next.js correcto.
-- Móvil: 16 suites / 83 pruebas, lint y tipos correctos. Las exportaciones Android/iOS y Expo Doctor (21/21) pasaron antes de la última validación defensiva de conflictos; no hay todavía prueba en dispositivo ni APK release.
-- Compartidos: 12 pruebas de dominio y 1 de tokens; tipos de todos los workspaces correctos.
-- `api:verify-backend` correcto contra `f291aee`; tres pruebas del cliente compartido correctas, incluidos registro con campos opcionales, paginación y errores normalizados. El importador pasó sus 33 pruebas y `api:check` confirmó que no hay diferencias en los artefactos generados.
-- PostgreSQL 17.11 aislado: ocho migraciones aplicadas sobre una base nueva de pruebas; 5 suites / 41 pruebas de integración Supertest/PostgreSQL correctas. Se usaron únicamente datos sintéticos y el servidor temporal se detuvo al terminar.
-- No ejecutados: Playwright, Maestro, restauración sobre base poblada, mediciones de rendimiento y despliegues.
+### Backend, 4 de septiembre
+
+- Contrato y sincronización publicados en `4ee7342cdd85fc6c46fca8033104804ab6ada1fe`. La corrección posterior `e211dce` aísla la configuración de origen en las pruebas sin cambiar producción ni el contrato.
+- `lint`, `test:type-check`, `test:unit` (53 suites / 308 pruebas), `build` y `openapi:check` terminaron correctamente.
+- Integración PostgreSQL sintética: 7 suites / 60 pruebas correctas en 60,48 s. Solo quedó la advertencia conocida de Jest sobre VM Modules experimental.
+- El foco de sincronización pasó 10/10. Usa solicitudes HTTP contra `AppModule` real y PostgreSQL aislado; para las carreras, el test identifica el advisory lock concedido por OID de base, `classid`, `objid`, `objsubid` y PID, y exige exactamente los waiters de esa identidad. Una revisión independiente aprobó esa identidad completa.
+- La integración incluye autenticación HTTP real (registro/login/refresh/logout de web y móvil, rotación, revocación, cookies y límites) y sincronización offline (idempotencia, carreras, conflictos, rollback, sesiones terminales y estadísticas). No equivale a una prueba de carga ni a un ensayo con datos poblados.
+
+### Contrato y CI, 4 de septiembre
+
+- El lock del frontend quedó fijado a `4ee7342cdd85fc6c46fca8033104804ab6ada1fe`. `api:sync`, `api:verify-backend` y `api:check` terminaron correctamente contra esa revisión; el diff importado documenta únicamente respuestas `401` de logout web/móvil.
+- Frontend `d7f49d7` publicado. En CI `33878020665`, contrato y E2E pasaron; calidad pasó instalación, importador, contrato, tipos, lint, pruebas, auditoría de nivel alto y build. Falló únicamente Expo Doctor (20/21): exige `expo ~57.0.20` y `expo-router ~57.0.19`, frente a las versiones instaladas `57.0.19` y `57.0.18`. Las exportaciones móviles se omitieron tras ese fallo; sigue pendiente actualizar y verificar esos dos parches.
+- Verificación local fresca: móvil 16 suites / 83 pruebas; web 14 archivos / 52 pruebas unitarias; accesibilidad 1 prueba; cliente API 3; tokens 2; dominio 12 y las 33 pruebas del importador, todas correctas. El importador tardó 161,65 s.
+
+### Verificación local de frontend, 4 de septiembre
+
+- Lint de todos los workspaces y type-check de todos los workspaces correctos.
+- El build de producción web terminó correctamente (compilación 25,1 s; tipos 11,8 s).
+- Las suites locales de móvil pasaron 16/83, las unitarias web 14/52, accesibilidad 1, cliente API 3, tokens 2, dominio 12 y el importador 33/33 (161,65 s).
+- La ejecución completa de pruebas de todos los workspaces terminó correctamente.
+- El origen de los dos fallos E2E de contraste quedó confirmado: la misma página de login tenía una animación real pausada a 100 ms con opacidad `0.717649`, que Axe interpreta con contraste insuficiente; al finalizar la animación, opacidad `1`, ya no hay violación. El cambio es solo de prueba: espera `animation.finished` y opacidad `1`, sin cambio de CSS, color ni producción. E2E normal/reduced × desktop/mobile pasó 4/4 en 17,8 s, recibió revisión independiente aprobada y pasó también en CI `33878020665`.
+- La CI backend `33876893755` falló 59/60 porque una prueba rechazaba `127.0.0.1` aunque CI lo permitía explícitamente. Se reprodujo y corrigió en `e211dce` mediante dos aplicaciones reales con orígenes aislados y limpieza de configuración. La revisión independiente fue aprobada y una verificación local nueva con el origen de CI pasó 7 suites / 60 pruebas en 46,80 s. La nueva CI remota debe confirmarse; no se reclama que la ejecución anterior estuviera en verde.
+- El E2E de Playwright existente solo abre `/login`, comprueba navegación por teclado, 200 % de zoom y Axe sin violaciones graves/críticas. No envía autenticación ni cubre entrenamientos, por lo que no se debe afirmar cobertura E2E de login real ni de workouts.
 
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
 
-- Ejecutar la nueva CI cruzada en GitHub tras publicar primero el commit del backend fijado por el lock. La fuente y la generación ya están unificadas localmente; falta comprobar el flujo remoto completo.
-- Revisar todos los consumidores web restantes: no basta con que TypeScript compile; todavía hay contratos antiguos en pantallas y calendario.
-- El catálogo móvil ya usa `q/page` y el contrato canónico; falta comprobar el contrato completo de extremo a extremo contra PostgreSQL.
-- Ampliar integración PostgreSQL para autenticación rotativa y sincronización offline; ensayar migración sobre una base poblada y backup/restauración. Las cinco suites actuales ya pasaron en PostgreSQL aislado, sin tocar datos reales.
-- Ejecutar Playwright y Maestro; los archivos y jobs existen pero no prueban por sí mismos que los escenarios pasen.
+- Actualizar los dos parches de Expo señalados por CI, verificar Expo Doctor y exportar Android/iOS. No añadir exclusiones ni desactivar la comprobación.
+- Confirmar la nueva CI del backend para la corrección de origen `e211dce`, ya verificada localmente y revisada.
+- Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
+- Revisar todos los consumidores web restantes; que TypeScript compile no demuestra que todas las pantallas y el calendario usen el cliente generado.
+- Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
+- Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
 
 ### Móvil
 
-- Paridad completa: registro, creación/edición de rutinas, detalle de progreso, edición de ciclo y campos completos de perfil.
-- Validar en dispositivo el aislamiento y la reapertura offline ya cubiertos por pruebas locales. La simulación del proceso JS no prueba todavía el ciclo de vida real de Android/iOS, el almacenamiento del sistema ni la sincronización contra PostgreSQL.
-- Si existe un `evry.db` de una versión anterior, se conserva intacto y sin propietario asignado. La recuperación requiere identificar al propietario y una importación explícita; no se copiarán sus datos automáticamente a la siguiente cuenta.
-- La migración conserva los datos ante una caché malformada, pero aún falta una recuperación de caché dañada orientada al usuario; el ensayo de reparación fue controlado en una base de prueba.
-- Completar feedback de errores al guardar localmente, reconexión y servidor gratuito en arranque frío.
-- Límite explícito y expulsión LRU de miniaturas; actualmente no se descargan GIF en listas pero falta el presupuesto de caché.
-- Pruebas de cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.
+- Completar paridad: registro, crear/editar rutinas, detalle de progreso, edición de ciclo y todos los campos de perfil.
+- Validar aislamiento y reapertura offline en Android/iOS reales, incluida la vida real de SecureStore/SQLite y sincronización contra PostgreSQL.
+- Si existe un `evry.db` heredado sin propietario, conservarlo intacto: la recuperación exige identificar al propietario e importación explícita; no se asignan automáticamente esos datos a la siguiente cuenta.
+- La migración conserva datos ante caché malformada, pero falta una recuperación de caché dañada orientada a la persona usuaria.
+- Completar feedback visible ante fallo de guardado local, reconexión y arranque frío del servidor gratuito.
+- Definir presupuesto y expulsión LRU de miniaturas; hoy se evita descargar GIF en listas, pero no existe ese límite explícito.
+- Ejecutar cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.
 
 ### Web, rendimiento y operación
 
-- Completar migración de todas las pantallas al cliente generado y TanStack Query.
-- Sustituir carga global del calendario por actividad agregada acotada al mes; quitar condicionamiento de ciclo por sexo en consumidores restantes.
-- Agregar puntos de progreso acotados/agregados en SQL: el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
-- Validar accesibilidad con navegador, teclado, zoom, lector de pantalla y movimiento reducido.
-- Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; no se han alcanzado ni demostrado esos presupuestos.
-- Si el propietario autoriza un despliegue futuro, diseñar y aprobar primero la operación completa desde Vercel; después configurar credenciales/orígenes, ensayar backup/restauración y contrastar conteos/estadísticas.
-
-## Auditoría de dependencias
-
-La auditoría local encontró un aviso alto en `brace-expansion` 1.1.14, transitivo de ESLint. Se actualizó únicamente esa dependencia a 1.1.18, una versión corregida según el [aviso del mantenedor](https://github.com/advisories/GHSA-rgw5-rvv9-x895). Quedan 11 avisos moderados en la cadena de herramientas Expo/xcode/uuid, asociados al [aviso de uuid](https://github.com/advisories/GHSA-w5hq-g745-h8pq); requieren revisar compatibilidad y alcance antes de aplicar una actualización. No se ejecutó `npm audit fix --force` ni se degradó Expo.
+- Completar la migración de todas las pantallas a cliente generado y TanStack Query.
+- Acotar el calendario a actividad agregada por mes y eliminar condicionamiento de ciclo por sexo en consumidores restantes.
+- Agregar puntos de progreso agregados/acotados en SQL; el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
+- Ampliar accesibilidad a navegador, teclado, zoom, lector de pantalla y movimiento reducido, y añadir flujos E2E de autenticación y entrenamientos.
+- Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
+- No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.
 
 ## Preservación de datos y límites
 
-No se ha reiniciado ni migrado una base real ni desplegado recursos externos. Este punto de control reúne los avances para el push solicitado por el usuario en ambas ramas `codex/evry-optimization`; no supone la aceptación del plan completo. No se modificó `main`. Las pruebas de SQL SQLite usan memoria temporal; la suite PostgreSQL exige una base con marcador explícito de pruebas y distinta de la base runtime.
+No se reinició, migró ni restauró una base real, ni se desplegaron recursos externos. La integración usa solo PostgreSQL sintético con una URL de prueba explícita, diferente de la URL runtime bloqueada. Este estado no acepta el plan completo ni modifica `main`.
 
-El job frontend obtiene `EVRY-Backend` por el commit exacto de `packages/api-client/openapi/backend.lock.json`. Al publicar, ese commit debe existir primero en el remoto backend. Si el repositorio es privado, configure un token de lectura cruzada mediante `EVRY_REPOSITORY_TOKEN`.
+El clúster PostgreSQL temporal se detuvo limpiamente al finalizar las pruebas del 4 de septiembre; se conservaron sus datos y binarios. La guía reproducible está en `EVRY-Backend/docs/operations/integration-tests.md`.
+
+## Auditoría de dependencias (evidencia histórica)
+
+Una auditoría local anterior dejó 11 avisos moderados transitivos en la cadena Expo/xcode/uuid. No se reejecutó auditoría el 4 de septiembre, por lo que esta nota no afirma que se hayan resuelto; requieren revisar compatibilidad y alcance antes de actualizar dependencias. No se ejecutó `npm audit fix --force`.
