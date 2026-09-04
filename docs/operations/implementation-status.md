@@ -13,6 +13,8 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 - Configuraciones de CI y política Vercel/EAS presentes. Render fue retirado. No hay despliegues autorizados.
 - El acceso web al ciclo depende de la elección explícita, no del sexo registrado: registro, perfil, inicio, calendario y página directa. Desactivarlo o cambiar de cuenta desmonta el formulario del ciclo y descarta respuestas tardías de la vista anterior.
 - Las fechas del ciclo serializadas por la API a medianoche UTC conservan su fecha civil en calendario, historial y edición; no se convierten al día anterior en Bogotá. Las fechas horarias de entrenamiento mantienen su conversión local.
+- Inicio consume `ProgressOverview` generado: sesiones/volumen canónicos, comparación real y marcas con unidades separadas por tipo. Sus consultas independientes usan TanStack Query, cancelación y claves por cuenta/día; no presenta ceros o marcas vacías durante carga/fallo inicial, y distingue datos conservados tras fallar una actualización.
+- El estado diario comparte una sola consulta entre formulario y métrica. Guardar actualiza ambas vistas; un fallo conserva valores y permite reintentar. La fecha civil de readiness tiene prioridad sobre el timestamp, con compatibilidad para registros antiguos sin fecha civil.
 
 ## Evidencia observada
 
@@ -41,6 +43,7 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 - El E2E de Playwright existente solo abre `/login`, comprueba navegación por teclado, 200 % de zoom y Axe sin violaciones graves/críticas. No envía autenticación ni cubre entrenamientos, por lo que no se debe afirmar cobertura E2E de login real ni de workouts.
 - La regresión de opt-in web se reprodujo antes de corregirla. Las pruebas de componentes usan controles, sesión Zustand y cliente HTTP reales con transporte simulado; cubren consentimiento, guardado/recarga, hidratación, calendario, cancelación, cambio de cuenta y finalización tardía de guardado. La respuesta real de ciclo (fecha ISO a medianoche UTC y `userId`) también reprodujo el desplazamiento de día y el error al editar. Tras corregirlos, pasaron 17 pruebas focales y la suite completa web (16 archivos / 69 pruebas más 1 de accesibilidad), build y Expo Doctor 21/21. Esto no equivale a integración HTTP/PostgreSQL de ciclo ni a una prueba en navegador de esos flujos.
 - El caso adicional de 1 de enero llevó la cobertura focal a 18 pruebas correctas. Sobre `555815d`, una ejecución final completa confirmó 16 archivos / 70 pruebas web más 1 de accesibilidad; el type-check posterior también pasó. La revisión independiente aprobó cumplimiento y calidad. El build anterior corresponde al mismo código de producción: después solo se añadió esa prueba de frontera de mes.
+- La regresión de Inicio reprodujo métricas canónicas ignoradas, ceros durante carga/fallo y respuestas antiguas sin cancelar. También reprodujo puntuación diaria sin actualizar, fallo de guardado sin manejar y selección incorrecta de fecha de readiness. La suite nueva usa componentes, caché y transporte autenticado reales con HTTP simulado; verifica además recuperación, fechas civiles, aislamiento de cuentas y actualización fallida con datos previos. La suite web completa pasó 17 archivos / 81 pruebas más 1 de accesibilidad. No equivale a un flujo de navegador contra PostgreSQL.
 
 ## Pendiente de cerrar antes de aceptar el plan
 
@@ -65,7 +68,7 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 
 - Completar la migración de todas las pantallas a cliente generado y TanStack Query.
 - Acotar el calendario a actividad agregada por mes. El condicionamiento del acceso al ciclo por sexo ya está corregido en los consumidores web.
-- Migrar el resumen de Inicio al contrato canónico de progreso: todavía lee campos del resumen anterior y puede mostrar métricas cero aunque existan sesiones. No confundir la corrección de acceso al ciclo con esta brecha del resumen.
+- Completar Inicio: la racha aún se calcula sobre 20 sesiones y necesita una agregación canónica sin truncamiento; el listado reciente aún descarga series completas. Resumen y readiness ya usan tipos generados y TanStack Query, pero el transporte sigue siendo el adaptador autenticado web existente, no la fábrica generada completa; ciclo y workouts conservan tipos manuales.
 - Agregar puntos de progreso agregados/acotados en SQL; el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
 - Ampliar accesibilidad a navegador, teclado, zoom, lector de pantalla y movimiento reducido, y añadir flujos E2E de autenticación y entrenamientos.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.

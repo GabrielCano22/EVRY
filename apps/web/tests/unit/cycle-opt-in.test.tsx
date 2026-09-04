@@ -6,6 +6,7 @@ import PaginaPerfil from '@/app/(app)/profile/page';
 import PaginaDashboard from '@/app/(app)/dashboard/page';
 import { useAutenticacion } from '@/lib/auth-store';
 import { setAccessToken } from '@/lib/api';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -147,12 +148,12 @@ it('requests and displays a returned cycle phase for an opted-in male dashboard 
     if (path.endsWith('/workouts') || path.endsWith('/cycle/entries')) return Response.json([]);
     throw new Error(`Unexpected request: ${path}`);
   }));
-  render(<PaginaDashboard />);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><PaginaDashboard /></QueryClientProvider>);
   expect(await screen.findAllByText('Lútea')).not.toHaveLength(0);
   expect(paths).toContain('/api/v1/cycle/today');
   cleanup(); paths.length = 0;
   useAutenticacion.setState({ usuario: { ...user, biologicalSex: 'FEMALE', trackCycle: false } });
-  render(<PaginaDashboard />);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><PaginaDashboard /></QueryClientProvider>);
   await screen.findByText('Estado del día');
   await waitFor(() => expect(screen.queryByText('Preparando tu resumen…')).not.toBeInTheDocument());
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();

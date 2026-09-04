@@ -1,41 +1,47 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { api, request } from '@/lib/api';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { components } from '@evry/api-client';
+import { requestOrThrow } from '@/lib/api';
+import { useAutenticacion } from '@/lib/auth-store';
+import { currentSessionGeneration } from '@/lib/auth-session';
 import { Button } from './ui/Button';
 import { Icon } from './ui/Icon';
-import { compareCivil, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
+import { civilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
 
-interface UltimoCheckin {
-  date: string;
-  score: number;
+type Readiness = components['schemas']['Readiness'];
+
+export function useDailyReadiness() {
+  const userId = useAutenticacion(state => state.usuario?.id);
+  const hoy = todayCivil();
+  const queryKey = ['readiness', userId, currentSessionGeneration(), hoy] as const;
+  const query = useQuery({
+    queryKey,
+    enabled: !!userId,
+    queryFn: ({ signal }) => requestOrThrow<Readiness | null>('/readiness/latest', { signal }),
+    select: (value: Readiness | null) => {
+      if (!value) return null;
+      // civilDate is a calendar label stored at UTC midnight, not a local instant.
+      const day = value.civilDate ? civilDate(value.civilDate.slice(0, 10)) : timestampToLocalCivil(value.date);
+      return day === hoy ? value : null;
+    },
+  });
+  return { ...query, queryKey };
 }
 
 export function ReadinessCheckin() {
-  const [ultimo, setUltimo] = useState<UltimoCheckin | null>(null);
+  const ultimo = useDailyReadiness();
+  const queryClient = useQueryClient();
   const [abierto, setAbierto] = useState(false);
-  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [datos, setDatos] = useState({ sleepHrs: 7, stress: 3, soreness: 2, motivation: 4 });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void request<UltimoCheckin | null>('/readiness/latest', { signal: controller.signal }).then((result) => {
-      if (result.ok) setUltimo(result.data);
-      else if (result.error.code !== 'aborted') setErrorCarga(result.error.message);
-    });
-    return () => controller.abort();
-  }, []);
-
-  const yaHoy = ultimo && compareCivil(timestampToLocalCivil(ultimo.date), todayCivil()) === 0;
-  if (yaHoy) return null;
-
-  async function guardar() {
-    const respuesta = await api<UltimoCheckin>('/readiness/checkin', {
-      method: 'POST',
-      json: datos,
-    });
-    setUltimo(respuesta);
-    setAbierto(false);
-  }
+  const guardar = useMutation({
+    mutationFn: () => requestOrThrow<Readiness>('/readiness/checkin', { method: 'POST', body: datos }),
+    onSuccess: (respuesta) => {
+      queryClient.setQueryData(ultimo.queryKey, respuesta);
+      setAbierto(false);
+    },
+  });
+  if (ultimo.isPending || ultimo.isError || ultimo.data) return null;
 
   return (
     <div className="bg-surface-container-low rounded-xl border border-white/5 p-md">
@@ -50,7 +56,7 @@ export function ReadinessCheckin() {
           {abierto ? 'Cerrar' : 'Registrar'}
         </Button>
       </div>
-      {errorCarga && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar el estado diario. <button type="button" onClick={() => window.location.reload()} className="underline">Reintentar</button></p>}
+      {guardar.isError && <p role="alert" className="mb-sm text-sm text-error">No pudimos guardar el estado diario. Inténtalo de nuevo; tus valores siguen aquí.</p>}
       {abierto && (
         <div className="mt-md space-y-md animate-fade-in">
           <Deslizador
@@ -85,8 +91,8 @@ export function ReadinessCheckin() {
             valor={datos.motivation}
             onChange={(v) => setDatos({ ...datos, motivation: v })}
           />
-          <Button onClick={guardar} className="w-full" size="md">
-            Guardar
+          <Button onClick={() => guardar.mutate()} disabled={guardar.isPending} className="w-full" size="md">
+            {guardar.isPending ? 'Guardando…' : 'Guardar'}
           </Button>
         </div>
       )}
@@ -118,6 +124,7 @@ function Deslizador({
         <span className="font-grotesk text-on-surface tabular-nums text-sm">{valor}</span>
       </div>
       <input
+        aria-label={etiqueta}
         type="range"
         min={min}
         max={max}
