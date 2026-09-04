@@ -1,14 +1,16 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { components } from '@evry/api-client';
 import Link from 'next/link';
 import { useAutenticacion } from '@/lib/auth-store';
-import { request } from '@/lib/api';
-import type { InfoFase, ResumenProgreso, Entrenamiento } from '@/lib/types';
+import { requestOrThrow } from '@/lib/api';
+import type { InfoFase, Entrenamiento } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
-import { ReadinessCheckin } from '@/components/ReadinessCheckin';
+import { ReadinessCheckin, useDailyReadiness } from '@/components/ReadinessCheckin';
 import { formatearFechaHora, cn } from '@/lib/utils';
-import { compareCivil, formatCivilDate, parseCivilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
+import { formatCivilDate, parseCivilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { fraseDelDia as obtenerFraseDelDia } from '@/lib/motivacion';
 
@@ -72,40 +74,35 @@ function numeroDiaCivil(fecha: ReturnType<typeof todayCivil>): number {
 
 export default function PaginaInicio() {
   const { usuario } = useAutenticacion();
-  const [fase, setFase] = useState<InfoFase | null>(null);
-  const [resumen, setResumen] = useState<ResumenProgreso | null>(null);
-  const [recientes, setRecientes] = useState<Entrenamiento[]>([]);
-  const [puntajeReadiness, setPuntajeReadiness] = useState<number | null>(null);
-  const [estadoCarga, setEstadoCarga] = useState<'cargando' | 'listo' | 'error'>('cargando');
-  const [intento, setIntento] = useState(0);
+  return usuario ? <ResumenInicio key={usuario.id} /> : null;
+}
 
-  const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
+function ResumenInicio() {
+  const { usuario } = useAutenticacion();
 
-  useEffect(() => {
-    let activo = true;
-    setEstadoCarga('cargando');
-    Promise.all([
-      muestraCiclo ? request<InfoFase | null>('/cycle/today') : Promise.resolve({ ok: true as const, data: null }),
-      request<ResumenProgreso>('/progress/overview'),
-      request<Entrenamiento[]>('/workouts?take=20'),
-      request<{ score: number; date: string } | null>('/readiness/latest'),
-    ]).then(([f, r, ent, rd]) => {
-      if (!activo) return;
-      if (!f.ok || !r.ok || !ent.ok || !rd.ok) {
-        if (activo) setEstadoCarga('error');
-        return;
-      }
-      setFase(f.data);
-      setResumen(r.data);
-      setRecientes(ent.data);
-      if (rd.data && compareCivil(timestampToLocalCivil(rd.data.date), todayCivil()) === 0)
-        setPuntajeReadiness(rd.data.score);
-      setEstadoCarga('listo');
-    });
-    return () => {
-      activo = false;
-    };
-  }, [muestraCiclo, intento]);
+  const muestraCiclo = !!usuario?.trackCycle;
+
+  const hoy = todayCivil();
+  const progreso = useQuery({
+    queryKey: ['progress', usuario?.id, '30d', hoy],
+    queryFn: ({ signal }) => requestOrThrow<components['schemas']['ProgressOverview']>('/progress/overview?period=30d', { signal }),
+  });
+  const sesiones = useQuery({
+    queryKey: ['dashboard-workouts', usuario?.id, hoy],
+    queryFn: ({ signal }) => requestOrThrow<Entrenamiento[]>('/workouts?take=20', { signal }),
+  });
+  const ciclo = useQuery({
+    queryKey: ['dashboard-cycle', usuario?.id, hoy, muestraCiclo],
+    enabled: muestraCiclo,
+    queryFn: ({ signal }) => requestOrThrow<InfoFase | null>('/cycle/today', { signal }),
+  });
+  const readiness = useDailyReadiness();
+  const consultas = [progreso, sesiones, readiness, ...(muestraCiclo ? [ciclo] : [])];
+  const cargando = consultas.some(consulta => consulta.isPending);
+  const fallidas = consultas.filter(consulta => consulta.isError);
+  const resumen = progreso.data;
+  const fase = muestraCiclo ? ciclo.data : null;
+  const puntajeReadiness = readiness.data?.score ?? null;
 
   const fechaHoy = formatCivilDate(todayCivil(), {
     day: 'numeric',
@@ -113,14 +110,14 @@ export default function PaginaInicio() {
     year: 'numeric',
   });
 
-  const racha = useMemo(() => calcularRacha(recientes), [recientes]);
+  const racha = useMemo(() => calcularRacha(sesiones.data ?? []), [sesiones.data]);
   const top3 = useMemo(
-    () => (resumen?.topExercises ?? []).slice().sort((a, b) => b.bestWeight - a.bestWeight).slice(0, 3),
+    () => (resumen?.records ?? []).slice().sort((a, b) => b.achievedAt.localeCompare(a.achievedAt)).slice(0, 3),
     [resumen],
   );
   const ultimas5 = useMemo(
-    () => recientes.filter((e) => e.endedAt).slice(0, 5),
-    [recientes],
+    () => (sesiones.data ?? []).filter((e) => e.endedAt).slice(0, 5),
+    [sesiones.data],
   );
   const esMujer = usuario?.biologicalSex === 'FEMALE';
   const frase = useMemo(
@@ -145,16 +142,16 @@ export default function PaginaInicio() {
         </div>
       </div>
 
-      {estadoCarga === 'cargando' && (
+      {cargando && (
         <div role="status" className="flex items-center gap-sm rounded-xl border border-white/5 bg-surface-container-low p-md text-sm text-on-surface-variant">
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
           Preparando tu resumen…
         </div>
       )}
-      {estadoCarga === 'error' && (
+      {fallidas.length > 0 && (
         <div role="alert" className="flex flex-col items-start justify-between gap-sm rounded-xl border border-error/30 bg-error/10 p-md text-sm text-error sm:flex-row sm:items-center">
-          <span>No pudimos cargar todos tus datos. Puedes intentarlo de nuevo.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setIntento((valor) => valor + 1)}>Reintentar</Button>
+          <span>No pudimos cargar todos tus datos. Puedes intentarlo de nuevo. {fallidas.some(consulta => consulta.data !== undefined) && 'Los datos visibles son de la última consulta correcta.'}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => { void Promise.all(fallidas.map(consulta => consulta.refetch())); }}>Reintentar</Button>
         </div>
       )}
 
@@ -174,7 +171,7 @@ export default function PaginaInicio() {
 
       {/* Métricas principales */}
       <div className={cn('grid gap-md', muestraCiclo ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')}>
-        <TarjetaMetrica
+        {sesiones.data && <TarjetaMetrica
           icono="local_fire_department"
           fillIcono
           color="primary"
@@ -182,23 +179,23 @@ export default function PaginaInicio() {
           valor={racha.toString()}
           sufijo={racha === 1 ? 'día' : 'días'}
           extra={racha === 0 ? '¡Empieza hoy!' : 'Mantén el ritmo'}
-        />
-        <TarjetaMetrica
+        />}
+        {resumen && <TarjetaMetrica
           icono="event"
           color="primary"
           etiqueta="Sesiones 30D"
-          valor={(resumen?.workoutsCompleted ?? 0).toString()}
-          extra={`${Math.round(resumen?.volumeKg ?? 0).toLocaleString('es-CO')} kg en total`}
-        />
-        <TarjetaMetrica
+          valor={resumen.summary.sessionsCompleted.toString()}
+          extra={`${Math.round(resumen.summary.volumeKg).toLocaleString('es-CO')} kg en total · ${resumen.comparison ? `${resumen.comparison.delta.sessionsCompleted > 0 ? '+' : ''}${resumen.comparison.delta.sessionsCompleted} frente al periodo anterior` : 'Sin periodo anterior comparable.'}`}
+        />}
+        {readiness.data !== undefined && <TarjetaMetrica
           icono="battery_charging_full"
           color="secondary"
           etiqueta="Estado del día"
           valor={puntajeReadiness !== null ? Math.round(puntajeReadiness).toString() : '—'}
           sufijo="/100"
           extra={puntajeReadiness === null ? 'Sin registro de hoy' : puntajeReadiness >= 75 ? 'Empuja' : puntajeReadiness >= 50 ? 'Mantén' : 'Descansa'}
-        />
-        {muestraCiclo && (
+        />}
+        {muestraCiclo && ciclo.data !== undefined && (
           <TarjetaMetrica
             icono="cyclone"
             color="tertiary"
@@ -209,6 +206,7 @@ export default function PaginaInicio() {
           />
         )}
       </div>
+      {resumen?.summary.sessionsCompleted === 0 && <p>No hay sesiones completadas en este periodo.</p>}
 
       {/* Acciones rápidas */}
       <div className="grid grid-cols-2 gap-md">
@@ -230,12 +228,11 @@ export default function PaginaInicio() {
 
       {/* Grid principal */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-        {/* 3 mejores ejercicios */}
-        <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
+        {resumen && <section aria-label="Marcas recientes" className="bg-surface-container-low rounded-xl p-lg border border-white/5">
           <div className="flex items-center justify-between mb-md">
             <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-sm">
               <Icon name="emoji_events" className="text-secondary" />
-              3 mejores ejercicios
+              Marcas recientes
             </h3>
             <Link
               href="/progress"
@@ -253,7 +250,7 @@ export default function PaginaInicio() {
             <ul className="space-y-sm">
               {top3.map((ej, idx) => (
                 <li
-                  key={ej.exerciseId}
+                  key={`${ej.exerciseId}-${ej.kind}`}
                   className="flex items-center gap-md p-sm bg-surface-container rounded-lg"
                 >
                   <div
@@ -267,27 +264,27 @@ export default function PaginaInicio() {
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-body-md text-on-surface truncate">{traducirNombreEjercicio(ej.name)}</p>
+                    <p className="font-body-md text-on-surface truncate">{traducirNombreEjercicio(ej.exerciseName)}</p>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
-                      {ej.sessionsCount} sesiones · 1RM est. {ej.estimated1RM.toFixed(1)}kg
+                      {ej.kind === 'WEIGHT' ? 'Peso máximo' : ej.kind === 'REPS' ? 'Repeticiones máximas' : '1RM estimado'}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-grotesk text-numeric-data text-on-surface tabular-nums leading-none">
-                      {ej.bestWeight}
+                      {ej.value.toLocaleString('es-CO')} {ej.kind === 'REPS' ? 'repeticiones' : 'kg'}
                     </p>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
-                      KG × {ej.bestReps}
+                      {formatearFechaHora(ej.achievedAt)}
                     </p>
                   </div>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </section>}
 
         {/* Últimas 5 sesiones */}
-        <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
+        {sesiones.data && <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
           <div className="flex items-center justify-between mb-md">
             <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-sm">
               <Icon name="history" className="text-primary" />
@@ -342,10 +339,10 @@ export default function PaginaInicio() {
               })}
             </ul>
           )}
-        </div>
+        </div>}
       </div>
 
-      {/* Card de fase del ciclo (solo mujeres) */}
+      {/* Contexto opcional y estimado del ciclo */}
       {muestraCiclo && fase && (
         <div className="bg-surface-container-low rounded-xl p-lg border border-tertiary/20 relative overflow-hidden">
           <div className="absolute -right-8 -top-8 w-64 h-64 bg-tertiary/10 rounded-full blur-3xl"></div>
@@ -356,7 +353,7 @@ export default function PaginaInicio() {
               </div>
               <div>
                 <span className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant text-[10px]">
-                  Fase actual
+                  Fase estimada
                 </span>
                 <p className="font-headline-lg text-tertiary leading-tight">
                   {FASES_ESPANOL[fase.phase]}
@@ -402,7 +399,7 @@ function TarjetaMetrica({
       ? 'text-secondary bg-secondary/10'
       : 'text-tertiary bg-tertiary/10';
   return (
-    <div className="bg-surface-container-low rounded-xl p-md border border-white/5 relative overflow-hidden">
+    <div role="group" aria-label={etiqueta} className="bg-surface-container-low rounded-xl p-md border border-white/5 relative overflow-hidden">
       <div className={cn('absolute -right-4 -top-4 w-32 h-32 rounded-full blur-2xl', cls)}></div>
       <div className="relative">
         <div className="flex items-center gap-xs mb-sm">

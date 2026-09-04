@@ -1,12 +1,15 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { api, request } from '@/lib/api';
+import { useAutenticacion } from '@/lib/auth-store';
 import type { RegistroCiclo, Flujo, InfoFase } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { formatearFecha } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import { civilDate, todayCivil } from '@/lib/civil-date';
+import { todayCivil } from '@/lib/civil-date';
+import { cycleCivilDate } from '@/lib/cycle-date';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { recentRecordsState, type CycleLoadState } from '@/lib/cycle-view-state';
 
@@ -51,6 +54,19 @@ const colorFase: Record<string, string> = {
 };
 
 export default function PaginaCiclo() {
+  const { usuario } = useAutenticacion();
+  if (!usuario) return null;
+  if (!usuario.trackCycle) return (
+    <section>
+      <h1>Ciclo</h1>
+      <p>El seguimiento del ciclo es opcional. Puedes activarlo en tu perfil.</p>
+      <Link href="/profile">Configurar seguimiento</Link>
+    </section>
+  );
+  return <ContenidoCiclo key={usuario.id} />;
+}
+
+function ContenidoCiclo() {
   const [fase, setFase] = useState<InfoFase | null>(null);
   const [registros, setRegistros] = useState<RegistroCiclo[]>([]);
   const [hoy, setHoy] = useState({
@@ -69,9 +85,10 @@ export default function PaginaCiclo() {
   const [estadoCarga, setEstadoCarga] = useState<CycleLoadState>('loading');
   const solicitudActual = useRef(0);
   const controladorActual = useRef<AbortController | null>(null);
+  const montado = useRef(true);
 
   function fechaClave(fecha: string): string {
-    return civilDate(fecha);
+    return cycleCivilDate(fecha);
   }
 
   function formularioVacio() {
@@ -110,8 +127,13 @@ export default function PaginaCiclo() {
   }
 
   useEffect(() => {
+    montado.current = true;
     void cargar();
-    return () => { solicitudActual.current += 1; controladorActual.current?.abort(); };
+    return () => {
+      montado.current = false;
+      solicitudActual.current += 1;
+      controladorActual.current?.abort();
+    };
   }, []);
 
   function editarRegistro(registro: RegistroCiclo) {
@@ -152,7 +174,9 @@ export default function PaginaCiclo() {
         ? { ...hoy, previousDate: editandoFecha }
         : hoy;
       await api('/cycle/entries', { method: 'POST', json: payload });
+      if (!montado.current) return;
       await cargar();
+      if (!montado.current) return;
       setEditandoFecha(hoy.date);
       setMensajeAccion('Registro guardado. El calendario se actualizó.');
       if (typeof window !== 'undefined') {
@@ -174,7 +198,7 @@ export default function PaginaCiclo() {
           <div>
             <h1 className="font-headline-lg text-headline-lg text-on-surface">Ciclo</h1>
             <p className="font-body-md text-on-surface-variant">
-              Adapta tu entrenamiento a tu fase hormonal.
+              Consulta estimaciones de tu ciclo a partir de los registros que elijas guardar.
             </p>
           </div>
           <Button type="button" variant="outline" onClick={nuevoRegistro}>
@@ -194,7 +218,7 @@ export default function PaginaCiclo() {
               <div className="flex items-center gap-sm">
                 <Icon name="cyclone" className="text-tertiary" />
                 <span className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant">
-                  Fase actual
+                  Fase estimada
                 </span>
               </div>
               <span className="px-sm py-xs bg-tertiary text-on-tertiary font-grotesk text-[10px] tracking-wider rounded">
@@ -212,7 +236,7 @@ export default function PaginaCiclo() {
             <p className="font-body-lg text-on-surface mb-md">{fase.trainingHint}</p>
             {fase.nextPeriodStart && (
               <p className="font-grotesk text-label-caps tracking-wider text-on-surface-variant uppercase">
-                Próximo período · {formatearFecha(fase.nextPeriodStart)}
+                Próximo período estimado · {formatearFecha(fase.nextPeriodStart)}
               </p>
             )}
           </div>
@@ -379,14 +403,14 @@ export default function PaginaCiclo() {
                   {r.isPeriodStart && (
                     <Icon name="water_drop" fill className="text-tertiary" size={16} />
                   )}
-                  <span className="font-body-md text-on-surface">{formatearFecha(r.date)}</span>
+                  <span className="font-body-md text-on-surface">{formatearFecha(cycleCivilDate(r.date))}</span>
                 </div>
                 <div className="flex gap-sm items-center text-xs text-on-surface-variant">
                   <button
                     type="button"
                     onClick={() => editarRegistro(r)}
                     className="inline-flex items-center gap-1 rounded border border-primary/30 px-xs py-1 font-grotesk text-[10px] uppercase tracking-wider text-primary hover:bg-primary/10"
-                    aria-label={`Editar registro del ${formatearFecha(r.date)}`}
+                    aria-label={`Editar registro del ${formatearFecha(cycleCivilDate(r.date))}`}
                   >
                     <Icon name="edit" size={13} />
                     Editar
