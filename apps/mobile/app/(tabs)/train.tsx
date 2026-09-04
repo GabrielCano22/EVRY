@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { API_BASE_URL } from '@/src/api/client';
+import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
 import { mediaUrl } from '@/src/catalog/media-url';
 import { useTrainingStore } from '@/src/training/training-store';
@@ -11,14 +12,22 @@ import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/componen
 import { theme } from '@/src/ui/theme';
 
 export default function TrainScreen() {
+  const session = useSessionStore((state) => state.session)!;
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [playingGif, setPlayingGif] = useState(false);
-  const { data: exercises = [], isError, isLoading, refetch } = useQuery({
-    queryKey: ['exercises', search.trim()],
-    queryFn: ({ signal }) => loadExercises({ search, signal }),
+  const exercisesQuery = useQuery({
+    queryKey: ['exercises', search.trim(), page],
+    queryFn: ({ signal }) => loadExercises(session, { search, page, signal }),
   });
-  const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: loadRoutines });
+  const exercises = exercisesQuery.data?.items ?? [];
+  const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: ({ signal }) => loadRoutines(session, signal) });
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    setSelectedExerciseId(null);
+    setPlayingGif(false);
+  }
   const workout = useTrainingStore((state) => state.activeWorkout);
   const syncState = useTrainingStore((state) => state.syncState);
   const error = useTrainingStore((state) => state.error);
@@ -35,7 +44,15 @@ export default function TrainScreen() {
         <Text style={textStyles.muted}>No hay una sesión activa.</Text>
         <PrimaryButton onPress={() => void startWorkout()}>Iniciar sesión libre</PrimaryButton>
         {routinesQuery.isLoading ? <Text style={textStyles.muted}>Cargando rutinas…</Text> : null}
-        {routinesQuery.data?.map((routine) => (
+        {routinesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{routinesQuery.error.message}</Text> : null}
+        {routinesQuery.data?.notice ? <Text style={textStyles.muted}>{routinesQuery.data.notice}</Text> : null}
+        {routinesQuery.isError || routinesQuery.data?.stale ? (
+          <PrimaryButton disabled={routinesQuery.isFetching} onPress={() => void routinesQuery.refetch()}>Reintentar rutinas</PrimaryButton>
+        ) : null}
+        {routinesQuery.isSuccess && routinesQuery.data.items.length === 0 ? (
+          <Text style={textStyles.muted}>{routinesQuery.data.source === 'cache' ? 'No hay rutinas en la copia local.' : 'No tienes rutinas guardadas.'}</Text>
+        ) : null}
+        {routinesQuery.data?.items.map((routine) => (
           <Pressable
             accessibilityRole="button"
             key={routine.id}
@@ -52,21 +69,25 @@ export default function TrainScreen() {
 
   const selectedExercise = exercises.find((exercise) => exercise.id === selectedExerciseId) ?? exercises[0];
   const previewUrl = selectedExercise
-    ? mediaUrl(playingGif ? selectedExercise.gifPath : selectedExercise.imagePath, API_BASE_URL)
+    ? mediaUrl(playingGif ? (selectedExercise.gifUrl ?? selectedExercise.gifPath) : (selectedExercise.imageUrl ?? selectedExercise.imagePath), API_BASE_URL)
     : null;
   return (
     <Screen>
       <Text style={textStyles.title}>{workout.name}</Text>
       <SyncStatus state={syncState} />
-      {isLoading ? <Text style={textStyles.muted}>Cargando catálogo local…</Text> : null}
-      {isError && exercises.length === 0 ? (
-        <Pressable onPress={() => void refetch()}><Text style={textStyles.error}>No hay catálogo en caché. Reintentar.</Text></Pressable>
+      {exercisesQuery.isFetching ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
+      {exercisesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{exercisesQuery.error.message}</Text> : null}
+      {exercisesQuery.data?.notice ? <Text style={textStyles.muted}>{exercisesQuery.data.notice}</Text> : null}
+      {exercisesQuery.isError || exercisesQuery.data?.stale ? (
+        <PrimaryButton disabled={exercisesQuery.isFetching} onPress={() => void exercisesQuery.refetch()}>Reintentar catálogo</PrimaryButton>
       ) : null}
       <TextInput
         accessibilityLabel="Buscar ejercicio"
         autoCapitalize="none"
+        maxLength={80}
         onChangeText={(value) => {
           setSearch(value);
+          setPage(1);
           setSelectedExerciseId(null);
           setPlayingGif(false);
         }}
@@ -75,10 +96,14 @@ export default function TrainScreen() {
         style={styles.searchInput}
         value={search}
       />
+      {exercisesQuery.isSuccess && exercises.length === 0 ? (
+        <Text style={textStyles.muted}>{exercisesQuery.data.source === 'cache' ? 'No hay coincidencias en la copia local. Solo incluye ejercicios consultados anteriormente.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text>
+      ) : null}
       <View accessibilityRole="list" style={styles.exerciseList}>
-        {exercises.slice(0, 8).map((exercise) => (
+        {exercises.map((exercise) => (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={`Ver ${exercise.name}`}
             key={exercise.id}
             onPress={() => {
               setSelectedExerciseId(exercise.id);
@@ -89,9 +114,23 @@ export default function TrainScreen() {
               selectedExercise?.id === exercise.id && styles.exerciseOptionSelected,
             ]}
           >
-            <Text style={textStyles.body}>{exercise.name}</Text>
+            {exercise.imageUrl || exercise.imagePath ? <Image
+              accessibilityLabel={`Miniatura de ${exercise.name}`}
+              cachePolicy="disk"
+              contentFit="contain"
+              source={{ uri: mediaUrl(exercise.imageUrl ?? exercise.imagePath, API_BASE_URL)! }}
+              style={styles.thumbnail}
+            /> : null}
+            <Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text>
           </Pressable>
         ))}
+      </View>
+      <Text accessibilityLiveRegion="polite" style={textStyles.muted}>
+        Página {page}{exercisesQuery.data ? ` · ${exercisesQuery.data.total} coincidencias${exercisesQuery.data.source === 'cache' ? ' en la copia local' : ''}` : ''}
+      </Text>
+      <View style={styles.row}>
+        <PrimaryButton accessibilityLabel="Página anterior" disabled={page === 1 || exercisesQuery.isFetching} onPress={() => changePage(page - 1)}>Anterior</PrimaryButton>
+        <PrimaryButton accessibilityLabel="Página siguiente" disabled={!exercisesQuery.data?.hasMore || page >= 10000 || exercisesQuery.isFetching} onPress={() => changePage(page + 1)}>Siguiente</PrimaryButton>
       </View>
       {selectedExercise ? (
         <View style={styles.exerciseCard}>
@@ -106,7 +145,8 @@ export default function TrainScreen() {
             />
           ) : null}
           <Text style={textStyles.muted}>El catálogo muestra miniaturas; los GIF se reproducen solo bajo demanda.</Text>
-          {selectedExercise.gifPath ? (
+          {selectedExercise.attribution ? <Text style={textStyles.muted}>{selectedExercise.attribution}</Text> : null}
+          {selectedExercise.gifUrl || selectedExercise.gifPath ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setPlayingGif((value) => !value)}
@@ -184,7 +224,8 @@ const styles = StyleSheet.create({
   exerciseCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 12, padding: 18 },
   exerciseList: { gap: 8 },
   exerciseMedia: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 220, width: '100%' },
-  exerciseOption: { backgroundColor: theme.colors.surface, borderRadius: 10, padding: 12 },
+  exerciseOption: { backgroundColor: theme.colors.surface, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  thumbnail: { width: 48, height: 48, borderRadius: 6, backgroundColor: theme.colors.surfaceHigh },
   exerciseOptionSelected: { borderColor: theme.colors.primary, borderWidth: 2 },
   routineCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 4, padding: 18 },
   searchInput: {

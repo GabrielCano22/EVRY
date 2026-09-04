@@ -23,13 +23,18 @@
     "test:e2e": "npm run test:e2e --workspace @evry/web",
     "expo:doctor": "npm run doctor --workspace @evry/mobile",
     "export:mobile": "npm run export --workspace @evry/mobile",
-    "api:generate": "openapi-typescript packages/api-client/openapi/evry-v1.yaml -o packages/api-client/src/schema.ts",
-    "api:check": "npm run api:generate && git diff --exit-code -- packages/api-client/src/schema.ts"
+    "api:generate": "node scripts/api-contract.mjs generate",
+    "api:check": "node scripts/api-contract.mjs check",
+    "api:sync": "node scripts/api-contract.mjs sync",
+    "api:verify-backend": "node scripts/api-contract.mjs verify-backend",
+    "api:test": "node --test scripts/api-contract.test.mjs"
   },
   "devDependencies": {
     "openapi-typescript": "7.10.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-native-reanimated": "4.5.1",
+    "react-native-worklets": "0.10.1",
     "typescript": "^5.9.2",
     "vitest": "4.1.11"
   }

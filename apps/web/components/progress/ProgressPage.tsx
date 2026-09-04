@@ -15,7 +15,7 @@ const ExerciseChart = dynamic(() => import('@/components/ExerciseChart').then((m
 });
 type Overview = components['schemas']['ProgressOverview'];
 type Period = Overview['period']['key'];
-type Exercise = components['schemas']['Exercise'];
+type Exercise = Pick<components['schemas']['ExerciseListItemDto'], 'id' | 'name'>;
 const PERIODS: { value: Period; label: string }[] = [
   { value: '30d', label: '30 días' }, { value: '90d', label: '90 días' },
   { value: '6m', label: '6 meses' }, { value: '1y', label: '1 año' }, { value: 'all', label: 'Todo' },
@@ -35,7 +35,7 @@ export function ProgressPage() {
   const catalog = useQuery({
     queryKey: ['progress-exercise-search', userId, deferredSearch],
     enabled: deferredSearch.length > 0,
-    queryFn: ({ signal }) => requestOrThrow<{ items: Exercise[] }>(
+    queryFn: ({ signal }) => requestOrThrow<components['schemas']['ExercisePageDto']>(
       `/exercises?q=${encodeURIComponent(deferredSearch)}&limit=30`, { signal },
     ),
   });

@@ -1,82 +1,176 @@
-import { enqueueWorkout, getDatabase, loadActiveWorkout, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows } from './database';
+import type { components } from '@evry/api-client';
+import { continueServerWorkout, enqueueWorkout, getDatabase, loadActiveWorkout, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows, syncReviews } from './database';
 import type { LocalWorkout } from '../training/workout-domain';
 import type { SyncWorkoutInput } from '../api/client';
+import * as SQLite from 'expo-sqlite';
 
 // Exercise the production SQL on real SQLite; only the native Expo bridge is replaced.
-jest.mock('expo-sqlite', () => ({
-  openDatabaseAsync: async () => {
-    const { DatabaseSync } = jest.requireActual('node:sqlite');
-    const sqlite = new DatabaseSync(':memory:');
-    return {
-      execAsync: async (sql: string) => sqlite.exec(sql),
-      getFirstAsync: async (sql: string, ...params: unknown[]) => sqlite.prepare(sql).get(...params) ?? null,
-      getAllAsync: async (sql: string, ...params: unknown[]) => sqlite.prepare(sql).all(...params),
-      runAsync: async (sql: string, ...params: unknown[]) => sqlite.prepare(sql).run(...params),
-      withTransactionAsync: async (operation: () => Promise<void>) => {
-        sqlite.exec('BEGIN');
-        try { await operation(); sqlite.exec('COMMIT'); }
-        catch (error) { sqlite.exec('ROLLBACK'); throw error; }
-      },
-    };
-  },
+jest.mock('expo-sqlite', () => jest.requireActual('../testing/sqlite-native').createSQLiteBridge());
+jest.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'sha256' },
+  digestStringAsync: async (_algorithm: string, value: string) => jest.requireActual('node:crypto').createHash('sha256').update(value).digest('hex'),
 }));
+
+const alice = { userId: 'user-a', serverUrl: 'https://api.example.com/api/v1' };
+const bob = { userId: 'user-b', serverUrl: 'https://api.example.com/api/v1' };
 
 const workout: LocalWorkout = {
   clientId: 'local-workout', revision: 0, status: 'ACTIVE', name: 'Fuerza',
   startedAt: '2026-08-30T10:00:00.000Z', notes: null, sets: [], deletedSetClientIds: [],
+};
+const serverVersion: components['schemas']['SyncCanonicalWorkout'] = {
+  id: 'server-workout', userId: 'user-a', name: 'Fuerza del servidor', startedAt: '2026-08-30T10:00:00.000Z',
+  endedAt: null, cancelledAt: null, status: 'ACTIVE', clientId: null, lastSyncId: 'server-sync', revision: 4,
+  cyclePhase: null, notes: 'Controla el descenso', routineId: 'routine-1',
+  createdAt: '2026-08-30T10:00:00.000Z', updatedAt: '2026-08-30T10:30:00.000Z', routine: null,
+  sets: [{
+    id: 'server-set', workoutId: 'server-workout', exerciseId: 'exercise-1', order: 0,
+    weightKg: 50, reps: 5, durationS: null, rpe: 7, isWarmup: true,
+    completedAt: '2026-08-30T10:25:00.000Z', clientMutationId: 'mutation-1', clientId: null,
+    revision: 2, techniqueStable: false, updatedAt: '2026-08-30T10:25:00.000Z',
+    exercise: {
+      id: 'exercise-1', sourceId: null, name: 'Sentadilla', muscleGroup: 'QUADS', equipment: 'BARBELL',
+      category: null, bodyPart: null, target: null, secondaryMuscles: [], equipmentLabel: null,
+      isCustom: false, ownerId: null, isCompound: true, tags: [], description: null, mediaId: null,
+      imagePath: null, gifPath: null, attribution: null, instructions: null, instructionSteps: null,
+      createdAt: '2026-08-30T10:00:00.000Z',
+    },
+  }],
 };
 function payload(syncId: string, name = 'Fuerza'): SyncWorkoutInput {
   return { clientId: workout.clientId, syncId, baseRevision: 0, status: 'ACTIVE', name, startedAt: workout.startedAt, sets: [], deletedSetClientIds: [] };
 }
 
 beforeEach(async () => {
-  const database = await getDatabase();
+  const database = await getDatabase(alice);
   await database.execAsync('DELETE FROM workouts; DELETE FROM id_mapping;');
 });
 
 it('coalesces never-sent edits into the latest persisted workout', async () => {
-  await enqueueWorkout(workout, 'first', payload('first'));
-  await enqueueWorkout({ ...workout, name: 'Actualizado' }, 'latest', payload('latest', 'Actualizado'));
-  expect((await pendingSyncRows()).map((row) => row.syncId)).toEqual(['latest']);
-  expect((await loadActiveWorkout())?.name).toBe('Actualizado');
+  await enqueueWorkout(alice, workout, 'first', payload('first'));
+  await enqueueWorkout(alice, { ...workout, name: 'Actualizado' }, 'latest', payload('latest', 'Actualizado'));
+  expect((await pendingSyncRows(alice)).map((row) => row.syncId)).toEqual(['latest']);
+  expect((await loadActiveWorkout(alice))?.name).toBe('Actualizado');
 });
 
 it('replays an uncertain send unchanged before sending a newer edit with the acknowledged revision', async () => {
-  await enqueueWorkout(workout, 'uncertain', payload('uncertain'));
-  const [sent] = await pendingSyncRows();
-  await markSyncAttempt(sent.id);
-  await markSyncFailure(sent.id, workout.clientId, 'pending', 'network_error');
-  await enqueueWorkout({ ...workout, name: 'Actualizado' }, 'latest', payload('latest', 'Actualizado'));
+  await enqueueWorkout(alice, workout, 'uncertain', payload('uncertain'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  await markSyncFailure(alice, sent.id, workout.clientId, 'pending', 'network_error');
+  await enqueueWorkout(alice, { ...workout, name: 'Actualizado' }, 'latest', payload('latest', 'Actualizado'));
 
-  const retry = await pendingSyncRows();
+  const retry = await pendingSyncRows(alice);
   expect(retry.map((row) => row.syncId)).toEqual(['uncertain']);
   expect(JSON.parse(retry[0].payload)).toEqual(payload('uncertain'));
-  await markSyncAttempt(retry[0].id);
-  await markSyncSuccess(retry[0], { revision: 1, mapping: { workout: { serverId: 'server-1' }, sets: [] } });
+  await markSyncAttempt(alice, retry[0].id);
+  await markSyncSuccess(alice, retry[0], { revision: 1, mapping: { workout: { serverId: 'server-1' }, sets: [] } });
 
-  const next = await pendingSyncRows();
+  const next = await pendingSyncRows(alice);
   expect(next.map((row) => row.syncId)).toEqual(['latest']);
   expect(JSON.parse(next[0].payload)).toMatchObject({ baseRevision: 1, name: 'Actualizado' });
-  expect(await loadActiveWorkout()).toMatchObject({ revision: 1, name: 'Actualizado' });
+  expect(await loadActiveWorkout(alice)).toMatchObject({ revision: 1, name: 'Actualizado' });
+});
+
+it('persists every canonical server field when a conflicted workout is continued', async () => {
+  await enqueueWorkout(alice, workout, 'conflicted-sync', payload('conflicted-sync'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  await markSyncFailure(alice, sent.id, workout.clientId, 'requires_review', 'REVISION_CONFLICT', serverVersion);
+
+  const [review] = await syncReviews(alice);
+  await continueServerWorkout(alice, review);
+
+  expect(await loadActiveWorkout(alice)).toMatchObject({
+    clientId: workout.clientId,
+    revision: 4,
+    notes: 'Controla el descenso',
+    routineId: 'routine-1',
+    sets: [{
+      clientId: 'server-set',
+      isWarmup: true,
+      techniqueStable: false,
+      completedAt: '2026-08-30T10:25:00.000Z',
+    }],
+  });
+  expect(await pendingSyncRows(alice)).toEqual([]);
+});
+
+it('keeps a conflicted local workout recoverable when a stored server version is malformed', async () => {
+  await enqueueWorkout(alice, workout, 'malformed-sync', payload('malformed-sync'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  const database = await getDatabase(alice);
+  await database.runAsync(
+    "UPDATE sync_queue SET state = 'requires_review', last_error = ? WHERE id = ?",
+    JSON.stringify({ code: 'REVISION_CONFLICT', serverVersion: {} }),
+    sent.id,
+  );
+
+  const [review] = await syncReviews(alice);
+
+  expect(review.serverVersion).toBeNull();
+  await expect(continueServerWorkout(alice, review)).rejects.toThrow('no devolvió una sesión recuperable');
+  expect(await loadActiveWorkout(alice)).toMatchObject({ clientId: workout.clientId, name: workout.name, revision: 0 });
+  expect(await syncReviews(alice)).toHaveLength(1);
 });
 
 it('does not expose a newer payload while the same workout has an in-flight send', async () => {
-  await enqueueWorkout(workout, 'in-flight', payload('in-flight'));
-  const [sent] = await pendingSyncRows();
-  await markSyncAttempt(sent.id);
-  await enqueueWorkout(workout, 'latest', payload('latest'));
-  expect(await pendingSyncRows()).toEqual([]);
+  await enqueueWorkout(alice, workout, 'in-flight', payload('in-flight'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
+  await enqueueWorkout(alice, workout, 'latest', payload('latest'));
+  expect(await pendingSyncRows(alice)).toEqual([]);
 });
 
 it('serializes a local edit with an arriving acknowledgement without losing either', async () => {
-  await enqueueWorkout(workout, 'first', payload('first'));
-  const [sent] = await pendingSyncRows();
-  await markSyncAttempt(sent.id);
+  await enqueueWorkout(alice, workout, 'first', payload('first'));
+  const [sent] = await pendingSyncRows(alice);
+  await markSyncAttempt(alice, sent.id);
   await Promise.all([
-    enqueueWorkout({ ...workout, name: 'Última edición' }, 'latest', payload('latest', 'Última edición')),
-    markSyncSuccess(sent, { revision: 1, mapping: { workout: { serverId: 'server-1' }, sets: [] } }),
+    enqueueWorkout(alice, { ...workout, name: 'Última edición' }, 'latest', payload('latest', 'Última edición')),
+    markSyncSuccess(alice, sent, { revision: 1, mapping: { workout: { serverId: 'server-1' }, sets: [] } }),
   ]);
-  expect(await loadActiveWorkout()).toMatchObject({ revision: 1, name: 'Última edición' });
-  const [next] = await pendingSyncRows();
+  expect(await loadActiveWorkout(alice)).toMatchObject({ revision: 1, name: 'Última edición' });
+  const [next] = await pendingSyncRows(alice);
   expect(JSON.parse(next.payload)).toMatchObject({ baseRevision: 1, name: 'Última edición' });
+});
+
+it('isolates account caches and reopens the original account without deleting its data', async () => {
+  const first = await getDatabase(alice);
+  await first.runAsync('INSERT OR REPLACE INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)', 'private-a', '{"name":"Private A"}', '2026-08-30');
+  const second = await getDatabase(bob);
+  expect(await second.getAllAsync('SELECT id FROM routine_cache')).toEqual([]);
+  const reopened = await getDatabase({ ...alice });
+  expect(await reopened.getAllAsync('SELECT id FROM routine_cache')).toEqual([{ id: 'private-a' }]);
+});
+
+it('separates identical user IDs on different API environments', async () => {
+  const first = await getDatabase(alice);
+  await first.runAsync('INSERT OR REPLACE INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)', 'private-a', '{}', '2026-08-30');
+  const staging = await getDatabase({ ...alice, serverUrl: 'https://staging.example.com/api/v1' });
+  expect(await staging.getAllAsync('SELECT id FROM routine_cache')).toEqual([]);
+});
+
+it('preserves the unowned legacy database without copying its records into a new account', async () => {
+  const legacy = await SQLite.openDatabaseAsync('evry.db');
+  await legacy.execAsync('CREATE TABLE IF NOT EXISTS legacy_workouts (name TEXT); INSERT INTO legacy_workouts VALUES (\'Unassigned workout\');');
+  const account = await getDatabase({ ...alice, userId: 'new-account' });
+  expect(await account.getAllAsync('SELECT client_id FROM workouts')).toEqual([]);
+  expect(await legacy.getAllAsync('SELECT name FROM legacy_workouts')).toEqual([{ name: 'Unassigned workout' }]);
+});
+
+it('applies an acknowledgement only to the originating database even when queue IDs collide', async () => {
+  const firstOwner = { ...alice, userId: 'ack-first' };
+  const secondOwner = { ...bob, userId: 'ack-second' };
+  await enqueueWorkout(firstOwner, workout, 'first', payload('first'));
+  await enqueueWorkout(secondOwner, { ...workout, name: 'Other account' }, 'second', payload('second', 'Other account'));
+  const [first] = await pendingSyncRows(firstOwner);
+  const [second] = await pendingSyncRows(secondOwner);
+  expect(first.id).toBe(second.id);
+  await markSyncAttempt(firstOwner, first.id);
+  await markSyncSuccess(firstOwner, first, { revision: 1, mapping: { workout: { serverId: 'server-first' }, sets: [] } });
+  expect(await pendingSyncRows(firstOwner)).toEqual([]);
+  expect(await pendingSyncRows(secondOwner)).toEqual([second]);
+  expect(await loadActiveWorkout(secondOwner)).toMatchObject({ name: 'Other account', revision: 0 });
 });

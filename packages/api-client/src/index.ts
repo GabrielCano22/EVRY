@@ -1,5 +1,10 @@
 import createClient from 'openapi-fetch';
-import type { paths } from './schema';
+import type { paths as ServerPaths } from './schema';
+
+// Callers supply the versioned base URL; derive route keys without repeating it.
+export type paths = {
+  [Path in keyof ServerPaths as Path extends `/api/v1${infer Route}` ? Route : never]: ServerPaths[Path];
+};
 
 export type AccessTokenProvider = () => string | null | Promise<string | null>;
 
@@ -15,4 +20,4 @@ export function createEvryApiClient(baseUrl: string, accessToken: AccessTokenPro
   return client;
 }
 
-export type { components, operations, paths } from './schema';
+export type { components, operations } from './schema';

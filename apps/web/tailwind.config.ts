@@ -28,15 +28,15 @@ const config: Config = {
         'outline-variant': '#414755',
 
         // Primary — iOS Blue
-        primary: '#007AFF',
+        primary: '#168DFF',
         'primary-fixed': '#4DA2FF',
         'primary-fixed-dim': '#0A84FF',
-        'on-primary': '#ffffff',
-        'primary-container': '#0A84FF',
-        'on-primary-container': '#ffffff',
-        'surface-tint': '#007AFF',
+        'on-primary': '#06111C',
+        'primary-container': '#168DFF',
+        'on-primary-container': '#06111C',
+        'surface-tint': '#168DFF',
         'inverse-primary': '#0051A8',
-        'on-primary-fixed': '#ffffff',
+        'on-primary-fixed': '#06111C',
         'on-primary-fixed-variant': '#0051A8',
 
         // Secondary — Electric Purple

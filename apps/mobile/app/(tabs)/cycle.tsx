@@ -2,47 +2,43 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { todayCivil } from '@evry/domain';
-import { apiClient, refreshMobileSession } from '@/src/api/client';
+import { withMobileAuth, type MobileSession } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 
-async function loadEntries() {
-  let response = await apiClient.GET('/cycle/entries');
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.GET('/cycle/entries');
+async function loadEntries(session: MobileSession) {
+  const response = await withMobileAuth((client) => client.GET('/cycle/entries'), session);
   if (!response.data || response.error) throw new Error('No se pudo cargar el ciclo.');
   return response.data;
 }
 
-async function addToday() {
+async function addToday(session: MobileSession) {
   const request = { body: { date: todayCivil(), flow: 'NONE' as const, symptoms: [] } };
-  let response = await apiClient.POST('/cycle/entries', request);
-  if (response.response.status === 401 && await refreshMobileSession()) response = await apiClient.POST('/cycle/entries', request);
+  const response = await withMobileAuth((client) => client.POST('/cycle/entries', request), session);
   if (!response.data || response.error) throw new Error('No se pudo guardar el registro de hoy.');
   return response.data;
 }
 
-async function removeEntry(id: string) {
-  let response = await apiClient.DELETE('/cycle/entries/{id}', { params: { path: { id } } });
-  if (response.response.status === 401 && await refreshMobileSession()) {
-    response = await apiClient.DELETE('/cycle/entries/{id}', { params: { path: { id } } });
-  }
+async function removeEntry(session: MobileSession, id: string) {
+  const response = await withMobileAuth((client) => client.DELETE('/cycle/entries/{id}', { params: { path: { id } } }), session);
   if (response.error) throw new Error('No se pudo eliminar el registro.');
 }
 
 export default function CycleScreen() {
+  const session = useSessionStore((state) => state.session)!;
   const trackCycle = useSessionStore((state) => state.user?.trackCycle ?? false);
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['cycle'], queryFn: loadEntries, enabled: trackCycle });
+  const query = useQuery({ queryKey: ['cycle'], queryFn: () => loadEntries(session), enabled: trackCycle });
   const addMutation = useMutation({
-    mutationFn: addToday,
+    mutationFn: () => addToday(session),
     onSuccess: async () => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await queryClient.invalidateQueries({ queryKey: ['cycle'] });
     },
   });
   const deleteMutation = useMutation({
-    mutationFn: removeEntry,
+    mutationFn: (id: string) => removeEntry(session, id),
     onSuccess: async () => {
       await Haptics.selectionAsync();
       await queryClient.invalidateQueries({ queryKey: ['cycle'] });

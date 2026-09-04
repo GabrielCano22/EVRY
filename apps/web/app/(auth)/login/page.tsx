@@ -124,7 +124,7 @@ export default function PaginaIngreso() {
 
           <p className="pt-sm text-center font-body-md text-sm text-on-surface-variant">
             ¿Sin cuenta?{' '}
-            <Link href="/register" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Link href="/register" className="text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               Crear una
             </Link>
           </p>

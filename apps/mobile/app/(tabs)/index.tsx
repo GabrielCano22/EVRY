@@ -16,6 +16,8 @@ import { theme } from '@/src/ui/theme';
 
 export default function HomeScreen() {
   const user = useSessionStore((state) => state.user);
+  const session = useSessionStore((state) => state.session)!;
+  const offline = useSessionStore((state) => state.offline);
   const activeWorkout = useTrainingStore((state) => state.activeWorkout);
   const startWorkout = useTrainingStore((state) => state.startWorkout);
   const syncState = useTrainingStore((state) => state.syncState);
@@ -24,11 +26,11 @@ export default function HomeScreen() {
   const [resolutionError, setResolutionError] = useState<string | null>(null);
   const { data: reviews = [], refetch: refreshReviews } = useQuery({
     queryKey: ['sync-reviews', syncState],
-    queryFn: syncReviews,
+    queryFn: () => syncReviews(session),
   });
   const { data: drafts = [], refetch: refreshDrafts } = useQuery({
     queryKey: ['recovered-drafts', syncState],
-    queryFn: loadRecoveredDrafts,
+    queryFn: () => loadRecoveredDrafts(session),
   });
   useFocusEffect(useCallback(() => {
     void refreshReviews();
@@ -43,8 +45,8 @@ export default function HomeScreen() {
   async function keepDraft(review: SyncReview) {
     try {
       setResolutionError(null);
-      await keepReviewAsDraft(review.workoutClientId);
-      await initializeTraining();
+      await keepReviewAsDraft(session, review.workoutClientId);
+      await initializeTraining(session);
       await refreshReviews();
       await refreshDrafts();
     } catch (error) {
@@ -55,8 +57,8 @@ export default function HomeScreen() {
   async function continueServer(review: SyncReview) {
     try {
       setResolutionError(null);
-      await continueServerWorkout(review);
-      await initializeTraining();
+      await continueServerWorkout(session, review);
+      await initializeTraining(session);
       await refreshReviews();
     } catch (error) {
       setResolutionError(error instanceof Error ? error.message : 'No se pudo recuperar la sesión.');
@@ -67,6 +69,7 @@ export default function HomeScreen() {
     <Screen>
       <Text style={textStyles.title}>Hola, {user?.name ?? 'atleta'}</Text>
       <Text style={textStyles.muted}>Tu entrenamiento y tus series quedan disponibles incluso sin conexión.</Text>
+      {offline ? <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Modo local: puedes entrenar sin conexión. Verificaremos la sesión al reconectar.</Text> : null}
       <SyncStatus state={syncState} />
       {resolutionError ? <Text accessibilityRole="alert" style={textStyles.error}>{resolutionError}</Text> : null}
       {reviews.map((review) => (

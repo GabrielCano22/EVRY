@@ -2,14 +2,25 @@ import { SymbolView } from 'expo-symbols';
 import { Redirect, Tabs } from 'expo-router';
 import type { ColorValue } from 'react-native';
 import { useSessionStore } from '@/src/auth/session-store';
-import { LoadingScreen } from '@/src/ui/components';
+import { useTrainingStore } from '@/src/training/training-store';
+import { LoadingScreen, PrimaryButton, Screen, textStyles } from '@/src/ui/components';
+import { Text } from 'react-native';
 import { theme } from '@/src/ui/theme';
 
 export default function TabLayout() {
   const status = useSessionStore((state) => state.status);
   const trackCycle = useSessionStore((state) => state.user?.trackCycle ?? false);
+  const session = useSessionStore((state) => state.session);
+  const ready = useTrainingStore((state) => state.ready);
+  const trainingSession = useTrainingStore((state) => state.session);
+  const error = useTrainingStore((state) => state.error);
+  const initialize = useTrainingStore((state) => state.initialize);
   if (status === 'checking') return <LoadingScreen />;
   if (status !== 'authenticated') return <Redirect href="/login" />;
+  if (!ready || session !== trainingSession) {
+    if (error && session) return <Screen><Text accessibilityRole="alert" style={textStyles.error}>{error}</Text><PrimaryButton onPress={() => void initialize(session)}>Reintentar almacenamiento local</PrimaryButton></Screen>;
+    return <LoadingScreen />;
+  }
 
   return (
     <Tabs

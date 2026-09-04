@@ -4,6 +4,7 @@ import { buildPlaywrightConfig } from '../../playwright.config.options';
 const frontendRoot = 'D:/workspace/EVRY/.worktrees/release-candidate';
 const backendRoot = 'D:/workspace/EVRY-Backend/.worktrees/release-candidate';
 type WebServer = {
+  command?: string;
   env?: Record<string, string | undefined>;
   url?: string;
   reuseExistingServer?: boolean;
@@ -39,8 +40,10 @@ test('starts e2e servers without reuse and probes backend health', () => {
   const webServers = config.webServer;
 
   expect(Array.isArray(webServers)).toBe(true);
-  const [, backendServer] = webServers as WebServer[];
+  const [frontendServer, backendServer] = webServers as WebServer[];
 
+  expect(frontendServer?.command).toBe('npm run start -- --hostname 127.0.0.1 --port 3000');
+  expect(backendServer?.command).toBe('npm run start:prod');
   expect(backendServer).toMatchObject({
     url: 'http://127.0.0.1:4000/api/v1/health/ready',
     reuseExistingServer: false,
@@ -93,4 +96,23 @@ test('rejects equivalent PostgreSQL database identities in Playwright configurat
       DATABASE_URL: 'postgres://production:secret@localhost/evry_test',
     },
   })).toThrow('different');
+});
+
+test('uses Chromium for both desktop and mobile projects installed by CI', () => {
+  const config = buildPlaywrightConfig({
+    frontendRoot,
+    backendRoot,
+    environment: createEnvironment(),
+  });
+
+  expect(config.projects).toEqual([
+    expect.objectContaining({
+      name: 'desktop-chromium',
+      use: expect.objectContaining({ defaultBrowserType: 'chromium' }),
+    }),
+    expect.objectContaining({
+      name: 'mobile-chromium',
+      use: expect.objectContaining({ defaultBrowserType: 'chromium' }),
+    }),
+  ]);
 });

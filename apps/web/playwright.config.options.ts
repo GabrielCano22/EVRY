@@ -112,18 +112,18 @@ export function buildPlaywrightConfig({
     },
     projects: [
       { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
-      { name: 'mobile-chromium', use: { ...devices['iPhone 13'] } },
+      { name: 'mobile-chromium', use: { ...devices['Pixel 5'] } },
     ],
     webServer: [
       {
-        command: 'npm run dev -- --hostname 127.0.0.1 --port 3000',
+        command: 'npm run start -- --hostname 127.0.0.1 --port 3000',
         cwd: frontendRoot,
         env: frontendEnvironment,
         url: 'http://127.0.0.1:3000',
         reuseExistingServer: false,
       },
       {
-        command: 'npm run start:dev',
+        command: 'npm run start:prod',
         cwd: backendRoot,
         url: 'http://127.0.0.1:4000/api/v1/health/ready',
         env: backendEnvironment,

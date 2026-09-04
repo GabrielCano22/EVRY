@@ -23,7 +23,7 @@ export interface LocalWorkout {
   cancelledAt?: string;
   status: LocalWorkoutStatus;
   notes: string | null;
-  routineId?: string;
+  routineId?: string | null;
   sets: LocalWorkoutSet[];
   deletedSetClientIds: string[];
 }

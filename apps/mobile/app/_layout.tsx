@@ -1,12 +1,12 @@
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useSessionStore } from '@/src/auth/session-store';
 import { SyncCoordinator } from '@/src/sync/SyncCoordinator';
 import { useTrainingStore } from '@/src/training/training-store';
+import { AccountQueryProvider } from '@/src/auth/AccountQueryProvider';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -17,17 +17,21 @@ void SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const initializeSession = useSessionStore((state) => state.initialize);
   const initializeTraining = useTrainingStore((state) => state.initialize);
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
-  }));
+  const session = useSessionStore((state) => state.session);
+  const status = useSessionStore((state) => state.status);
 
   useEffect(() => {
-    void Promise.all([initializeSession(), initializeTraining()])
-      .finally(() => SplashScreen.hideAsync());
-  }, [initializeSession, initializeTraining]);
+    void initializeSession();
+  }, [initializeSession]);
+  useEffect(() => {
+    if (session) void initializeTraining(session);
+  }, [session, initializeTraining]);
+  useEffect(() => {
+    if (status !== 'checking') void SplashScreen.hideAsync();
+  }, [status]);
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <AccountQueryProvider session={session}>
       <ThemeProvider value={DarkTheme}>
         <StatusBar style="light" />
         <SyncCoordinator />
@@ -36,6 +40,6 @@ export default function RootLayout() {
           <Stack.Screen name="login" options={{ headerShown: false }} />
         </Stack>
       </ThemeProvider>
-    </QueryClientProvider>
+    </AccountQueryProvider>
   );
 }

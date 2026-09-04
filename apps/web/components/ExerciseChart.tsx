@@ -52,7 +52,7 @@ export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: stri
               <XAxis dataKey="date" tick={{ fill: '#A1ABB7', fontSize: 11 }} />
               <YAxis tick={{ fill: '#A1ABB7', fontSize: 11 }} />
               <Tooltip contentStyle={{ background: '#17212a', border: '1px solid #45515e', borderRadius: 8 }} />
-              <Area name="1RM estimado (kg)" type="monotone" dataKey="estimated1RM" stroke="#70B7FF" fill="#007AFF" fillOpacity={0.2} isAnimationActive={false} />
+              <Area name="1RM estimado (kg)" type="monotone" dataKey="estimated1RM" stroke="#70B7FF" fill="#168DFF" fillOpacity={0.2} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

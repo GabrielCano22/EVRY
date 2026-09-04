@@ -1,13 +1,17 @@
 import * as SQLite from 'expo-sqlite';
+import * as Crypto from 'expo-crypto';
 import type { components } from '@evry/api-client';
 import type { LocalWorkout } from '../training/workout-domain';
 import { aggregateSyncState, type SyncQueueState } from '../sync/queue-policy';
 import { canonicalWorkoutFromServer } from '../sync/conflict-resolution';
 import { rebaseSyncPayload, rebaseWorkoutRevisions } from '../sync/revisions';
-import type { SyncWorkoutInput } from '../api/client';
+import { recoveryWorkoutFromUnknown, type SyncCanonicalWorkoutForRecovery, type SyncWorkoutInput } from '../api/client';
 
-const DATABASE_NAME = 'evry.db';
-const DATABASE_VERSION = 1;
+export interface DatabaseOwner {
+  readonly userId: string;
+  readonly serverUrl: string;
+}
+const DATABASE_VERSION = 2;
 
 export interface PendingSyncRow {
   id: number;
@@ -21,34 +25,49 @@ export interface SyncReview {
   workoutClientId: string;
   workoutName: string;
   errorCode: string;
-  serverVersion: components['schemas']['Workout'] | null;
+  serverVersion: SyncCanonicalWorkoutForRecovery | null;
 }
 
-let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
-let writeQueue: Promise<void> = Promise.resolve();
+const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
+const writeQueues = new WeakMap<SQLite.SQLiteDatabase, Promise<void>>();
 
 // Expo's async transactions share a connection. Serialize complete write units so
 // a network acknowledgement cannot commit/rollback an unrelated local edit.
+// Separate account connections must not wait for each other's pending writes.
 function writeTransaction<T>(database: SQLite.SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
-  const write = writeQueue.then(async () => {
+  const write = (writeQueues.get(database) ?? Promise.resolve()).then(async () => {
     let result!: T;
     await database.withTransactionAsync(async () => { result = await operation(); });
     return result;
   });
-  writeQueue = write.then(() => undefined, () => undefined);
+  writeQueues.set(database, write.then(() => undefined, () => undefined));
   return write;
 }
 
-export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-  databasePromise ??= SQLite.openDatabaseAsync(DATABASE_NAME).then(async (database) => {
-    await migrate(database);
-    await database.execAsync(`
-      UPDATE sync_queue SET state = 'pending' WHERE state = 'syncing';
-      UPDATE workouts SET sync_state = 'pending' WHERE sync_state = 'syncing';
-    `);
-    return database;
-  });
-  return databasePromise;
+export function getDatabase(owner: DatabaseOwner): Promise<SQLite.SQLiteDatabase> {
+  if (!owner?.userId?.trim() || !owner.serverUrl?.trim()) {
+    return Promise.reject(new Error('Se requiere una cuenta para abrir el almacenamiento local.'));
+  }
+  const key = JSON.stringify([owner.serverUrl.replace(/\/+$/, ''), owner.userId]);
+  const existing = connections.get(key);
+  if (existing) return existing;
+  // Legacy evry.db has no trustworthy owner. Preserve it without assigning it
+  // automatically; recovery requires an explicit ownership check.
+  const connection = Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, key)
+    .then((digest) => SQLite.openDatabaseAsync(`evry-account-${digest}.db`))
+    .then(async (database) => {
+      await migrate(database);
+      await database.execAsync(`
+        UPDATE sync_queue SET state = 'pending' WHERE state = 'syncing';
+        UPDATE workouts SET sync_state = 'pending' WHERE sync_state = 'syncing';
+      `);
+      return database;
+    }).catch((error: unknown) => {
+      connections.delete(key);
+      throw error;
+    });
+  connections.set(key, connection);
+  return connection;
 }
 
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -106,15 +125,38 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       bytes INTEGER NOT NULL DEFAULT 0,
       last_access_at TEXT NOT NULL
     );
-    PRAGMA user_version = ${DATABASE_VERSION};
+    PRAGMA user_version = 1;
   `);
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS cache_metadata (table_name TEXT PRIMARY KEY NOT NULL, saved_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS exercise_search (
+        exercise_id TEXT PRIMARY KEY NOT NULL,
+        search_text TEXT NOT NULL,
+        FOREIGN KEY(exercise_id) REFERENCES exercise_cache(id) ON DELETE CASCADE
+      );
+    `);
+    let cursor = '';
+    for (;;) {
+      const rows = await database.getAllAsync<{ id: string; payload: string }>(
+        'SELECT id, payload FROM exercise_cache WHERE id > ? ORDER BY id LIMIT 100', cursor,
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await indexExercise(database, row.id, JSON.parse(row.payload) as object);
+      }
+      cursor = rows[rows.length - 1].id;
+    }
+    await database.execAsync('PRAGMA user_version = 2;');
+  });
 }
 
 export async function saveWorkout(
+  owner: DatabaseOwner,
   workout: LocalWorkout,
   syncState: SyncQueueState = 'synced',
 ): Promise<void> {
-  const database = await getDatabase();
+  const database = await getDatabase(owner);
   await writeTransaction(database, () => persistWorkout(database, workout, syncState));
 }
 
@@ -141,32 +183,33 @@ async function persistWorkout(
   );
 }
 
-export async function loadActiveWorkout(): Promise<LocalWorkout | null> {
-  const database = await getDatabase();
+export async function loadActiveWorkout(owner: DatabaseOwner): Promise<LocalWorkout | null> {
+  const database = await getDatabase(owner);
   const row = await database.getFirstAsync<{ payload: string }>(
     "SELECT payload FROM workouts WHERE status = 'ACTIVE' LIMIT 1",
   );
   return row ? JSON.parse(row.payload) as LocalWorkout : null;
 }
 
-export async function loadRecoveredDrafts(): Promise<LocalWorkout[]> {
-  const database = await getDatabase();
+export async function loadRecoveredDrafts(owner: DatabaseOwner): Promise<LocalWorkout[]> {
+  const database = await getDatabase(owner);
   const rows = await database.getAllAsync<{ payload: string }>(
     "SELECT payload FROM workouts WHERE status = 'DRAFT' ORDER BY updated_at DESC LIMIT 20",
   );
   return rows.map((row) => JSON.parse(row.payload) as LocalWorkout);
 }
 
-export async function archiveRecoveredDraft(draft: LocalWorkout): Promise<void> {
-  await saveWorkout({ ...draft, status: 'CANCELLED', cancelledAt: new Date().toISOString() }, 'synced');
+export async function archiveRecoveredDraft(owner: DatabaseOwner, draft: LocalWorkout): Promise<void> {
+  await saveWorkout(owner, { ...draft, status: 'CANCELLED', cancelledAt: new Date().toISOString() }, 'synced');
 }
 
 export async function enqueueWorkout(
+  owner: DatabaseOwner,
   workout: LocalWorkout,
   syncId: string,
   payload: SyncWorkoutInput,
 ): Promise<SyncQueueState> {
-  const database = await getDatabase();
+  const database = await getDatabase(owner);
   let syncState: SyncQueueState = 'pending';
   await writeTransaction(database, async () => {
     const stored = await database.getFirstAsync<{ revision: number; payload: string }>(
@@ -207,8 +250,8 @@ export async function enqueueWorkout(
   return syncState;
 }
 
-export async function pendingSyncRows(): Promise<PendingSyncRow[]> {
-  const database = await getDatabase();
+export async function pendingSyncRows(owner: DatabaseOwner): Promise<PendingSyncRow[]> {
+  const database = await getDatabase(owner);
   return database.getAllAsync<PendingSyncRow>(
     `SELECT q.id, q.sync_id AS syncId, q.workout_client_id AS workoutClientId,
       q.payload, q.attempts FROM sync_queue q
@@ -220,8 +263,8 @@ export async function pendingSyncRows(): Promise<PendingSyncRow[]> {
   );
 }
 
-export async function currentSyncState(): Promise<SyncQueueState> {
-  const database = await getDatabase();
+export async function currentSyncState(owner: DatabaseOwner): Promise<SyncQueueState> {
+  const database = await getDatabase(owner);
   const rows = await database.getAllAsync<{ syncState: SyncQueueState }>(
     `SELECT DISTINCT sync_state AS syncState FROM workouts
      WHERE sync_state <> 'synced'`,
@@ -229,8 +272,8 @@ export async function currentSyncState(): Promise<SyncQueueState> {
   return aggregateSyncState(rows.map((row) => row.syncState));
 }
 
-export async function markSyncAttempt(id: number): Promise<boolean> {
-  const database = await getDatabase();
+export async function markSyncAttempt(owner: DatabaseOwner, id: number): Promise<boolean> {
+  const database = await getDatabase(owner);
   return writeTransaction(database, async () => {
     const result = await database.runAsync(
       "UPDATE sync_queue SET state = 'syncing', attempts = attempts + 1, updated_at = ? WHERE id = ? AND state = 'pending'",
@@ -248,13 +291,14 @@ export async function markSyncAttempt(id: number): Promise<boolean> {
 }
 
 export async function markSyncFailure(
+  owner: DatabaseOwner,
   id: number,
   workoutClientId: string,
   state: Extract<SyncQueueState, 'pending' | 'requires_review'>,
   errorCode: string,
-  serverVersion?: components['schemas']['Workout'] | null,
+  serverVersion?: SyncCanonicalWorkoutForRecovery | null,
 ): Promise<void> {
-  const database = await getDatabase();
+  const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
     if (state === 'requires_review') {
       await database.runAsync(
@@ -279,8 +323,8 @@ export async function markSyncFailure(
   });
 }
 
-export async function syncReviews(): Promise<SyncReview[]> {
-  const database = await getDatabase();
+export async function syncReviews(owner: DatabaseOwner): Promise<SyncReview[]> {
+  const database = await getDatabase(owner);
   const rows = await database.getAllAsync<{
     workoutClientId: string;
     payload: string;
@@ -292,19 +336,25 @@ export async function syncReviews(): Promise<SyncReview[]> {
   );
   return rows.map((row) => {
     const workout = JSON.parse(row.payload) as LocalWorkout;
-    let error: { code?: string; serverVersion?: components['schemas']['Workout'] | null } = {};
-    try { error = JSON.parse(row.lastError ?? '{}') as typeof error; } catch { error = { code: row.lastError ?? undefined }; }
+    let code: string | undefined;
+    let serverVersion: SyncCanonicalWorkoutForRecovery | null = null;
+    try {
+      const error = JSON.parse(row.lastError ?? '{}');
+      const record = typeof error === 'object' && error !== null && !Array.isArray(error) ? error : null;
+      code = record && typeof record.code === 'string' ? record.code : undefined;
+      serverVersion = record ? recoveryWorkoutFromUnknown(record.serverVersion) : null;
+    } catch { code = row.lastError ?? undefined; }
     return {
       workoutClientId: row.workoutClientId,
       workoutName: workout.name,
-      errorCode: error.code ?? 'CONFLICT',
-      serverVersion: error.serverVersion ?? null,
+      errorCode: code ?? 'CONFLICT',
+      serverVersion,
     };
   });
 }
 
-export async function keepReviewAsDraft(workoutClientId: string): Promise<void> {
-  const database = await getDatabase();
+export async function keepReviewAsDraft(owner: DatabaseOwner, workoutClientId: string): Promise<void> {
+  const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
     const row = await database.getFirstAsync<{ payload: string }>(
       'SELECT payload FROM workouts WHERE client_id = ?',
@@ -328,9 +378,9 @@ export async function keepReviewAsDraft(workoutClientId: string): Promise<void> 
   });
 }
 
-export async function continueServerWorkout(review: SyncReview): Promise<void> {
+export async function continueServerWorkout(owner: DatabaseOwner, review: SyncReview): Promise<void> {
   if (!review.serverVersion) throw new Error('El servidor no devolvió una sesión recuperable.');
-  const database = await getDatabase();
+  const database = await getDatabase(owner);
   const server = review.serverVersion;
   const canonical = canonicalWorkoutFromServer(review.workoutClientId, server);
   await writeTransaction(database, async () => {
@@ -357,6 +407,7 @@ export async function continueServerWorkout(review: SyncReview): Promise<void> {
 }
 
 export async function markSyncSuccess(
+  owner: DatabaseOwner,
   row: PendingSyncRow,
   result: {
     revision: number;
@@ -366,7 +417,7 @@ export async function markSyncSuccess(
     };
   },
 ): Promise<void> {
-  const database = await getDatabase();
+  const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
     const now = new Date().toISOString();
     await database.runAsync('DELETE FROM sync_queue WHERE id = ?', row.id);
@@ -422,43 +473,91 @@ export async function markSyncSuccess(
   });
 }
 
-export async function cacheEntities(
-  table: 'exercise_cache' | 'routine_cache',
-  entities: { id: string }[],
-): Promise<void> {
-  const database = await getDatabase();
+type CacheTable = 'exercise_cache' | 'routine_cache';
+
+async function indexExercise(database: SQLite.SQLiteDatabase, id: string, entity: object): Promise<void> {
+  const fields = entity as Record<string, unknown>;
+  const searchable = ['name', 'target', 'bodyPart', 'equipmentLabel']
+    .map((key) => typeof fields[key] === 'string' ? fields[key] : '')
+    .join('\n').normalize('NFC').toLocaleLowerCase('es');
+  await database.runAsync(
+    'INSERT INTO exercise_search (exercise_id, search_text) VALUES (?, ?) ON CONFLICT(exercise_id) DO UPDATE SET search_text = excluded.search_text',
+    id, searchable,
+  );
+}
+
+async function storeCachedEntity(database: SQLite.SQLiteDatabase, table: CacheTable, entity: { id: string }, now: string): Promise<void> {
+  if (table === 'exercise_cache') {
+    await database.runAsync(
+      `INSERT INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at, last_access_at = excluded.last_access_at`,
+      entity.id, JSON.stringify(entity), now, now,
+    );
+    await indexExercise(database, entity.id, entity);
+  } else {
+    await database.runAsync(
+      `INSERT INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
+      entity.id, JSON.stringify(entity), now,
+    );
+  }
+}
+
+async function markCacheSnapshot(database: SQLite.SQLiteDatabase, table: CacheTable, now: string): Promise<void> {
+  await database.runAsync(
+    'INSERT INTO cache_metadata (table_name, saved_at) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET saved_at = excluded.saved_at',
+    table, now,
+  );
+}
+
+export async function cacheEntities(owner: DatabaseOwner, table: CacheTable, entities: { id: string }[]): Promise<void> {
+  const database = await getDatabase(owner);
   const now = new Date().toISOString();
   await writeTransaction(database, async () => {
-    for (const entity of entities) {
-      if (table === 'exercise_cache') {
-        await database.runAsync(
-          `INSERT INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET payload = excluded.payload,
-             updated_at = excluded.updated_at, last_access_at = excluded.last_access_at`,
-          entity.id,
-          JSON.stringify(entity),
-          now,
-          now,
-        );
-      } else {
-        await database.runAsync(
-          `INSERT INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-          entity.id,
-          JSON.stringify(entity),
-          now,
-        );
-      }
-    }
+    for (const entity of entities) await storeCachedEntity(database, table, entity, now);
+    await markCacheSnapshot(database, table, now);
   });
 }
 
-export async function cachedEntities<T>(
-  table: 'exercise_cache' | 'routine_cache',
-): Promise<T[]> {
-  const database = await getDatabase();
-  const rows = await database.getAllAsync<{ payload: string }>(
-    `SELECT payload FROM ${table} ORDER BY updated_at DESC`,
+/** A routines GET is a full snapshot, including the authoritative empty list. */
+export async function replaceCachedRoutines(owner: DatabaseOwner, entities: { id: string }[]): Promise<void> {
+  const database = await getDatabase(owner);
+  const now = new Date().toISOString();
+  await writeTransaction(database, async () => {
+    await database.runAsync('DELETE FROM routine_cache');
+    for (const entity of entities) await storeCachedEntity(database, 'routine_cache', entity, now);
+    await markCacheSnapshot(database, 'routine_cache', now);
+  });
+}
+
+async function cacheAvailability(database: SQLite.SQLiteDatabase, table: CacheTable) {
+  const snapshot = await database.getFirstAsync<{ savedAt: string }>(
+    'SELECT saved_at AS savedAt FROM cache_metadata WHERE table_name = ?', table,
   );
-  return rows.map(({ payload }) => JSON.parse(payload) as T);
+  const saved = await database.getFirstAsync<{ savedAt: string | null }>(`SELECT MAX(updated_at) AS savedAt FROM ${table}`);
+  return { available: Boolean(snapshot || saved?.savedAt), updatedAt: snapshot?.savedAt ?? saved?.savedAt ?? null };
+}
+
+export async function cachedCollection<T>(owner: DatabaseOwner, table: CacheTable) {
+  const database = await getDatabase(owner);
+  const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM ${table} ORDER BY updated_at DESC, id`);
+  return { items: rows.map(({ payload }) => JSON.parse(payload) as T), ...await cacheAvailability(database, table) };
+}
+
+export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: number, limit = 30) {
+  const database = await getDatabase(owner);
+  const search = q.normalize('NFC').toLocaleLowerCase('es');
+  const from = "FROM exercise_cache c LEFT JOIN exercise_search s ON s.exercise_id = c.id WHERE ? = '' OR instr(s.search_text, ?) > 0";
+  const count = await database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total ${from}`, search, search);
+  const rows = await database.getAllAsync<{ payload: string }>(
+    `SELECT c.payload ${from}
+     ORDER BY COALESCE(json_extract(c.payload, '$.isCustom'), 0), lower(json_extract(c.payload, '$.name')), c.id
+     LIMIT ? OFFSET ?`, search, search, limit, (page - 1) * limit,
+  );
+  const total = count?.total ?? 0;
+  return {
+    items: rows.map(({ payload }) => JSON.parse(payload) as components['schemas']['ExerciseListItemDto']),
+    page, limit, total, hasMore: page * limit < total,
+    ...await cacheAvailability(database, 'exercise_cache'),
+  };
 }
