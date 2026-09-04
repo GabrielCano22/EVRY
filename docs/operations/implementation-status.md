@@ -11,6 +11,8 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 - La fuente OpenAPI es única. El frontend importa el JSON y cliente generados desde el backend fijado; el importador verifica origen, hashes, normalización LF/CRLF, tipos y ausencia de referencias externas.
 - Historial por cursor `(endedAt, id)`, frecuencia semanal de todo el periodo y progreso web con tipos compartidos, periodos, comparación real, consulta cancelable y carga incremental.
 - Configuraciones de CI y política Vercel/EAS presentes. Render fue retirado. No hay despliegues autorizados.
+- El acceso web al ciclo depende de la elección explícita, no del sexo registrado: registro, perfil, inicio, calendario y página directa. Desactivarlo o cambiar de cuenta desmonta el formulario del ciclo y descarta respuestas tardías de la vista anterior.
+- Las fechas del ciclo serializadas por la API a medianoche UTC conservan su fecha civil en calendario, historial y edición; no se convierten al día anterior en Bogotá. Las fechas horarias de entrenamiento mantienen su conversión local.
 
 ## Evidencia observada
 
@@ -25,7 +27,7 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 ### Contrato y CI, 4 de septiembre
 
 - El lock del frontend quedó fijado a `4ee7342cdd85fc6c46fca8033104804ab6ada1fe`. `api:sync`, `api:verify-backend` y `api:check` terminaron correctamente contra esa revisión; el diff importado documenta únicamente respuestas `401` de logout web/móvil.
-- Las CI frontend `33878020665` y `33878849934` fallaron únicamente en Expo Doctor (20/21), después de pasar contrato, E2E y los pasos anteriores de calidad. Se alinearon `expo ~57.0.20` y `expo-router ~57.0.19`, junto con cuatro dependencias transitivas de Expo. La verificación local posterior pasó lint, tipos, 16 suites / 83 pruebas móviles, Expo Doctor 21/21, exportaciones Android/iOS y auditoría de nivel alto. La CI remota de este nuevo cambio debe confirmarse después del push; no se presenta una exportación estática como prueba en dispositivo.
+- Las CI frontend `33878020665` y `33878849934` fallaron únicamente en Expo Doctor (20/21), después de pasar contrato, E2E y los pasos anteriores de calidad. Se alinearon `expo ~57.0.20` y `expo-router ~57.0.19`, junto con cuatro dependencias transitivas de Expo. La verificación local posterior pasó lint, tipos, 16 suites / 83 pruebas móviles, Expo Doctor 21/21, exportaciones Android/iOS y auditoría de nivel alto. Las CI de push `33880175386` y de PR `33880178454` sobre `4231385` terminaron correctamente en calidad, contrato y E2E, incluidas las exportaciones móviles. No se presenta una exportación estática como prueba en dispositivo.
 - Verificación local fresca: móvil 16 suites / 83 pruebas; web 14 archivos / 52 pruebas unitarias; accesibilidad 1 prueba; cliente API 3; tokens 2; dominio 12 y las 33 pruebas del importador, todas correctas. El importador tardó 161,65 s.
 
 ### Verificación local de frontend, 4 de septiembre
@@ -37,12 +39,13 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 - El origen de los dos fallos E2E de contraste quedó confirmado: la misma página de login tenía una animación real pausada a 100 ms con opacidad `0.717649`, que Axe interpreta con contraste insuficiente; al finalizar la animación, opacidad `1`, ya no hay violación. El cambio es solo de prueba: espera `animation.finished` y opacidad `1`, sin cambio de CSS, color ni producción. E2E normal/reduced × desktop/mobile pasó 4/4 en 17,8 s, recibió revisión independiente aprobada y pasó también en CI `33878020665`.
 - La CI backend `33876893755` falló 59/60 porque una prueba rechazaba `127.0.0.1` aunque CI lo permitía explícitamente. Se reprodujo y corrigió en `e211dce` mediante dos aplicaciones reales con orígenes aislados y limpieza de configuración. La revisión independiente fue aprobada y una verificación local nueva con el origen de CI pasó 7 suites / 60 pruebas en 46,80 s. Las CI posteriores `33878691475` y `33878837563` terminaron correctamente, esta última sobre `2268a78`.
 - El E2E de Playwright existente solo abre `/login`, comprueba navegación por teclado, 200 % de zoom y Axe sin violaciones graves/críticas. No envía autenticación ni cubre entrenamientos, por lo que no se debe afirmar cobertura E2E de login real ni de workouts.
+- La regresión de opt-in web se reprodujo antes de corregirla. Las pruebas de componentes usan controles, sesión Zustand y cliente HTTP reales con transporte simulado; cubren consentimiento, guardado/recarga, hidratación, calendario, cancelación, cambio de cuenta y finalización tardía de guardado. La respuesta real de ciclo (fecha ISO a medianoche UTC y `userId`) también reprodujo el desplazamiento de día y el error al editar. Tras corregirlos, pasaron 17 pruebas focales y la suite completa web (16 archivos / 69 pruebas más 1 de accesibilidad), build y Expo Doctor 21/21. Esto no equivale a integración HTTP/PostgreSQL de ciclo ni a una prueba en navegador de esos flujos.
+- El caso adicional de 1 de enero llevó la cobertura focal a 18 pruebas correctas. Sobre `555815d`, una ejecución final completa confirmó 16 archivos / 70 pruebas web más 1 de accesibilidad; el type-check posterior también pasó. La revisión independiente aprobó cumplimiento y calidad. El build anterior corresponde al mismo código de producción: después solo se añadió esa prueba de frontera de mes.
 
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
 
-- Confirmar la CI remota del frontend tras alinear los parches de Expo ya verificados localmente. No añadir exclusiones ni desactivar comprobaciones.
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
 - Revisar todos los consumidores web restantes; que TypeScript compile no demuestra que todas las pantallas y el calendario usen el cliente generado.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
@@ -61,7 +64,8 @@ Actualizado: 4 de septiembre de 2026. Este registro separa implementación, evid
 ### Web, rendimiento y operación
 
 - Completar la migración de todas las pantallas a cliente generado y TanStack Query.
-- Acotar el calendario a actividad agregada por mes y eliminar condicionamiento de ciclo por sexo en consumidores restantes.
+- Acotar el calendario a actividad agregada por mes. El condicionamiento del acceso al ciclo por sexo ya está corregido en los consumidores web.
+- Migrar el resumen de Inicio al contrato canónico de progreso: todavía lee campos del resumen anterior y puede mostrar métricas cero aunque existan sesiones. No confundir la corrección de acceso al ciclo con esta brecha del resumen.
 - Agregar puntos de progreso agregados/acotados en SQL; el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
 - Ampliar accesibilidad a navegador, teclado, zoom, lector de pantalla y movimiento reducido, y añadir flujos E2E de autenticación y entrenamientos.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
