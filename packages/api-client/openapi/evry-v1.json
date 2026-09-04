@@ -303,6 +303,16 @@
               }
             }
           },
+          "401": {
+            "description": "A token from another platform is rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Missing or untrusted browser Origin.",
             "content": {
@@ -586,6 +596,16 @@
           },
           "400": {
             "description": "Solicitud inválida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token from another platform is rejected.",
             "content": {
               "application/json": {
                 "schema": {

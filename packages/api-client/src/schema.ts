@@ -1480,6 +1480,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description A token from another platform is rejected. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Missing or untrusted browser Origin. */
             403: {
                 headers: {
@@ -1705,6 +1714,15 @@ export interface operations {
             };
             /** @description Solicitud inválida. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A token from another platform is rejected. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
