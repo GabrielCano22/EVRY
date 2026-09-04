@@ -79,7 +79,7 @@ export default function PaginaInicio() {
   const [estadoCarga, setEstadoCarga] = useState<'cargando' | 'listo' | 'error'>('cargando');
   const [intento, setIntento] = useState(0);
 
-  const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
+  const muestraCiclo = !!usuario?.trackCycle;
 
   useEffect(() => {
     let activo = true;

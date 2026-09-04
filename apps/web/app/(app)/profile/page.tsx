@@ -19,7 +19,13 @@ const etiquetasMeta: Record<Meta, { etiqueta: string; icono: string }> = {
 };
 
 export default function PaginaPerfil() {
-  const { usuario, recargarUsuario, cerrarSesion } = useAutenticacion();
+  const { usuario } = useAutenticacion();
+  if (!usuario) return null;
+  return <FormularioPerfil key={usuario.id} usuario={usuario} />;
+}
+
+function FormularioPerfil({ usuario }: { usuario: Usuario }) {
+  const { recargarUsuario, cerrarSesion } = useAutenticacion();
   const router = useRouter();
   const [datos, setDatos] = useState<Partial<Usuario>>({
     name: usuario?.name,
@@ -54,8 +60,6 @@ export default function PaginaPerfil() {
     await cerrarSesion();
     router.replace('/login');
   }
-
-  if (!usuario) return null;
 
   return (
     <div className="space-y-lg max-w-2xl">
@@ -104,8 +108,7 @@ export default function PaginaPerfil() {
         </div>
       </div>
 
-      {datos.biologicalSex === 'FEMALE' && (
-        <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 space-y-md">
+      <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 space-y-md">
           <div className="flex items-center gap-sm">
             <Icon name="cyclone" className="text-tertiary" />
             <h2 className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-on-surface-variant">
@@ -115,10 +118,10 @@ export default function PaginaPerfil() {
           <label className="flex items-center justify-between py-sm cursor-pointer">
             <span className="font-body-lg text-[17px] text-on-surface">Activar seguimiento</span>
             <span
-              className={cn(
-                'relative w-14 h-7 rounded-full flex items-center p-1 transition-colors',
-                datos.trackCycle ? 'bg-primary' : 'bg-surface-container-high',
-              )}
+                className={cn(
+                  'relative w-14 h-7 rounded-full flex items-center p-1 transition-colors',
+                  datos.trackCycle ? 'bg-primary' : 'bg-surface-container-high',
+                )}
             >
               <span
                 className={cn(
@@ -156,8 +159,7 @@ export default function PaginaPerfil() {
               />
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       <Button onClick={guardar} loading={guardando} className="w-full" size="lg">
         <Icon name="save" />

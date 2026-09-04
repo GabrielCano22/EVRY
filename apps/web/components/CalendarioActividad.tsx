@@ -5,6 +5,7 @@ import type { Entrenamiento, RegistroCiclo } from '@/lib/types';
 import { useAutenticacion } from '@/lib/auth-store';
 import { Icon } from './ui/Icon';
 import { cn } from '@/lib/utils';
+import { cycleCivilDate } from '@/lib/cycle-date';
 import {
   calendarMonthCells,
   civilDate,
@@ -75,7 +76,7 @@ function faseProyectada(
 
 export function CalendarioActividad() {
   const { usuario } = useAutenticacion();
-  const muestraCiclo = !!usuario?.trackCycle && usuario.biologicalSex === 'FEMALE';
+  const muestraCiclo = !!usuario?.trackCycle;
 
   const [hoy] = useState(todayCivil);
   const componentesHoy = parseCivilDate(hoy);
@@ -135,7 +136,7 @@ export function CalendarioActividad() {
     }
     if (muestraCiclo) {
       for (const r of ciclo) {
-        const llave = claveFechaLocal(r.date);
+        const llave = cycleCivilDate(r.date);
         const actual = mapa.get(llave) ?? { entrenamientos: [] };
         actual.ciclo = r;
         mapa.set(llave, actual);
@@ -145,7 +146,7 @@ export function CalendarioActividad() {
   }, [entrenamientos, ciclo, muestraCiclo]);
 
   const iniciosCiclo = useMemo(
-    () => ciclo.filter((registro) => registro.isPeriodStart).map((registro) => claveFechaLocal(registro.date)),
+    () => ciclo.filter((registro) => registro.isPeriodStart).map((registro) => cycleCivilDate(registro.date)),
     [ciclo],
   );
 

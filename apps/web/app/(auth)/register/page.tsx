@@ -74,7 +74,7 @@ export default function PaginaRegistro() {
         <div className="mb-md">
           <h1 className="font-headline-lg text-headline-lg text-on-surface mb-sm">Crea tu cuenta</h1>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Toma 30 segundos. Tu sexo biológico calibra métricas base de metabolismo y recuperación.
+            Toma 30 segundos. Elige tus preferencias opcionales para personalizar tu experiencia.
           </p>
         </div>
 
@@ -93,7 +93,6 @@ export default function PaginaRegistro() {
                     setDatos({
                       ...datos,
                       sexoBiologico: opcion.valor,
-                      seguirCiclo: opcion.valor === 'FEMALE' ? datos.seguirCiclo : false,
                     })
                   }
                   className={cn(
@@ -121,8 +120,7 @@ export default function PaginaRegistro() {
           </div>
         </div>
 
-        {datos.sexoBiologico === 'FEMALE' && (
-          <div className="bg-surface-container rounded-xl overflow-hidden animate-fade-in">
+        <div className="bg-surface-container rounded-xl overflow-hidden animate-fade-in">
             <div className="p-md flex items-start gap-sm">
               <div className="w-12 h-12 rounded-full bg-tertiary/20 flex items-center justify-center flex-shrink-0">
                 <Icon name="water_drop" fill className="text-tertiary" />
@@ -132,7 +130,7 @@ export default function PaginaRegistro() {
                   Integración del ciclo
                 </h2>
                 <p className="font-body-md text-on-surface-variant text-sm">
-                  Adapta intensidad y predice fluctuaciones de fuerza según tu fase hormonal.
+                  Contexto opcional para registrar tu ciclo y consultar estimaciones.
                 </p>
               </div>
             </div>
@@ -160,8 +158,7 @@ export default function PaginaRegistro() {
                 />
               </label>
             </div>
-          </div>
-        )}
+        </div>
 
         <div className="space-y-md pt-sm">
           <Input
