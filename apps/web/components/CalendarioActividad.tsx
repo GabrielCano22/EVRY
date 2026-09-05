@@ -25,6 +25,51 @@ const COLOR_FASE: Record<string, string> = {
   MENSTRUAL: 'bg-tertiary/40', FOLLICULAR: 'bg-primary/30', OVULATION: 'bg-secondary/40', LUTEAL: 'bg-tertiary/25',
 };
 const ETIQUETAS_FLUJO: Record<string, string> = { NONE: 'Ninguno', SPOTTING: 'Manchado', LIGHT: 'Ligero', MEDIUM: 'Medio', HEAVY: 'Abundante' };
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+const BOGOTA_CLOCK = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+function millisecondsUntilNextBogotaDay(now = new Date()): number {
+  const clock = Object.fromEntries(
+    BOGOTA_CLOCK.formatToParts(now)
+      .filter((part) => part.type === 'hour' || part.type === 'minute' || part.type === 'second')
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const elapsed = ((clock.hour * 60 + clock.minute) * 60 + clock.second) * 1000 + now.getMilliseconds();
+  return Math.max(1, MILLISECONDS_PER_DAY - elapsed + 25);
+}
+
+function useBogotaToday(): CivilDate {
+  const [today, setToday] = useState(todayCivil);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    function scheduleBoundary() {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, millisecondsUntilNextBogotaDay());
+    }
+    function refresh() {
+      const current = todayCivil();
+      setToday((previous) => previous === current ? previous : current);
+      scheduleBoundary();
+    }
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') refresh();
+    }
+
+    scheduleBoundary();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
+
+  return today;
+}
 
 function numeroDiaCivil(fecha: CivilDate): number {
   const { year, month, day } = parseCivilDate(fecha);
@@ -61,7 +106,7 @@ function CalendarioPorCuenta({ usuario }: { usuario: NonNullable<ReturnType<type
   const queryClient = useQueryClient();
   const muestraCiclo = usuario.trackCycle;
   const generation = currentSessionGeneration();
-  const [hoy] = useState(todayCivil);
+  const hoy = useBogotaToday();
   const hoyPartes = parseCivilDate(hoy);
   const [mes, setMes] = useState(hoyPartes.month - 1);
   const [anio, setAnio] = useState(hoyPartes.year);
@@ -157,7 +202,7 @@ function CalendarioPorCuenta({ usuario }: { usuario: NonNullable<ReturnType<type
           const { day } = parseCivilDate(fecha);
           return <button
             key={fecha} type="button" aria-pressed={selected} onClick={() => setDiaSeleccionado(selected ? null : fecha)}
-            aria-label={`Ver actividad del ${formatCivilDate(fecha, { day: 'numeric', month: 'long', year: 'numeric' })}${sessions.length ? ', con sesión de entrenamiento' : ''}${cycleEntry?.isPeriodStart ? ', inicio de período' : ''}${cycleEntry?.symptoms.length ? `, ${cycleEntry.symptoms.length} síntomas` : ''}`}
+            aria-label={`Ver actividad del ${formatCivilDate(fecha, { day: 'numeric', month: 'long', year: 'numeric' })}${sessions.length ? ', con sesión de entrenamiento' : ''}${cycleEntry?.isPeriodStart ? ', inicio de período' : cycleEntry && cycleEntry.flow !== 'NONE' ? `, flujo: ${ETIQUETAS_FLUJO[cycleEntry.flow] ?? cycleEntry.flow}` : ''}${cycleEntry?.symptoms.length ? `, ${cycleEntry.symptoms.length} síntomas` : ''}`}
             className={cn(
               'aspect-square rounded flex flex-col items-center justify-center relative transition-all border text-[11px]',
               selected ? 'border-primary bg-primary/15' : compareCivil(fecha, hoy) === 0 ? 'border-primary/50 bg-surface-container-low' : 'border-transparent bg-surface-container-low hover:bg-surface-container-high',

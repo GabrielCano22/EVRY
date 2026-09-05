@@ -152,6 +152,40 @@ describe('monthly calendar reads', () => {
     await waitFor(() => expect(requests.filter((url) => url.pathname.endsWith('/cycle/calendar') && url.searchParams.get('from') === '2027-01-01').length).toBeGreaterThan(1));
     expect(requests.some((url) => url.pathname.endsWith('/progress/activity') && url.searchParams.get('from') === '2027-01-01')).toBe(false);
   });
+
+  it('advances the activity bound and today highlight at Bogota midnight without remounting', async () => {
+    vi.setSystemTime(new Date('2026-09-04T04:58:00.000Z'));
+    respond((url) => url.pathname.endsWith('/progress/activity')
+      ? emptyActivity(String(url.searchParams.get('from')), String(url.searchParams.get('to')))
+      : emptyCycle(String(url.searchParams.get('from')), String(url.searchParams.get('to'))));
+    show();
+
+    await waitFor(() => expect(requests.some((url) => url.pathname.endsWith('/progress/activity') && url.search === '?from=2026-09-01&to=2026-09-03')).toBe(true));
+    expect(screen.getByRole('button', { name: /^Ver actividad del 3 de septiembre de 2026$/ }).className).toContain('border-primary/50');
+    expect(screen.getByRole('button', { name: /^Ver actividad del 4 de septiembre de 2026$/ }).className).not.toContain('border-primary/50');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60 * 1000 + 100); });
+
+    await waitFor(() => expect(requests.some((url) => url.pathname.endsWith('/progress/activity') && url.search === '?from=2026-09-01&to=2026-09-04')).toBe(true));
+    expect(screen.getByRole('button', { name: /^Ver actividad del 3 de septiembre de 2026$/ }).className).not.toContain('border-primary/50');
+    expect(screen.getByRole('button', { name: /^Ver actividad del 4 de septiembre de 2026$/ }).className).toContain('border-primary/50');
+  });
+
+  it('announces a recorded non-start flow in the day accessible name', async () => {
+    respond((url) => url.pathname.endsWith('/progress/activity')
+      ? emptyActivity('2026-09-01', '2026-09-04')
+      : {
+          from: '2026-09-01', to: '2026-09-30', previousPeriodStart: null, entries: [{
+            id: 'flow-1', userId: accountA.id, date: '2026-09-02T00:00:00.000Z', flow: 'LIGHT',
+            symptoms: [], energy: null, mood: null, notes: null, isPeriodStart: false,
+          }],
+        });
+    show();
+
+    expect(await screen.findByRole('button', {
+      name: /^Ver actividad del 2 de septiembre de 2026, flujo: Ligero$/,
+    })).toBeInTheDocument();
+  });
 });
 
 describe('monthly calendar lifecycle and read states', () => {
