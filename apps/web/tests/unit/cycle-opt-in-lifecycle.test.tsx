@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PaginaCiclo from '@/app/(app)/cycle/page';
 import PaginaPerfil from '@/app/(app)/profile/page';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
@@ -17,30 +18,48 @@ const entry: RegistroCiclo & { userId: string } = {
   id: 'entry-a', userId: 'account-a', date: `${todayCivil()}T00:00:00.000Z`, flow: 'LIGHT', symptoms: ['fatiga'],
   energy: 3, mood: 3, notes: 'Nota privada de A', isPeriodStart: true,
 };
-type Pending = { path: string; method: string; signal?: AbortSignal | null; body: unknown; resolve: (body: unknown) => void; done: Promise<Response> };
+type Pending = { url: URL; path: string; method: string; signal?: AbortSignal | null; body: unknown; resolve: (body: unknown) => void; done: Promise<Response> };
 const pending: Pending[] = [];
 const requests: { path: string; method: string }[] = [];
 
 function transport(defer: (path: string, method: string) => boolean, responseEntry = entry) {
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const path = url.pathname;
     const method = init?.method ?? 'GET';
     requests.push({ path, method });
-    if (!['/api/v1/cycle/today', '/api/v1/cycle/entries', '/api/v1/workouts'].includes(path)) throw new Error(`Unexpected ${method} ${path}`);
+    if (!['/api/v1/cycle/today', '/api/v1/cycle/entries', '/api/v1/cycle/calendar', '/api/v1/progress/activity'].includes(path)) throw new Error(`Unexpected ${method} ${path}`);
     if (defer(path, method)) {
       let resolve!: (body: unknown) => void;
       const done = new Promise<Response>((finish) => { resolve = (body) => finish(Response.json(body)); });
-      pending.push({ path, method, signal: init?.signal, body: init?.body ? JSON.parse(String(init.body)) : undefined, resolve, done });
+      pending.push({ url, path, method, signal: init?.signal, body: init?.body ? JSON.parse(String(init.body)) : undefined, resolve, done });
       return done;
     }
-    return Promise.resolve(Response.json(path.endsWith('/cycle/today') ? null : path.endsWith('/cycle/entries') ? [responseEntry] : []));
+    if (path.endsWith('/cycle/today')) return Promise.resolve(Response.json(null));
+    if (path.endsWith('/cycle/entries')) return Promise.resolve(Response.json([responseEntry]));
+    if (path.endsWith('/cycle/calendar')) return Promise.resolve(Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), entries: [responseEntry], previousPeriodStart: null,
+    }));
+    return Promise.resolve(Response.json({ from: url.searchParams.get('from'), to: url.searchParams.get('to'), days: [] }));
   }));
 }
 async function settle(items: Pending[], late = false) {
   await act(async () => {
-    for (const item of items) item.resolve(item.method === 'POST' ? entry : item.path.endsWith('/cycle/today') ? null : late ? [entry] : []);
+    for (const item of items) {
+      if (item.method === 'POST') item.resolve(entry);
+      else if (item.path.endsWith('/cycle/today')) item.resolve(null);
+      else if (item.path.endsWith('/cycle/entries')) item.resolve(late ? [entry] : []);
+      else if (item.path.endsWith('/cycle/calendar')) item.resolve({
+        from: item.url.searchParams.get('from'), to: item.url.searchParams.get('to'), entries: late ? [entry] : [], previousPeriodStart: null,
+      });
+      else item.resolve({ from: item.url.searchParams.get('from'), to: item.url.searchParams.get('to'), days: [] });
+    }
     await Promise.all(items.map((item) => item.done));
   });
+}
+function renderWithCalendarClient(view: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(<QueryClientProvider client={client}>{view}</QueryClientProvider>);
 }
 beforeEach(() => {
   pending.length = 0; requests.length = 0; setAccessToken(null);
@@ -73,9 +92,9 @@ it('hydrates the profile from the real session then saves and reloads disabled c
   expect(useAutenticacion.getState().estado).toBe('authenticated');
 });
 
-it('removes opted-in OTHER calendar markers, legend and details and only reloads workouts after opt-out', async () => {
+it('removes opted-in OTHER calendar markers, legend and details and only reloads activity after opt-out', async () => {
   transport(() => false);
-  render(<CalendarioActividad />);
+  renderWithCalendarClient(<CalendarioActividad />);
   const day = await screen.findByRole('button', { name: /inicio de período, 1 síntomas/ });
   const expectedDate = new Intl.DateTimeFormat('es-CO', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(entry.date));
   expect(day).toHaveAccessibleName(`Ver actividad del ${expectedDate}, inicio de período, 1 síntomas`);
@@ -88,7 +107,7 @@ it('removes opted-in OTHER calendar markers, legend and details and only reloads
   expect(screen.queryByText('Nota privada de A')).not.toBeInTheDocument();
   await screen.findByText('Aún no hay actividad registrada.');
   const cycleCount = requests.filter((r) => r.path.includes('/cycle/')).length;
-  transport((path) => path.endsWith('/workouts'));
+  transport((path) => path.endsWith('/progress/activity'));
   act(() => { window.dispatchEvent(new CustomEvent('evry:cycle-updated')); });
   expect(pending).toHaveLength(1);
   await settle([...pending]);
@@ -99,16 +118,16 @@ it('removes opted-in OTHER calendar markers, legend and details and only reloads
 it('does not infer calendar consent from FEMALE after loading completes', async () => {
   useAutenticacion.setState({ usuario: { ...user, biologicalSex: 'FEMALE', trackCycle: false } });
   transport(() => false);
-  render(<CalendarioActividad />);
+  renderWithCalendarClient(<CalendarioActividad />);
   await screen.findByText('Aún no hay actividad registrada.');
-  expect(requests).toEqual([{ path: '/api/v1/workouts', method: 'GET' }]);
+  expect(requests).toEqual([{ path: '/api/v1/progress/activity', method: 'GET' }]);
   expect(screen.queryByText('Menstrual')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /inicio de período/ })).not.toBeInTheDocument();
 });
 
 it('aborts pending cycle reads on opt-out, ignores late history and re-enables a fresh form', async () => {
   transport((path) => path.includes('/cycle/'));
-  render(<PaginaCiclo />);
+  renderWithCalendarClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Privado antes de desactivar' } });
   const old = [...pending];
   expect(old).toHaveLength(3);
@@ -126,7 +145,7 @@ it('aborts pending cycle reads on opt-out, ignores late history and re-enables a
 
 it('clears private form state immediately and performs fresh reads on same-route account switch', async () => {
   transport((path) => path.includes('/cycle/'));
-  render(<PaginaCiclo />);
+  renderWithCalendarClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Solo cuenta A' } });
   const old = [...pending];
   act(() => useAutenticacion.setState({ usuario: { ...user, id: 'account-b', name: 'Bea' } }));
@@ -141,7 +160,7 @@ it('clears private form state immediately and performs fresh reads on same-route
 
 it('edits a serialized UTC-midnight cycle entry on its original civil date', async () => {
   transport(() => false);
-  render(<PaginaCiclo />);
+  renderWithCalendarClient(<PaginaCiclo />);
   fireEvent.click(await screen.findByRole('button', { name: /Editar registro del/ }));
   expect(screen.getByLabelText('Fecha')).toHaveValue(todayCivil());
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('Nota privada de A');
@@ -149,7 +168,7 @@ it('edits a serialized UTC-midnight cycle entry on its original civil date', asy
 
 it('keeps January 1 in the history label and edit form across the UTC month boundary', async () => {
   transport(() => false, { ...entry, date: '2026-01-01T00:00:00.000Z' });
-  render(<PaginaCiclo />);
+  renderWithCalendarClient(<PaginaCiclo />);
   const edit = await screen.findByRole('button', { name: 'Editar registro del 01 de ene de 2026' });
   expect(screen.getByText('01 de ene de 2026')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Editar registro del 31/ })).not.toBeInTheDocument();
@@ -164,7 +183,7 @@ it.each(['opt-out', 'account-switch'])('suppresses reads and global update after
   const onUpdate = (event: Event) => updates.push(event);
   window.addEventListener('evry:cycle-updated', onUpdate);
   try {
-    render(<PaginaCiclo />);
+    renderWithCalendarClient(<PaginaCiclo />);
     await screen.findByRole('button', { name: /Editar registro del/ });
     fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'No compartir con B' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' }));

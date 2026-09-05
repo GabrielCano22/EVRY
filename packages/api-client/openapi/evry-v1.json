@@ -2416,6 +2416,93 @@
         ]
       }
     },
+    "/api/v1/cycle/calendar": {
+      "get": {
+        "operationId": "CycleController_calendar",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "Inicio inclusivo; rango máximo de 62 días.",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "Fin inclusivo; puede ser futuro para proyecciones.",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calendario acotado con semilla del periodo anterior.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleCalendar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de solicitudes alcanzado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cycle"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/cycle/entries/{id}": {
       "delete": {
         "operationId": "CycleController_remove",
@@ -5386,6 +5473,36 @@
           "isPeriodStart"
         ]
       },
+      "CycleCalendar": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CycleEntry"
+            }
+          },
+          "previousPeriodStart": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "entries",
+          "previousPeriodStart"
+        ]
+      },
       "DeleteCycleEntryResult": {
         "type": "object",
         "properties": {
@@ -5625,13 +5742,29 @@
           },
           "volumeKg": {
             "type": "number"
+          },
+          "setCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cyclePhase": {
+            "nullable": true,
+            "enum": [
+              "MENSTRUAL",
+              "FOLLICULAR",
+              "OVULATION",
+              "LUTEAL"
+            ],
+            "type": "string"
           }
         },
         "required": [
           "id",
           "name",
           "endedAt",
-          "volumeKg"
+          "volumeKg",
+          "setCount",
+          "cyclePhase"
         ]
       },
       "ProgressActivityDay": {

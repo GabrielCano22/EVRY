@@ -305,6 +305,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cycle/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CycleController_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cycle/entries/{id}": {
         parameters: {
             query?: never;
@@ -893,6 +909,15 @@ export interface components {
             notes: string | null;
             isPeriodStart: boolean;
         };
+        CycleCalendar: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+            entries: components["schemas"]["CycleEntry"][];
+            /** Format: date */
+            previousPeriodStart: string | null;
+        };
         DeleteCycleEntryResult: {
             /** @enum {boolean} */
             ok: true;
@@ -951,6 +976,9 @@ export interface components {
             /** Format: date-time */
             endedAt: string;
             volumeKg: number;
+            setCount: number;
+            /** @enum {string|null} */
+            cyclePhase: "MENSTRUAL" | "FOLLICULAR" | "OVULATION" | "LUTEAL" | null;
         };
         ProgressActivityDay: {
             /** Format: date */
@@ -2989,6 +3017,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CyclePhaseInfo"] | null;
+                };
+            };
+            /** @description Solicitud inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Autenticación requerida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Límite de solicitudes alcanzado. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Error interno normalizado. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CycleController_calendar: {
+        parameters: {
+            query: {
+                /** @description Inicio inclusivo; rango máximo de 62 días. */
+                from: string;
+                /** @description Fin inclusivo; puede ser futuro para proyecciones. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calendario acotado con semilla del periodo anterior. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleCalendar"];
                 };
             };
             /** @description Solicitud inválida. */
