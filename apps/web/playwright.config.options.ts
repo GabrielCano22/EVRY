@@ -106,6 +106,9 @@ export function buildPlaywrightConfig({
   return defineConfig({
     testDir: './tests/e2e',
     timeout: 30_000,
+    // Desktop and mobile exercise the same stateful API fixture; backend concurrency
+    // invariants are covered separately by PostgreSQL integration tests.
+    workers: 1,
     use: {
       baseURL: 'http://127.0.0.1:3000',
       timezoneId: testTimeZone,
