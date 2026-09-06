@@ -5688,6 +5688,41 @@
           "percentage"
         ]
       },
+      "RecentWorkoutSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "setCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "volumeKg": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "startedAt",
+          "endedAt",
+          "setCount",
+          "volumeKg"
+        ]
+      },
       "ProgressOverview": {
         "type": "object",
         "properties": {
@@ -5717,6 +5752,17 @@
             "items": {
               "$ref": "#/components/schemas/MuscleDistribution"
             }
+          },
+          "streakDays": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recentWorkouts": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecentWorkoutSummary"
+            }
           }
         },
         "required": [
@@ -5724,7 +5770,9 @@
           "summary",
           "comparison",
           "records",
-          "muscleDistribution"
+          "muscleDistribution",
+          "streakDays",
+          "recentWorkouts"
         ]
       },
       "ProgressActivitySession": {

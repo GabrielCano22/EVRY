@@ -5,12 +5,12 @@ import type { components } from '@evry/api-client';
 import Link from 'next/link';
 import { useAutenticacion } from '@/lib/auth-store';
 import { requestOrThrow } from '@/lib/api';
-import type { InfoFase, Entrenamiento } from '@/lib/types';
+import type { InfoFase } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { ReadinessCheckin, useDailyReadiness } from '@/components/ReadinessCheckin';
 import { formatearFechaHora, cn } from '@/lib/utils';
-import { formatCivilDate, parseCivilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
+import { formatCivilDate, todayCivil } from '@/lib/civil-date';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { fraseDelDia as obtenerFraseDelDia } from '@/lib/motivacion';
 
@@ -44,34 +44,6 @@ const FRASES_CICLO = [
   '"Descansar cuando lo necesitas es parte de alcanzar tu mejor versión."',
 ]; */
 
-function calcularRacha(entrenamientos: Entrenamiento[]): number {
-  // Días consecutivos hacia atrás desde hoy con al menos una sesión finalizada
-  const dias = new Set<number>();
-  for (const e of entrenamientos) {
-    if (!e.endedAt) continue;
-    dias.add(numeroDiaCivil(timestampToLocalCivil(e.startedAt)));
-  }
-  const hoy = numeroDiaCivil(todayCivil());
-  let racha = 0;
-  // Permitir que hoy aún no haya entrenado: empezamos desde ayer si hoy no hay
-  let cursor = dias.has(hoy) ? hoy : hoy - 1;
-  while (dias.has(cursor)) {
-    racha++;
-    cursor--;
-  }
-  return racha;
-}
-
-function numeroDiaCivil(fecha: ReturnType<typeof todayCivil>): number {
-  const { year, month, day } = parseCivilDate(fecha);
-  const adjustedYear = month <= 2 ? year - 1 : year;
-  const era = Math.floor(adjustedYear / 400);
-  const yearOfEra = adjustedYear - era * 400;
-  const monthIndex = month > 2 ? month - 3 : month + 9;
-  const dayOfYear = Math.floor((153 * monthIndex + 2) / 5) + day - 1;
-  return era * 146097 + yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
-}
-
 export default function PaginaInicio() {
   const { usuario } = useAutenticacion();
   return usuario ? <ResumenInicio key={usuario.id} /> : null;
@@ -87,17 +59,13 @@ function ResumenInicio() {
     queryKey: ['progress', usuario?.id, '30d', hoy],
     queryFn: ({ signal }) => requestOrThrow<components['schemas']['ProgressOverview']>('/progress/overview?period=30d', { signal }),
   });
-  const sesiones = useQuery({
-    queryKey: ['dashboard-workouts', usuario?.id, hoy],
-    queryFn: ({ signal }) => requestOrThrow<Entrenamiento[]>('/workouts?take=20', { signal }),
-  });
   const ciclo = useQuery({
     queryKey: ['dashboard-cycle', usuario?.id, hoy, muestraCiclo],
     enabled: muestraCiclo,
     queryFn: ({ signal }) => requestOrThrow<InfoFase | null>('/cycle/today', { signal }),
   });
   const readiness = useDailyReadiness();
-  const consultas = [progreso, sesiones, readiness, ...(muestraCiclo ? [ciclo] : [])];
+  const consultas = [progreso, readiness, ...(muestraCiclo ? [ciclo] : [])];
   const cargando = consultas.some(consulta => consulta.isPending);
   const fallidas = consultas.filter(consulta => consulta.isError);
   const resumen = progreso.data;
@@ -110,15 +78,12 @@ function ResumenInicio() {
     year: 'numeric',
   });
 
-  const racha = useMemo(() => calcularRacha(sesiones.data ?? []), [sesiones.data]);
+  const racha = resumen?.streakDays ?? 0;
   const top3 = useMemo(
     () => (resumen?.records ?? []).slice().sort((a, b) => b.achievedAt.localeCompare(a.achievedAt)).slice(0, 3),
     [resumen],
   );
-  const ultimas5 = useMemo(
-    () => (sesiones.data ?? []).filter((e) => e.endedAt).slice(0, 5),
-    [sesiones.data],
-  );
+  const ultimas5 = resumen?.recentWorkouts ?? [];
   const esMujer = usuario?.biologicalSex === 'FEMALE';
   const frase = useMemo(
     () => obtenerFraseDelDia(esMujer, muestraCiclo),
@@ -171,7 +136,7 @@ function ResumenInicio() {
 
       {/* Métricas principales */}
       <div className={cn('grid gap-md', muestraCiclo ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')}>
-        {sesiones.data && <TarjetaMetrica
+        {resumen && <TarjetaMetrica
           icono="local_fire_department"
           fillIcono
           color="primary"
@@ -284,7 +249,7 @@ function ResumenInicio() {
         </section>}
 
         {/* Últimas 5 sesiones */}
-        {sesiones.data && <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
+        {resumen && <div className="bg-surface-container-low rounded-xl p-lg border border-white/5">
           <div className="flex items-center justify-between mb-md">
             <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-sm">
               <Icon name="history" className="text-primary" />
@@ -304,11 +269,7 @@ function ResumenInicio() {
             </p>
           ) : (
             <ul className="divide-y divide-white/5">
-              {ultimas5.map((e) => {
-                const vol = e.sets
-                  .filter((s) => !s.isWarmup)
-                  .reduce((acc, s) => acc + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
-                return (
+              {ultimas5.map((e) => (
                   <li key={e.id}>
                     <Link
                       href={`/workout/${e.id}`}
@@ -324,19 +285,18 @@ function ResumenInicio() {
                             {formatearFechaHora(e.startedAt)}
                           </span>
                           <span className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
-                            {e.sets.length} series
+                            {e.setCount} series
                           </span>
                         </div>
                       </div>
-                      {vol > 0 && (
+                      {e.volumeKg > 0 && (
                         <span className="font-grotesk text-xs text-on-surface-variant tabular-nums">
-                          {Math.round(vol).toLocaleString('es-CO')} kg
+                          {Math.round(e.volumeKg).toLocaleString('es-CO')} kg
                         </span>
                       )}
                     </Link>
                   </li>
-                );
-              })}
+              ))}
             </ul>
           )}
         </div>}

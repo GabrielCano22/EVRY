@@ -963,12 +963,24 @@ export interface components {
             workingSets: number;
             percentage: number;
         };
+        RecentWorkoutSummary: {
+            id: string;
+            name: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            setCount: number;
+            volumeKg: number;
+        };
         ProgressOverview: {
             period: components["schemas"]["ProgressPeriodWindow"];
             summary: components["schemas"]["OverviewMetrics"];
             comparison: components["schemas"]["OverviewComparison"] | null;
             records: components["schemas"]["ProgressRecord"][];
             muscleDistribution: components["schemas"]["MuscleDistribution"][];
+            streakDays: number;
+            recentWorkouts: components["schemas"]["RecentWorkoutSummary"][];
         };
         ProgressActivitySession: {
             id: string;

@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 5 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -13,7 +13,7 @@ Actualizado: 5 de septiembre de 2026. Este registro separa implementación, evid
 - Configuraciones de CI y política Vercel/EAS presentes. Render fue retirado. No hay despliegues autorizados.
 - El acceso web al ciclo depende de la elección explícita, no del sexo registrado: registro, perfil, inicio, calendario y página directa. Desactivarlo o cambiar de cuenta desmonta el formulario del ciclo y descarta respuestas tardías de la vista anterior.
 - Las fechas del ciclo serializadas por la API a medianoche UTC conservan su fecha civil en calendario, historial y edición; no se convierten al día anterior en Bogotá. Las fechas horarias de entrenamiento mantienen su conversión local.
-- Inicio consume `ProgressOverview` generado: sesiones/volumen canónicos, comparación real y marcas con unidades separadas por tipo. Sus consultas independientes usan TanStack Query, cancelación y claves por cuenta/día; no presenta ceros o marcas vacías durante carga/fallo inicial, y distingue datos conservados tras fallar una actualización.
+- Inicio consume `ProgressOverview` generado: sesiones/volumen, racha histórica y cinco sesiones recientes escalares son canónicos; la comparación es real y las marcas separan unidades por tipo. Ya no solicita `/workouts?take=20` ni descarga series para reconstruir la racha o el volumen. Sus consultas independientes usan TanStack Query, cancelación y claves por cuenta/día; no presenta ceros o marcas vacías durante carga/fallo inicial, y distingue datos conservados tras fallar una actualización.
 - El estado diario comparte una sola consulta entre formulario y métrica. Guardar actualiza ambas vistas; un fallo conserva valores y permite reintentar. La fecha civil de readiness tiene prioridad sobre el timestamp, con compatibilidad para registros antiguos sin fecha civil.
 - El calendario web consulta actividad agregada y registros de ciclo por el mes visible. Ya no descarga sesiones completas ni reconstruye fechas o volumen en el navegador; conserva nombre, series, volumen y fase almacenada, limita actividad hasta hoy y solo solicita proyecciones de ciclo con consentimiento explícito.
 
@@ -53,6 +53,12 @@ Actualizado: 5 de septiembre de 2026. Este registro separa implementación, evid
 - La suite web completa pasó 18 archivos / 92 pruebas unitarias más 1 de accesibilidad. Lint, tipos y build de producción también terminaron correctamente; la compilación tomó 22,8 s y su comprobación de tipos 7,9 s.
 - Estas pruebas usan el calendario, TanStack Query, Zustand y transporte autenticado reales con HTTP simulado. No sustituyen el flujo Playwright contra API y PostgreSQL ni una medición de rendimiento en navegador.
 
+### Resumen canónico de Inicio, 6 de septiembre
+
+- El backend `e0864b09fcf46166c2b96b2ab489f31c7a8801ec` agregó al contrato `ProgressOverview` la racha diaria histórica y un máximo de cinco sesiones recientes escalares. La consulta reciente limita primero las sesiones y solo agrega sus series; la respuesta no expone series anidadas. Pasaron 53 suites / 307 pruebas unitarias, 8 suites / 75 pruebas de integración PostgreSQL, lint, tipos, build y OpenAPI. La CI del PR terminó correctamente.
+- El frontend importó exactamente ese contrato y eliminó la consulta adicional de sesiones completas en Inicio. La regresión focal pasó 3 archivos / 23 pruebas; la suite completa confirmó móvil 16/83, web 19/95, accesibilidad 1/1, cliente API 3/3, tokens 2/2 y dominio 12/12. Lint, tipos, contrato y build de producción también terminaron correctamente.
+- Playwright pasó 6/6 en escritorio y viewport móvil contra la API real y PostgreSQL sintético: login, cookie de refresh tras navegación completa, sesión finalizada y calendario mensual, además de teclado, zoom 200 % y movimiento reducido. El ensayo local requiere compilar Next.js con `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:4000/api/v1`, igual que la CI; una compilación previa con el valor por defecto `localhost` usa otro sitio de cookies y no representa la configuración de la puerta automatizada.
+
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
@@ -75,9 +81,9 @@ Actualizado: 5 de septiembre de 2026. Este registro separa implementación, evid
 ### Web, rendimiento y operación
 
 - Completar la migración de todas las pantallas a cliente generado y TanStack Query.
-- Completar Inicio: la racha aún se calcula sobre 20 sesiones y necesita una agregación canónica sin truncamiento; el listado reciente aún descarga series completas. Resumen y readiness ya usan tipos generados y TanStack Query, pero el transporte sigue siendo el adaptador autenticado web existente, no la fábrica generada completa; ciclo y workouts conservan tipos manuales.
+- Completar la adopción del cliente generado: Inicio ya usa el resumen canónico acotado y readiness usa TanStack Query, pero el transporte sigue siendo el adaptador autenticado web existente, no la fábrica generada completa; ciclo y workouts conservan tipos manuales.
 - Agregar puntos de progreso agregados/acotados en SQL; el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
-- Ampliar accesibilidad a navegador, teclado, zoom, lector de pantalla y movimiento reducido, y añadir flujos E2E de autenticación y entrenamientos.
+- Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.
 
