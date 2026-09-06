@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext, type APIResponse } from '@playwright/test';
-import { monthRange, parseCivilDate, todayCivil } from '@evry/domain';
+import { monthRange, parseCivilDate, timestampToLocalCivil } from '@evry/domain';
 
 const api = 'http://127.0.0.1:4000/api/v1';
 const origin = 'http://127.0.0.1:3000';
@@ -55,7 +55,9 @@ test('login and refresh preserve a completed workout in its monthly calendar', a
         headers, data: { exerciseId, order, weightKg, reps, isWarmup, clientMutationId: randomUUID() },
       }));
     }
-    await json(await request.post(`${api}/workouts/${workoutId}/finish`, { headers, data: {} }));
+    const finished = await json(await request.post(`${api}/workouts/${workoutId}/finish`, { headers, data: {} }));
+    const fixtureDay = timestampToLocalCivil(finished.endedAt);
+    await page.clock.setFixedTime(new Date(finished.endedAt));
 
     await page.goto('/login');
     await page.getByLabel('Correo electrónico').fill(email);
@@ -77,11 +79,10 @@ test('login and refresh preserve a completed workout in its monthly calendar', a
     await expect(calendarDetails.getByText('Sesión calendario', { exact: true })).toBeVisible();
     await expect(calendarDetails.getByText(/2\s*(?:s|series)\s*·\s*400\s*kg/)).toBeVisible();
 
-    const today = todayCivil();
-    const { year, month } = parseCivilDate(today);
+    const { year, month } = parseCivilDate(fixtureDay);
     const current = monthRange(year, month);
     expect(reads.some(url => url.pathname.endsWith('/progress/activity')
-      && url.searchParams.get('from') === current.from && url.searchParams.get('to') === today)).toBe(true);
+      && url.searchParams.get('from') === current.from && url.searchParams.get('to') === fixtureDay)).toBe(true);
     expect(reads.some(url => url.pathname.endsWith('/workouts'))).toBe(false);
     expect(reads.some(url => url.pathname.includes('/cycle/'))).toBe(false);
 
