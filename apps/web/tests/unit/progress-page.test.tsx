@@ -10,7 +10,7 @@ const overview = {
     previous: { sessionsCompleted: 2, volumeKg: 500, activeDays: 2, weeklyFrequency: 0.47 },
     delta: { sessionsCompleted: 2, volumeKg: 700, activeDays: 1, weeklyFrequency: 0.46 },
   },
-  records: [], muscleDistribution: [],
+  records: [], muscleDistribution: [], streakDays: 0, recentWorkouts: [],
 };
 let fail = false;
 const calls: URL[] = [];

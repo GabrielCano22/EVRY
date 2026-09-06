@@ -80,13 +80,20 @@ it('blocks the direct cycle route before any cycle request when consent is off',
 it('shows the cycle form and loaded non-female history only with explicit consent', async () => {
   useAutenticacion.setState({ usuario: { ...user, biologicalSex: 'OTHER', trackCycle: true } });
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const path = url.pathname;
     if (path.endsWith('/cycle/today')) return Response.json(null);
     if (path.endsWith('/cycle/entries')) return Response.json([{ id: 'entry-1', userId: user.id, date: '2026-01-01T00:00:00.000Z', flow: 'LIGHT', symptoms: ['fatiga'], energy: 3, mood: 3, notes: 'privada', isPeriodStart: true }]);
-    if (path.endsWith('/workouts')) return Response.json([]);
+    if (path.endsWith('/progress/activity')) return Response.json({ from: url.searchParams.get('from'), to: url.searchParams.get('to'), days: [] });
+    if (path.endsWith('/cycle/calendar')) return Response.json({
+      from: url.searchParams.get('from'),
+      to: url.searchParams.get('to'),
+      entries: [{ id: 'entry-1', userId: user.id, date: '2026-01-01T00:00:00.000Z', flow: 'LIGHT', symptoms: ['fatiga'], energy: 3, mood: 3, notes: 'privada', isPeriodStart: true }],
+      previousPeriodStart: null,
+    });
     throw new Error(`Unexpected request: ${path}`);
   }));
-  render(<PaginaCiclo />);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><PaginaCiclo /></QueryClientProvider>);
   expect(await screen.findByRole('button', { name: 'Guardar registro' })).toBeInTheDocument();
   expect(await screen.findByText(/1 síntomas/)).toBeInTheDocument();
 });
@@ -143,9 +150,9 @@ it('requests and displays a returned cycle phase for an opted-in male dashboard 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(input instanceof Request ? input.url : String(input)).pathname; paths.push(path);
     if (path.endsWith('/cycle/today')) return Response.json({ phase: 'LUTEAL', dayOfCycle: 20, cycleLength: 28, nextPeriodStart: null, trainingHint: 'Dato de prueba', intensityCap: 1, volumeCap: 1 });
-    if (path.endsWith('/progress/overview')) return Response.json({ period: { key: '30d', from: '2026-01-01', to: '2026-01-30', timezone: 'America/Bogota' }, summary: { sessionsCompleted: 0, volumeKg: 0, activeDays: 0, weeklyFrequency: 0 }, comparison: null, records: [], muscleDistribution: [] });
+    if (path.endsWith('/progress/overview')) return Response.json({ period: { key: '30d', from: '2026-01-01', to: '2026-01-30', timezone: 'America/Bogota' }, summary: { sessionsCompleted: 0, volumeKg: 0, activeDays: 0, weeklyFrequency: 0 }, comparison: null, records: [], muscleDistribution: [], streakDays: 0, recentWorkouts: [] });
     if (path.endsWith('/readiness/latest')) return Response.json(null);
-    if (path.endsWith('/workouts') || path.endsWith('/cycle/entries')) return Response.json([]);
+    if (path.endsWith('/cycle/entries')) return Response.json([]);
     throw new Error(`Unexpected request: ${path}`);
   }));
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><PaginaDashboard /></QueryClientProvider>);

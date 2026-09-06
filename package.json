@@ -30,6 +30,7 @@
     "api:test": "node --test scripts/api-contract.test.mjs"
   },
   "devDependencies": {
+    "cross-env": "10.1.0",
     "openapi-typescript": "7.10.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

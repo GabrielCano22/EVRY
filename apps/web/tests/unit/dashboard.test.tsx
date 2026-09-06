@@ -23,6 +23,11 @@ const overview: components['schemas']['ProgressOverview'] = {
     { exerciseId: 'squat', exerciseName: 'Sentadilla', kind: 'ESTIMATED_1RM', value: 100, achievedAt: '2026-09-01T17:00:00Z' },
   ],
   muscleDistribution: [{ muscleGroup: 'QUADS', workingSets: 3, percentage: 100 }],
+  streakDays: 3,
+  recentWorkouts: [{
+    id: 'workout-1', name: 'Pierna', startedAt: '2026-09-03T16:00:00Z',
+    endedAt: '2026-09-03T17:00:00Z', setCount: 4, volumeKg: 850,
+  }],
 };
 let answerOverview: (init?: RequestInit) => Promise<Response>;
 let answerReadiness: (init?: RequestInit) => Promise<Response>;
@@ -41,7 +46,7 @@ beforeEach(() => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     calls.push(url);
     if (url.pathname.endsWith('/progress/overview')) return answerOverview(init);
-    if (url.pathname.endsWith('/workouts')) return Response.json([]);
+    if (url.pathname.endsWith('/workouts')) throw new Error('Dashboard must not fetch full workouts');
     if (url.pathname.includes('/readiness/')) return answerReadiness(init);
     throw new Error(`Unexpected request: ${url}`);
   }));
@@ -57,6 +62,11 @@ it('renders canonical metrics, real period comparison and separately labelled re
   expect(sessions()).toHaveTextContent('4');
   expect(sessions()).toHaveTextContent('1.200 kg');
   expect(sessions()).toHaveTextContent('+2 frente al periodo anterior');
+  expect(screen.getByRole('group', { name: 'Racha' })).toHaveTextContent('3');
+  expect(screen.getByText('Pierna')).toBeInTheDocument();
+  expect(screen.getByText('4 series')).toBeInTheDocument();
+  expect(screen.getByText('850 kg')).toBeInTheDocument();
+  expect(calls.some(url => url.pathname.endsWith('/workouts'))).toBe(false);
   expect(calls.find(url => url.pathname.endsWith('/progress/overview'))?.searchParams.get('period')).toBe('30d');
   const records = screen.getByRole('region', { name: 'Marcas recientes' });
   expect(within(records).getByText('Peso máximo')).toBeInTheDocument();
@@ -152,7 +162,7 @@ it('retains a successful summary with a stale-data warning when background refre
   await waitFor(() => expect(sessions()).toHaveTextContent('4'));
   answerOverview = async () => Response.json({ code: 'SERVICE_UNAVAILABLE', message: 'Sin conexión', retryable: true, requestId: 'test' }, { status: 503 });
   await act(async () => { await client.invalidateQueries({ queryKey: ['progress'] }); });
-  expect(screen.getByRole('alert')).toHaveTextContent('última consulta correcta');
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('última consulta correcta'));
   expect(sessions()).toHaveTextContent('1.200 kg');
 });
 
