@@ -152,7 +152,7 @@ it('retains a successful summary with a stale-data warning when background refre
   await waitFor(() => expect(sessions()).toHaveTextContent('4'));
   answerOverview = async () => Response.json({ code: 'SERVICE_UNAVAILABLE', message: 'Sin conexión', retryable: true, requestId: 'test' }, { status: 503 });
   await act(async () => { await client.invalidateQueries({ queryKey: ['progress'] }); });
-  expect(screen.getByRole('alert')).toHaveTextContent('última consulta correcta');
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('última consulta correcta'));
   expect(sessions()).toHaveTextContent('1.200 kg');
 });
 
