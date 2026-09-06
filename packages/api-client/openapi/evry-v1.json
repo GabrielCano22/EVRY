@@ -6090,32 +6090,37 @@
       "ExerciseProgressPoint": {
         "type": "object",
         "properties": {
-          "workoutId": {
-            "type": "string"
-          },
-          "workoutName": {
-            "type": "string"
-          },
-          "completedAt": {
+          "from": {
             "type": "string",
             "format": "date-time"
           },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sessionsCount": {
+            "type": "integer",
+            "minimum": 1
+          },
           "maxWeightKg": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "minimum": 0
           },
           "estimated1RMKg": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "minimum": 0
           },
           "volumeKg": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0
           }
         },
         "required": [
-          "workoutId",
-          "workoutName",
-          "completedAt",
+          "from",
+          "to",
+          "sessionsCount",
           "maxWeightKg",
           "estimated1RMKg",
           "volumeKg"
@@ -6255,6 +6260,7 @@
             ]
           },
           "points": {
+            "maxItems": 120,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExerciseProgressPoint"

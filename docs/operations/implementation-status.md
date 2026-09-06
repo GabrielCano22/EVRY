@@ -9,7 +9,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - Sincronización transaccional por `clientId` y revisión; autenticación móvil y refresh web sin token en `localStorage`.
 - El móvil persiste sesión y cola SQLite por cuenta/origen, conserva reintentos y resultados inciertos, serializa edición concurrente y muestra conflictos. El catálogo usa `q/page`, caché transaccional, búsqueda acotada y medios diferidos.
 - La fuente OpenAPI es única. El frontend importa el JSON y cliente generados desde el backend fijado; el importador verifica origen, hashes, normalización LF/CRLF, tipos y ausencia de referencias externas.
-- Historial por cursor `(endedAt, id)`, frecuencia semanal de todo el periodo y progreso web con tipos compartidos, periodos, comparación real, consulta cancelable y carga incremental.
+- Historial por cursor `(endedAt, id)`, frecuencia semanal de todo el periodo y progreso web con tipos compartidos, periodos, comparación real, consulta cancelable y carga incremental. La evolución conserva volumen y máximos, pero agrupa en SQL y devuelve como máximo 120 intervalos cronológicos.
 - Configuraciones de CI y política Vercel/EAS presentes. Render fue retirado. No hay despliegues autorizados.
 - El acceso web al ciclo depende de la elección explícita, no del sexo registrado: registro, perfil, inicio, calendario y página directa. Desactivarlo o cambiar de cuenta desmonta el formulario del ciclo y descarta respuestas tardías de la vista anterior.
 - Las fechas del ciclo serializadas por la API a medianoche UTC conservan su fecha civil en calendario, historial y edición; no se convierten al día anterior en Bogotá. Las fechas horarias de entrenamiento mantienen su conversión local.
@@ -59,6 +59,11 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - El frontend importó exactamente ese contrato y eliminó la consulta adicional de sesiones completas en Inicio. La regresión focal pasó 3 archivos / 23 pruebas; la suite completa confirmó móvil 16/83, web 19/95, accesibilidad 1/1, cliente API 3/3, tokens 2/2 y dominio 12/12. Lint, tipos, contrato y build de producción también terminaron correctamente.
 - Playwright pasó 6/6 en escritorio y viewport móvil contra la API real y PostgreSQL sintético: login, cookie de refresh tras navegación completa, sesión finalizada y calendario mensual, además de teclado, zoom 200 % y movimiento reducido. El ensayo local requiere compilar Next.js con `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:4000/api/v1`, igual que la CI; una compilación previa con el valor por defecto `localhost` usa otro sitio de cookies y no representa la configuración de la puerta automatizada.
 
+### Evolución por ejercicio acotada, 6 de septiembre
+
+- El backend `3f09cd4a070a8bcd140da001a1388636773a8423` cambió los puntos por sesión a intervalos agregados mediante `NTILE` en PostgreSQL. Una regresión real con 121 sesiones exige 120 puntos, suma exacta de 73.810 kg, máximos correctos y orden cronológico. Pasaron 307 pruebas unitarias, 76 de integración y la CI del PR.
+- El frontend importó el nuevo contrato, usa el final del intervalo como eje y expone rango y cantidad de sesiones en los datos accesibles de la gráfica. La suite completa local pasó móvil 16/83, web 19/96, accesibilidad 1/1, cliente API 3/3, tokens 2/2, dominio 12/12 y Playwright 6/6; lint, tipos, contrato y build también terminaron correctamente.
+
 ## Pendiente de cerrar antes de aceptar el plan
 
 ### Contratos e integración
@@ -82,7 +87,6 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 - Completar la migración de todas las pantallas a cliente generado y TanStack Query.
 - Completar la adopción del cliente generado: Inicio ya usa el resumen canónico acotado y readiness usa TanStack Query, pero el transporte sigue siendo el adaptador autenticado web existente, no la fábrica generada completa; ciclo y workouts conservan tipos manuales.
-- Agregar puntos de progreso agregados/acotados en SQL; el historial está paginado, pero la serie temporal aún puede crecer con todo el historial.
 - Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.

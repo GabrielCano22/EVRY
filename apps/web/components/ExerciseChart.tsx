@@ -12,6 +12,11 @@ type Period = Progress['period']['key'];
 const dateLabel = (date: string) => new Date(date).toLocaleDateString('es-CO', {
   timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric',
 });
+const rangeLabel = (from: string, to: string) => {
+  const start = dateLabel(from);
+  const end = dateLabel(to);
+  return start === end ? end : `${start} – ${end}`;
+};
 
 export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: string; period?: Period }) {
   const userId = useAutenticacion((state) => state.usuario?.id);
@@ -31,7 +36,10 @@ export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: stri
   const history = [...new Map(query.data?.pages.flatMap((page) => page.history.items)
     .map((item) => [item.workoutId, item]) ?? []).values()];
   const points = data?.points.filter((point) => point.estimated1RMKg !== null).map((point) => ({
-    date: dateLabel(point.completedAt), estimated1RM: point.estimated1RMKg,
+    date: dateLabel(point.to),
+    range: rangeLabel(point.from, point.to),
+    sessionsCount: point.sessionsCount,
+    estimated1RM: point.estimated1RMKg,
   })) ?? [];
 
   return <div className="space-y-md rounded-xl border border-white/5 bg-surface-container p-md">
@@ -58,7 +66,9 @@ export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: stri
         </div>
         <details>
           <summary className="cursor-pointer underline">Ver datos de la gráfica</summary>
-          <ul>{points.map((point, index) => <li key={index}>{point.date}: {point.estimated1RM} kg</li>)}</ul>
+          <ul>{points.map((point, index) => <li key={index}>
+            {point.range} · {point.sessionsCount} {point.sessionsCount === 1 ? 'sesión' : 'sesiones'}: {point.estimated1RM} kg
+          </li>)}</ul>
         </details>
       </>}
       <h4 className="text-headline-sm">Sesiones del periodo</h4>
