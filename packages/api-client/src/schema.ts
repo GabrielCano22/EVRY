@@ -1061,10 +1061,11 @@ export interface components {
             delta: components["schemas"]["ExercisePeriodMetricDelta"];
         };
         ExerciseProgressPoint: {
-            workoutId: string;
-            workoutName: string;
             /** Format: date-time */
-            completedAt: string;
+            from: string;
+            /** Format: date-time */
+            to: string;
+            sessionsCount: number;
             maxWeightKg: number | null;
             estimated1RMKg: number | null;
             volumeKg: number;

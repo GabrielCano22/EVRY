@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, vi, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, vi, describe, expect, it } from 'vitest';
 import { ExerciseChart } from './ExerciseChart';
 
 const fixture = (sessionsCount: number) => ({
@@ -18,9 +18,31 @@ function wrapper() {
   };
 }
 
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('ExerciseChart remote state', () => {
+  it('renders the range and session count of an aggregated chart point', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      ...fixture(2),
+      points: [{
+        from: '2026-08-01T17:00:00.000Z', to: '2026-08-02T17:00:00.000Z', sessionsCount: 2,
+        maxWeightKg: 90, estimated1RMKg: 100, volumeKg: 1200,
+      }],
+    })));
+
+    render(<ExerciseChart exerciseId="e1" />, { wrapper: wrapper() });
+
+    expect(await screen.findByText(/1.*ago.*2026.*2.*ago.*2026.*2 sesiones.*100 kg/i)).toBeInTheDocument();
+    expect(screen.queryByText(/fecha inválida/i)).not.toBeInTheDocument();
+  });
+
   it('shows loading, exposes an error, retries, then renders success', async () => {
     let reject!: (error: Error) => void;
     const fetcher = vi.fn()
