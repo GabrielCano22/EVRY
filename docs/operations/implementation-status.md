@@ -72,6 +72,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - El cliente móvil generado envía el registro nativo y guarda el refresh token con la cola SecureStore existente. La acción de sesión obtiene el perfil autenticado antes de abrir la cuenta y descarta respuestas tardías. La suite del cliente pasó 29 pruebas, incluido registro y logout concurrente; los tipos móviles también pasaron.
 - El formulario nativo ya está conectado desde login: valida nombre/correo/contraseña y confirmación, conserva entradas ante error y requiere elección explícita para el ciclo. La suite móvil completa pasó 17 suites / 88 pruebas; tipos, lint y exportaciones Android/iOS también pasaron. Las pruebas del formulario usan controles React Native reales, pero no sustituyen una prueba en dispositivo.
 - Falta ejecutar la integración real y completar las puertas antes del push de ambos repositorios. El lock apunta a un commit local: no publicar el frontend antes del backend correspondiente.
+- Ajuste posterior: una respuesta de registro exitosa seguida de fallo al obtener el perfil muestra una cuenta creada y ofrece login, sin presentar otra vez el formulario. El perfil no validado permanece fuera de la sesión. La regresión llevó el cliente a 30 pruebas correctas; tipos y lint móviles pasaron después del ajuste. Las exportaciones anteriores corresponden al formulario previo a este ajuste.
 
 ### Contratos e integración
 

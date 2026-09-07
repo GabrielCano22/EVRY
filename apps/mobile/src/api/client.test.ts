@@ -92,6 +92,18 @@ it('does not restore registration credentials when its response arrives after lo
   expect(await SecureStore.getItemAsync(refreshKey)).toBeNull();
 });
 
+it('keeps an unverified profile out of the session and explains a completed registration after a profile failure', async () => {
+  http.mockImplementation(async (request) => request.url.endsWith('/register')
+    ? json(tokens('created'), 201)
+    : json({ code: 'SERVICE_UNAVAILABLE', message: 'Perfil no disponible.', retryable: true, requestId: 'profile-failure' }, 503));
+  await sessionStore.getState().register({ email: 'created@example.com', name: 'Created', password: 'valid-password' });
+  expect(sessionStore.getState()).toMatchObject({
+    status: 'anonymous', user: null, session: null, registrationCreated: true,
+  });
+  expect(await SecureStore.getItemAsync(profileKey)).toBeNull();
+  expect(await SecureStore.getItemAsync(refreshKey)).toBe('refresh-created');
+});
+
 it('rotates one refresh token only once when multiple requests need renewal', async () => {
   await SecureStore.setItemAsync(refreshKey, 'refresh-original');
   const started = deferred<void>();
