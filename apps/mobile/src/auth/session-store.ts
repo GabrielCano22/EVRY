@@ -5,6 +5,8 @@ import {
   restoreCachedUser,
   onMobileSessionInvalidated,
   loginMobile,
+  registerMobile,
+  type RegisterInput,
   logoutMobile,
   type CurrentUser,
   type MobileSession,
@@ -20,6 +22,7 @@ interface SessionState {
   error: string | null;
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -66,6 +69,21 @@ export const useSessionStore = create<SessionState>((set) => ({
       if (action !== actionVersion) return;
       const message = error instanceof Error ? error.message : 'No se pudo iniciar sesión.';
       set({ status: 'anonymous', user: null, session: null, offline: false, error: message });
+    }
+  },
+  async register(input) {
+    const action = ++actionVersion;
+    set({ status: 'checking', user: null, session: null, offline: false, error: null });
+    try {
+      await registerMobile(input);
+      if (action !== actionVersion) return;
+      const user = await currentUserWithRefresh();
+      if (action !== actionVersion) return;
+      set({ status: 'authenticated', user, session: captureMobileSession(), offline: false, error: null });
+    } catch (error) {
+      if (action !== actionVersion) return;
+      set({ status: 'anonymous', user: null, session: null, offline: false,
+        error: error instanceof Error ? error.message : 'No se pudo crear la cuenta.' });
     }
   },
   async logout() {

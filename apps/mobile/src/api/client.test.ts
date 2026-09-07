@@ -48,6 +48,50 @@ beforeEach(async () => {
 
 afterEach(() => { globalThis.fetch = originalFetch; });
 
+it('registers through the native endpoint and stores only its refresh credential', async () => {
+  const requests: { url: string; body: unknown }[] = [];
+  http.mockImplementation(async (request) => {
+    requests.push({ url: request.url, body: await request.json() });
+    return json(tokens('registered'), 201);
+  });
+  await client.registerMobile({ email: ' Native@Example.com ', password: 'valid-password', name: ' Native ', trackCycle: true });
+  expect(requests).toEqual([{
+    url: `${client.API_BASE_URL}/auth/mobile/register`,
+    body: { email: 'native@example.com', password: 'valid-password', name: 'Native', trackCycle: true },
+  }]);
+  expect(await SecureStore.getItemAsync(refreshKey)).toBe('refresh-registered');
+  expect(await SecureStore.getItemAsync(originKey)).toBe(client.API_BASE_URL);
+  expect(await SecureStore.getItemAsync(profileKey)).toBeNull();
+});
+
+it('opens the registered account only after loading its authenticated profile', async () => {
+  const profile: MobileClient.CurrentUser = {
+    id: 'new-user', email: 'native@example.com', name: 'Native', trackCycle: false,
+    biologicalSex: 'PREFER_NOT_SAY', birthDate: null, goals: [], avgCycleLen: 28,
+    avgPeriodLen: 5, createdAt: '2026-09-07T12:00:00.000Z',
+  };
+  http.mockImplementation(async (request) => request.url.endsWith('/register')
+    ? json(tokens('new'), 201) : json(profile));
+  await sessionStore.getState().register({ email: 'native@example.com', name: 'Native', password: 'valid-password' });
+  expect(sessionStore.getState()).toMatchObject({
+    status: 'authenticated', user: profile, offline: false,
+    session: { userId: 'new-user', serverUrl: client.API_BASE_URL },
+  });
+});
+
+it('does not restore registration credentials when its response arrives after logout', async () => {
+  const started = deferred<void>();
+  const response = deferred<Response>();
+  http.mockImplementation(async () => { started.resolve(); return response.promise; });
+  const registering = client.registerMobile({ email: 'native@example.com', password: 'valid-password', name: 'Native' })
+    .catch((error: unknown) => error);
+  await started.promise;
+  await client.logoutMobile();
+  response.resolve(json(tokens('late'), 201));
+  expect(await registering).toMatchObject({ code: 'SESSION_CHANGED' });
+  expect(await SecureStore.getItemAsync(refreshKey)).toBeNull();
+});
+
 it('rotates one refresh token only once when multiple requests need renewal', async () => {
   await SecureStore.setItemAsync(refreshKey, 'refresh-original');
   const started = deferred<void>();

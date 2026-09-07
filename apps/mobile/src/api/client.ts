@@ -23,6 +23,7 @@ const invalidationListeners = new Set<() => void>();
 
 export type ApiErrorBody = components['schemas']['ApiError'];
 export type CurrentUser = components['schemas']['User'];
+export type RegisterInput = components['schemas']['RegisterInput'];
 export interface MobileSession extends DatabaseOwner { readonly version: number }
 export type SyncWorkoutInput = components['schemas']['SyncWorkoutInput'];
 export type SyncWorkoutResult = components['schemas']['SyncWorkoutResult'];
@@ -200,6 +201,23 @@ export async function loginMobile(email: string, password: string): Promise<void
   });
   assertMobileSession(expected);
   if (!data || error) throw apiError(error, 'No se pudo iniciar sesión.', response.status);
+  try {
+    await storeTokens(expected, data);
+  } catch (error) {
+    if (expected === sessionVersion) await clearMobileSession().catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function registerMobile(input: RegisterInput): Promise<void> {
+  const expected = beginSessionChange();
+  await secureOperation(deleteStoredSession);
+  assertMobileSession(expected);
+  const { data, error, response } = await authClient.POST('/auth/mobile/register', {
+    body: { ...input, email: input.email.trim().toLowerCase(), name: input.name.trim() },
+  });
+  assertMobileSession(expected);
+  if (!data || error) throw apiError(error, 'No se pudo crear la cuenta.', response.status);
   try {
     await storeTokens(expected, data);
   } catch (error) {
