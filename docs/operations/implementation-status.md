@@ -70,7 +70,8 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 - El contrato local incorpora `/auth/mobile/register` del backend `ef60c351659b84c6598355cb09714aa01c4c305e`, todavía sin publicar. El backend aprobó nueve pruebas focales, tipos, lint, build y generación OpenAPI; la integración PostgreSQL sigue pendiente porque el entorno rechazó arrancar el clúster de pruebas.
 - El cliente móvil generado envía el registro nativo y guarda el refresh token con la cola SecureStore existente. La acción de sesión obtiene el perfil autenticado antes de abrir la cuenta y descarta respuestas tardías. La suite del cliente pasó 29 pruebas, incluido registro y logout concurrente; los tipos móviles también pasaron.
-- Falta conectar el formulario de registro, ejecutar la integración real y completar las puertas antes del push de ambos repositorios. El lock apunta a un commit local: no publicar el frontend antes del backend correspondiente.
+- El formulario nativo ya está conectado desde login: valida nombre/correo/contraseña y confirmación, conserva entradas ante error y requiere elección explícita para el ciclo. La suite móvil completa pasó 17 suites / 88 pruebas; tipos, lint y exportaciones Android/iOS también pasaron. Las pruebas del formulario usan controles React Native reales, pero no sustituyen una prueba en dispositivo.
+- Falta ejecutar la integración real y completar las puertas antes del push de ambos repositorios. El lock apunta a un commit local: no publicar el frontend antes del backend correspondiente.
 
 ### Contratos e integración
 

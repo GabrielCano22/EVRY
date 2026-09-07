@@ -1,4 +1,4 @@
-import { Redirect } from 'expo-router';
+import { Link, Redirect } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSessionStore } from '@/src/auth/session-store';
@@ -51,6 +51,7 @@ export default function LoginScreen() {
         >
           Ingresar
         </PrimaryButton>
+        <Link href="/register" style={textStyles.body}>Crear una cuenta</Link>
       </View>
     </KeyboardAvoidingView>
   );
