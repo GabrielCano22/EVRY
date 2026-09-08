@@ -81,6 +81,12 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - Pasaron 18 suites / 91 pruebas móviles, tipos y lint. Las dos pruebas nuevas del formulario verifican fechas y conservación de campos con controles reales; falta integración HTTP de la pantalla, prueba en dispositivo y exportación posterior a este cambio.
 - La prevención de colisiones en pantalla solo conoce las entradas cargadas. El backend local `a3f84f4b3386af39e7792ded914ddba678201edb` ahora traslada mediante UPDATE conservando ID/campos, con 409 para destino ocupado y 404 para origen ausente. Pasaron siete pruebas focales, tipos, lint, build y generación OpenAPI; la integración PostgreSQL y la carrera real siguen pendientes. El frontend importó ese contrato y `api:check` pasó; ambos commits del backend aún deben publicarse antes de este lock.
 
+### Detalle móvil del progreso, 7 de septiembre
+
+- Progreso incluye selector de ejercicios con búsqueda cancelable y catálogo de 30 elementos por página, reutilizando su caché local. El detalle usa el contrato generado, resumen y comparación canónicos, intervalos de evolución y carga incremental del historial por cursor (20 sesiones por petición).
+- Peso, repeticiones, duración y RPE conservan sus unidades y valores ausentes; los estados de carga/error/vacío se muestran por separado y el historial conserva lo ya cargado cuando falla una página posterior.
+- Pasaron 19 suites / 93 pruebas móviles, tipos, lint y exportaciones Android/iOS. Las pruebas nuevas verifican representación de valores ausentes, series temporizadas y agregados del servidor. Falta probar la interacción completa de búsqueda/paginación contra HTTP real y en dispositivo; no se declara verificada por las pruebas de presentación.
+
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
@@ -90,7 +96,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 ### Móvil
 
-- Completar paridad: registro, crear/editar rutinas, detalle de progreso, edición de ciclo y todos los campos de perfil.
+- Completar paridad: crear/editar rutinas y todos los campos de perfil. Registro, detalle de progreso y edición de ciclo están implementados localmente; falta su aceptación de integración y dispositivo según la evidencia anterior.
 - Validar aislamiento y reapertura offline en Android/iOS reales, incluida la vida real de SecureStore/SQLite y sincronización contra PostgreSQL.
 - Si existe un `evry.db` heredado sin propietario, conservarlo intacto: la recuperación exige identificar al propietario e importación explícita; no se asignan automáticamente esos datos a la siguiente cuenta.
 - La migración conserva datos ante caché malformada, pero falta una recuperación de caché dañada orientada a la persona usuaria.
