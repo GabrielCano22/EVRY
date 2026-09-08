@@ -2298,6 +2298,26 @@
               }
             }
           },
+          "404": {
+            "description": "El registro original del traslado ya no existe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La fecha de destino de un traslado ya está ocupada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Límite de solicitudes alcanzado.",
             "content": {
