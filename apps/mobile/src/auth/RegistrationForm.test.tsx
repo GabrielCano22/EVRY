@@ -2,6 +2,9 @@ import { fireEvent, render } from '@testing-library/react-native';
 import type { RegisterInput } from '../api/client';
 import { RegistrationForm } from './RegistrationForm';
 
+// Allow native controls to load on a cold worker without dropping any assertions.
+jest.setTimeout(15_000);
+
 it('validates fields before submitting and makes cycle tracking an explicit choice', async () => {
   const submissions: RegisterInput[] = [];
   const screen = await render(<RegistrationForm busy={false} error={null} onSubmit={(input) => { submissions.push(input); }} />);

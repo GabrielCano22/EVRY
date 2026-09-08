@@ -74,6 +74,13 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - Falta ejecutar la integración real y completar las puertas antes del push de ambos repositorios. El lock apunta a un commit local: no publicar el frontend antes del backend correspondiente.
 - Ajuste posterior: una respuesta de registro exitosa seguida de fallo al obtener el perfil muestra una cuenta creada y ofrece login, sin presentar otra vez el formulario. El perfil no validado permanece fuera de la sesión. La regresión llevó el cliente a 30 pruebas correctas; tipos y lint móviles pasaron después del ajuste. Las exportaciones anteriores corresponden al formulario previo a este ajuste.
 
+### Edición móvil del ciclo, 7 de septiembre
+
+- La pantalla permite crear y editar fecha civil, flujo, síntomas, energía, ánimo, notas e inicio del periodo con el contrato generado. Conserva los campos previos y envía `previousDate` al mover un registro. Rechaza fechas imposibles/futuras y valores fuera de rango; advierte si otra entrada cargada ya ocupa la fecha.
+- El consentimiento y la identidad controlan el montaje de la pantalla; cambiar de cuenta o desactivar el ciclo descarta el formulario. La consulta admite cancelación y guardar ofrece confirmación visible.
+- Pasaron 18 suites / 91 pruebas móviles, tipos y lint. Las dos pruebas nuevas del formulario verifican fechas y conservación de campos con controles reales; falta integración HTTP de la pantalla, prueba en dispositivo y exportación posterior a este cambio.
+- La prevención de colisiones de fecha en pantalla solo conoce las entradas cargadas. Sigue pendiente comprobar y reforzar el rechazo atómico en backend ante una fecha ya ocupada o cambios concurrentes; no se declara resuelto mediante esta comprobación local.
+
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
