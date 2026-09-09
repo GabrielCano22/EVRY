@@ -196,6 +196,18 @@ it('keeps a completed mutation successful when cache refresh or haptics fail', a
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
+it('locks a successfully deleted routine while a failed cache refresh leaves its card visible', async () => {
+  await show();
+  jest.spyOn(queryClient, 'invalidateQueries').mockRejectedValueOnce(new Error('Cache no disponible'));
+  await fireEvent.press(screen.getByRole('button', { name: 'Eliminar Piernas' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Confirmar eliminación' }));
+  await waitFor(() => expect(screen.getByText('Rutina eliminada correctamente.')).toBeTruthy());
+  expect(screen.getByText('Piernas')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Eliminar Piernas' })).toBeDisabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Eliminar Piernas' }));
+  expect(deleteRoutine).toHaveBeenCalledTimes(1);
+});
+
 it('disables an already open editor and delete confirmation when routines become stale', async () => {
   const view = await show();
   await fireEvent.press(screen.getByRole('button', { name: 'Editar Piernas' }));

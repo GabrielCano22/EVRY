@@ -39,8 +39,8 @@ function isExerciseEntity(value: unknown): boolean {
     isJsonValue(item.instructionSteps) && typeof item.createdAt === 'string');
 }
 
-function isSeriesPlan(value: unknown): boolean {
-  return value === null || Array.isArray(value) && value.every((plan) => {
+function isSeriesPlan(value: unknown, targetSets: number): boolean {
+  return value === null || Array.isArray(value) && value.length === targetSets && value.every((plan) => {
     const item = record(plan);
     return Boolean(item && (!Object.hasOwn(item, 'reps') || isNullableNumber(item.reps)) &&
       (!Object.hasOwn(item, 'weightKg') || isNullableNumber(item.weightKg)));
@@ -53,7 +53,7 @@ function isRoutineExercise(value: unknown): boolean {
     typeof item.exerciseId === 'string' && typeof item.order === 'number' && Number.isFinite(item.order) &&
     typeof item.targetSets === 'number' && Number.isFinite(item.targetSets) &&
     isNullableNumber(item.targetReps) && isNullableNumber(item.targetWeightKg) &&
-    isNullableString(item.notes) && isSeriesPlan(item.seriesPlan) && isExerciseEntity(item.exercise));
+    isNullableString(item.notes) && isSeriesPlan(item.seriesPlan, item.targetSets) && isExerciseEntity(item.exercise));
 }
 
 function isRoutine(value: unknown): value is Routine {

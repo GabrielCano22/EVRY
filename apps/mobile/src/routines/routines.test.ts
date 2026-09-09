@@ -88,6 +88,11 @@ it('rejects malformed per-set plans and incomplete nested exercises from a succe
   await expect(routines.createRoutine(session, input)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
 
+it('rejects a structurally valid per-set plan whose length differs from target sets', async () => {
+  http.mockResolvedValueOnce(json({ ...routine, exercises: [{ ...routine.exercises[0], seriesPlan: [{ reps: 8, weightKg: 60 }] }] }, 201));
+  await expect(routines.createRoutine(session, input)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
 it('rejects a mutation when the captured mobile session changes during the request', async () => {
   let resolveResponse: ((response: Response) => void) | undefined;
   http.mockImplementation(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));

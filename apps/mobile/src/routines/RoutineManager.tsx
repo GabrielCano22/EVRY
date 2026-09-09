@@ -90,6 +90,7 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
   const [draft, setDraft] = useState<RoutineDraft | null>(null);
   const [preview, setPreview] = useState<Exercise | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<Routine | null>(null);
+  const [settledDeleteIds, setSettledDeleteIds] = useState<Set<string>>(() => new Set());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -133,10 +134,12 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     finally { setPending(false); }
   };
   const confirmDelete = async () => {
-    if (!deleteCandidate || mutationsDisabled) return;
+    if (!deleteCandidate || mutationsDisabled || settledDeleteIds.has(deleteCandidate.id)) return;
+    const routineId = deleteCandidate.id;
     setError(null); setPending(true);
     try {
-      await deleteRoutine(session, deleteCandidate.id);
+      await deleteRoutine(session, routineId);
+      setSettledDeleteIds((current) => new Set(current).add(routineId));
       setSuccess('Rutina eliminada correctamente.'); setDeleteCandidate(null);
       setPending(false);
       void queryClient.invalidateQueries({ queryKey: ['routines'] }).catch(() => undefined);
@@ -152,7 +155,7 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     {!draft ? <PrimaryButton disabled={mutationsDisabled} onPress={() => { setError(null); setSuccess(null); setDraft(emptyDraft()); }}>Crear rutina</PrimaryButton> : null}
     {routines.map((routine) => <View key={routine.id} style={styles.card}>
       <Pressable accessibilityRole="button" accessibilityLabel={`Iniciar ${routine.name}`} onPress={() => onStartRoutine(routine)}><Text style={textStyles.heading}>{routine.name}</Text><Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text></Pressable>
-      <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
+      <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
     </View>)}
     {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
     {draft ? <RoutineEditor draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
