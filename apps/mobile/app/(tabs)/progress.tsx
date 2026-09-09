@@ -7,6 +7,7 @@ import { withMobileAuth, type MobileSession } from '@/src/api/client';
 import { buildOverviewCards, signedMetric } from '@/src/progress/progress-view';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
+import { ExerciseProgressPanel } from '@/src/progress/ExerciseProgressPanel';
 
 type Period = '30d' | '90d' | '6m' | '1y' | 'all';
 type ProgressOverview = components['schemas']['ProgressOverview'];
@@ -19,8 +20,8 @@ const periods: { key: Period; label: string }[] = [
   { key: 'all', label: 'Todo' },
 ];
 
-async function loadOverview(session: MobileSession, period: Period): Promise<ProgressOverview> {
-  const response = await withMobileAuth((client) => client.GET('/progress/overview', { params: { query: { period } } }), session);
+async function loadOverview(session: MobileSession, period: Period, signal: AbortSignal): Promise<ProgressOverview> {
+  const response = await withMobileAuth((client) => client.GET('/progress/overview', { params: { query: { period } }, signal }), session);
   if (!response.data || response.error) throw new Error('No se pudo cargar el progreso.');
   return response.data;
 }
@@ -28,7 +29,7 @@ async function loadOverview(session: MobileSession, period: Period): Promise<Pro
 export default function ProgressScreen() {
   const session = useSessionStore((state) => state.session)!;
   const [period, setPeriod] = useState<Period>('30d');
-  const query = useQuery({ queryKey: ['progress', period], queryFn: () => loadOverview(session, period) });
+  const query = useQuery({ queryKey: ['progress', period], queryFn: ({ signal }) => loadOverview(session, period, signal) });
   const overview = query.data;
 
   return (
@@ -103,6 +104,7 @@ export default function ProgressScreen() {
           ) : null}
         </>
       ) : null}
+      <ExerciseProgressPanel key={`${session.userId}:${session.version}`} session={session} period={period} />
     </Screen>
   );
 }

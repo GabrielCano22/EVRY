@@ -5,6 +5,8 @@ import {
   restoreCachedUser,
   onMobileSessionInvalidated,
   loginMobile,
+  registerMobile,
+  type RegisterInput,
   logoutMobile,
   type CurrentUser,
   type MobileSession,
@@ -18,8 +20,10 @@ interface SessionState {
   session: MobileSession | null;
   offline: boolean;
   error: string | null;
+  registrationCreated: boolean;
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -32,9 +36,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   session: null,
   offline: false,
   error: null,
+  registrationCreated: false,
   async initialize() {
     const action = ++actionVersion;
-    set({ status: 'checking', error: null });
+    set({ status: 'checking', error: null, registrationCreated: false });
     let cached: CurrentUser | null = null;
     try {
       cached = await restoreCachedUser();
@@ -55,7 +60,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
   async login(email, password) {
     const action = ++actionVersion;
-    set({ status: 'checking', user: null, session: null, offline: false, error: null });
+    set({ status: 'checking', user: null, session: null, offline: false, error: null, registrationCreated: false });
     try {
       await loginMobile(email, password);
       if (action !== actionVersion) return;
@@ -68,9 +73,27 @@ export const useSessionStore = create<SessionState>((set) => ({
       set({ status: 'anonymous', user: null, session: null, offline: false, error: message });
     }
   },
+  async register(input) {
+    const action = ++actionVersion;
+    let created = false;
+    set({ status: 'checking', user: null, session: null, offline: false, error: null, registrationCreated: false });
+    try {
+      await registerMobile(input);
+      if (action !== actionVersion) return;
+      created = true;
+      const user = await currentUserWithRefresh();
+      if (action !== actionVersion) return;
+      set({ status: 'authenticated', user, session: captureMobileSession(), offline: false, error: null });
+    } catch (error) {
+      if (action !== actionVersion) return;
+      set({ status: 'anonymous', user: null, session: null, offline: false,
+        registrationCreated: created,
+        error: error instanceof Error ? error.message : 'No se pudo crear la cuenta.' });
+    }
+  },
   async logout() {
     const action = ++actionVersion;
-    set({ user: null, session: null, offline: false, status: 'anonymous', error: null });
+    set({ user: null, session: null, offline: false, status: 'anonymous', error: null, registrationCreated: false });
     try {
       await logoutMobile();
     } catch (error) {

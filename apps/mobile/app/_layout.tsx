@@ -38,6 +38,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a141d' } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="register" options={{ headerShown: false }} />
         </Stack>
       </ThemeProvider>
     </AccountQueryProvider>

@@ -10,6 +10,11 @@
     "node": "24.14.x",
     "npm": "11.x"
   },
+  "overrides": {
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.2"
+    }
+  },
   "packageManager": "npm@11.9.0",
   "scripts": {
     "dev": "npm run dev --workspace @evry/web",
