@@ -26,14 +26,21 @@ const routine: Routine = {
 };
 
 let queryClient: QueryClient;
-const show = async ({ routines = [routine], routinesStale = false }: { routines?: Routine[]; routinesStale?: boolean } = {}) => {
+type CatalogState = { catalogLoading?: boolean; catalogError?: Error | null; catalogNotice?: string | null; catalogSource?: 'server' | 'cache' | null; catalogSuccess?: boolean };
+type ManagerOptions = { routines?: Routine[]; routinesStale?: boolean; exercises?: Exercise[]; onSearchChange?: (value: string) => void } & CatalogState;
+const manager = (options: ManagerOptions = {}) => {
+  const { routines = [routine], routinesStale = false, exercises: catalogExercises = exercises, catalogLoading = false, catalogError = null, catalogNotice = null, catalogSource = 'server', catalogSuccess = true, onSearchChange = jest.fn() } = options;
+  return <RoutineManager
+    session={session} routines={routines} routinesStale={routinesStale} exercises={catalogExercises} onStartRoutine={jest.fn()}
+    catalogSearch="" catalogPage={1} catalogHasMore={true} catalogLoading={catalogLoading} onSearchChange={onSearchChange} onChangePage={jest.fn()}
+    catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onRetryCatalog={jest.fn()}
+  />;
+};
+const show = async (options: ManagerOptions = {}) => {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  queryClient.setQueryData(['routines'], routines);
+  queryClient.setQueryData(['routines'], options.routines ?? [routine]);
   const onSearchChange = jest.fn();
-  const view = await render(<QueryClientProvider client={queryClient}><RoutineManager
-    session={session} routines={routines} routinesStale={routinesStale} exercises={exercises} onStartRoutine={jest.fn()}
-    catalogSearch="" catalogPage={1} catalogHasMore={true} catalogLoading={false} onSearchChange={onSearchChange} onChangePage={jest.fn()}
-  /></QueryClientProvider>);
+  const view = await render(<QueryClientProvider client={queryClient}>{manager({ ...options, onSearchChange })}</QueryClientProvider>);
   return { ...view, onSearchChange };
 };
 
@@ -161,4 +168,46 @@ it('uses the existing searchable and paginated exercise catalog for routine draf
   await fireEvent.changeText(screen.getByLabelText('Buscar ejercicio para rutina'), 'peso');
   expect(onSearchChange).toHaveBeenCalledWith('peso');
   expect(screen.getByRole('button', { name: 'Página siguiente del catálogo' })).toBeTruthy();
+});
+
+it('shows distinct loading, recoverable error, stale notice, and successful empty catalog states', async () => {
+  const view = await show({ routines: [], catalogLoading: true, catalogSuccess: false });
+  await fireEvent.press(screen.getByRole('button', { name: 'Crear rutina' }));
+  expect(screen.getByText('Cargando catálogo…')).toBeTruthy();
+
+  await view.rerender(<QueryClientProvider client={queryClient}>{manager({ routines: [], catalogError: new Error('No hay conexión'), catalogSuccess: false })}</QueryClientProvider>);
+  expect(screen.getByRole('alert')).toHaveTextContent('No hay conexión');
+  expect(screen.getByRole('button', { name: 'Reintentar catálogo' })).toBeTruthy();
+
+  await view.rerender(<QueryClientProvider client={queryClient}>{manager({ routines: [], exercises: [], catalogNotice: 'Mostrando copia local.', catalogSource: 'cache', catalogSuccess: true })}</QueryClientProvider>);
+  expect(screen.getByText('Mostrando copia local.')).toBeTruthy();
+  expect(screen.getByText('No hay coincidencias en la copia local.')).toBeTruthy();
+});
+
+it('keeps a completed mutation successful when cache refresh or haptics fail', async () => {
+  await show({ routines: [] });
+  jest.spyOn(queryClient, 'invalidateQueries').mockRejectedValueOnce(new Error('Cache no disponible'));
+  jest.mocked(Haptics.notificationAsync).mockRejectedValueOnce(new Error('Haptics no disponible'));
+  await fireEvent.press(screen.getByRole('button', { name: 'Crear rutina' }));
+  await fireEvent.changeText(screen.getByLabelText('Nombre de rutina'), 'Rutina remota');
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar rutina' }));
+  await waitFor(() => expect(screen.getByText('Rutina creada correctamente.')).toBeTruthy());
+  expect(screen.queryByLabelText('Nombre de rutina')).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('disables an already open editor and delete confirmation when routines become stale', async () => {
+  const view = await show();
+  await fireEvent.press(screen.getByRole('button', { name: 'Editar Piernas' }));
+  await view.rerender(<QueryClientProvider client={queryClient}>{manager({ routinesStale: true })}</QueryClientProvider>);
+  expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Agregar Sentadilla' })).toBeDisabled();
+  expect(screen.getByLabelText('Nombre de rutina')).toHaveProp('editable', false);
+
+  await view.rerender(<QueryClientProvider client={queryClient}>{manager()}</QueryClientProvider>);
+  await fireEvent.press(screen.getByRole('button', { name: 'Cancelar edición' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Eliminar Piernas' }));
+  await view.rerender(<QueryClientProvider client={queryClient}>{manager({ routinesStale: true })}</QueryClientProvider>);
+  expect(screen.getByText('¿Eliminar la rutina Piernas?')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Confirmar eliminación' })).toBeDisabled();
 });

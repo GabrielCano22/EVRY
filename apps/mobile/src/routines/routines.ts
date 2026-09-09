@@ -17,15 +17,43 @@ function isNullableNumber(value: unknown): value is number | null {
   return typeof value === 'number' && Number.isFinite(value) || value === null;
 }
 
+function isJsonValue(value: unknown): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  const item = record(value);
+  return Boolean(item && Object.values(item).every(isJsonValue));
+}
+
+function isExerciseEntity(value: unknown): boolean {
+  const item = record(value);
+  const muscleGroups = ['CHEST', 'BACK', 'SHOULDERS', 'BICEPS', 'TRICEPS', 'FOREARMS', 'CORE', 'QUADS', 'HAMSTRINGS', 'GLUTES', 'CALVES', 'FULL_BODY', 'CARDIO'];
+  const equipment = ['BARBELL', 'DUMBBELL', 'MACHINE', 'CABLE', 'BODYWEIGHT', 'KETTLEBELL', 'BAND', 'OTHER'];
+  return Boolean(item && typeof item.id === 'string' && isNullableString(item.sourceId) && typeof item.name === 'string' &&
+    typeof item.muscleGroup === 'string' && muscleGroups.includes(item.muscleGroup) &&
+    typeof item.equipment === 'string' && equipment.includes(item.equipment) && isNullableString(item.category) &&
+    isNullableString(item.bodyPart) && isNullableString(item.target) && Array.isArray(item.secondaryMuscles) && item.secondaryMuscles.every((item) => typeof item === 'string') &&
+    isNullableString(item.equipmentLabel) && typeof item.isCustom === 'boolean' && isNullableString(item.ownerId) &&
+    typeof item.isCompound === 'boolean' && Array.isArray(item.tags) && item.tags.every((item) => typeof item === 'string') &&
+    isNullableString(item.description) && isNullableString(item.mediaId) && isNullableString(item.imagePath) &&
+    isNullableString(item.gifPath) && isNullableString(item.attribution) && isJsonValue(item.instructions) &&
+    isJsonValue(item.instructionSteps) && typeof item.createdAt === 'string');
+}
+
+function isSeriesPlan(value: unknown): boolean {
+  return value === null || Array.isArray(value) && value.every((plan) => {
+    const item = record(plan);
+    return Boolean(item && (!Object.hasOwn(item, 'reps') || isNullableNumber(item.reps)) &&
+      (!Object.hasOwn(item, 'weightKg') || isNullableNumber(item.weightKg)));
+  });
+}
+
 function isRoutineExercise(value: unknown): boolean {
   const item = record(value);
-  const exercise = item ? record(item.exercise) : null;
-  return Boolean(item && exercise && typeof item.id === 'string' && typeof item.routineId === 'string' &&
+  return Boolean(item && typeof item.id === 'string' && typeof item.routineId === 'string' &&
     typeof item.exerciseId === 'string' && typeof item.order === 'number' && Number.isFinite(item.order) &&
     typeof item.targetSets === 'number' && Number.isFinite(item.targetSets) &&
     isNullableNumber(item.targetReps) && isNullableNumber(item.targetWeightKg) &&
-    isNullableString(item.notes) && item.seriesPlan !== undefined &&
-    typeof exercise.id === 'string' && typeof exercise.name === 'string');
+    isNullableString(item.notes) && isSeriesPlan(item.seriesPlan) && isExerciseEntity(item.exercise));
 }
 
 function isRoutine(value: unknown): value is Routine {

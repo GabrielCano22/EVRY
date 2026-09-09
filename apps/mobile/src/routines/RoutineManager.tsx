@@ -22,8 +22,13 @@ export interface RoutineManagerProps {
   catalogPage: number;
   catalogHasMore: boolean;
   catalogLoading: boolean;
+  catalogError: Error | null;
+  catalogNotice: string | null;
+  catalogSource: 'server' | 'cache' | null;
+  catalogSuccess: boolean;
   onSearchChange: (value: string) => void;
   onChangePage: (page: number) => void;
+  onRetryCatalog: () => void;
 }
 
 const emptyDraft = (): RoutineDraft => ({ id: null, name: '', dayOfWeek: '', notes: '', exercises: [] });
@@ -80,7 +85,7 @@ function routineInput(draft: RoutineDraft): { body: CreateRoutineInput; error: s
   return { body: { name, ...(dayOfWeek === undefined ? {} : { dayOfWeek }), ...(draft.notes.trim() ? { notes: draft.notes } : {}), exercises }, error: null };
 }
 
-export function RoutineManager({ session, routines, routinesStale, exercises, onStartRoutine, catalogSearch, catalogPage, catalogHasMore, catalogLoading, onSearchChange, onChangePage }: RoutineManagerProps) {
+export function RoutineManager({ session, routines, routinesStale, exercises, onStartRoutine, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog }: RoutineManagerProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RoutineDraft | null>(null);
   const [preview, setPreview] = useState<Exercise | null>(null);
@@ -92,7 +97,7 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
   const updateDraft = (next: Partial<RoutineDraft>) => setDraft((current) => current ? { ...current, ...next } : current);
   const updateExercise = (index: number, next: Partial<DraftExercise>) => setDraft((current) => current ? { ...current, exercises: current.exercises.map((item, itemIndex) => itemIndex === index ? { ...item, ...next } : item) } : current);
   const addExercise = (exercise: Exercise) => {
-    if (!draft) return;
+    if (!draft || mutationsDisabled) return;
     if (draft.exercises.some((item) => item.exercise.id === exercise.id)) { setError(`${exercise.name} ya está en la rutina.`); return; }
     setError(null);
     updateDraft({ exercises: [...draft.exercises, { exercise, targetSets: '3', targetReps: '', targetWeightKg: '', notes: '', seriesPlan: null }] });
@@ -120,9 +125,10 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
         const body: UpdateRoutineInput = { ...result.body, dayOfWeek: result.body.dayOfWeek ?? null };
         await updateRoutine(session, draft.id, body); setSuccess('Rutina actualizada correctamente.');
       } else { await createRoutine(session, result.body); setSuccess('Rutina creada correctamente.'); }
-      await queryClient.invalidateQueries({ queryKey: ['routines'] });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDraft(null);
+      setPending(false);
+      void queryClient.invalidateQueries({ queryKey: ['routines'] }).catch(() => undefined);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo guardar la rutina. Reintenta.'); }
     finally { setPending(false); }
   };
@@ -131,9 +137,10 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     setError(null); setPending(true);
     try {
       await deleteRoutine(session, deleteCandidate.id);
-      await queryClient.invalidateQueries({ queryKey: ['routines'] });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccess('Rutina eliminada correctamente.'); setDeleteCandidate(null);
+      setPending(false);
+      void queryClient.invalidateQueries({ queryKey: ['routines'] }).catch(() => undefined);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo eliminar la rutina. Reintenta.'); }
     finally { setPending(false); }
   };
@@ -147,35 +154,39 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
       <Pressable accessibilityRole="button" accessibilityLabel={`Iniciar ${routine.name}`} onPress={() => onStartRoutine(routine)}><Text style={textStyles.heading}>{routine.name}</Text><Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text></Pressable>
       <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
     </View>)}
-    {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={pending} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
-    {draft ? <RoutineEditor draft={draft} exercises={exercises} pending={pending} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
+    {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
+    {draft ? <RoutineEditor draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
   </View>;
 }
 
-function RoutineEditor({ draft, exercises, pending, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, onSearchChange, onChangePage, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
-  draft: RoutineDraft; exercises: Exercise[]; pending: boolean; preview: Exercise | null; catalogSearch: string; catalogPage: number; catalogHasMore: boolean; catalogLoading: boolean; onSearchChange: (value: string) => void; onChangePage: (page: number) => void; onChange: (next: Partial<RoutineDraft>) => void; onUpdateExercise: (index: number, next: Partial<DraftExercise>) => void; onUpdateTargetSets: (index: number, targetSets: string) => void; onSetPlan: (index: number, enabled: boolean) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void; onPreview: (exercise: Exercise) => void; onAdd: (exercise: Exercise) => void; onCancel: () => void; onSave: () => void;
+function RoutineEditor({ draft, exercises, pending, disabled, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
+  draft: RoutineDraft; exercises: Exercise[]; pending: boolean; disabled: boolean; preview: Exercise | null; catalogSearch: string; catalogPage: number; catalogHasMore: boolean; catalogLoading: boolean; catalogError: Error | null; catalogNotice: string | null; catalogSource: 'server' | 'cache' | null; catalogSuccess: boolean; onSearchChange: (value: string) => void; onChangePage: (page: number) => void; onRetryCatalog: () => void; onChange: (next: Partial<RoutineDraft>) => void; onUpdateExercise: (index: number, next: Partial<DraftExercise>) => void; onUpdateTargetSets: (index: number, targetSets: string) => void; onSetPlan: (index: number, enabled: boolean) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void; onPreview: (exercise: Exercise) => void; onAdd: (exercise: Exercise) => void; onCancel: () => void; onSave: () => void;
 }) {
   return <View style={styles.editor}>
     <Text style={textStyles.heading}>{draft.id ? 'Editar rutina' : 'Nueva rutina'}</Text>
-    <TextInput accessibilityLabel="Nombre de rutina" maxLength={120} onChangeText={(name) => onChange({ name })} placeholder="Nombre" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.name} />
-    <TextInput accessibilityLabel="Día de la semana" inputMode="numeric" onChangeText={(dayOfWeek) => onChange({ dayOfWeek })} placeholder="Día de la semana (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.dayOfWeek} />
-    <TextInput accessibilityLabel="Notas de rutina" maxLength={2000} multiline onChangeText={(notes) => onChange({ notes })} placeholder="Notas (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.notes} />
+    <TextInput accessibilityLabel="Nombre de rutina" editable={!disabled} maxLength={120} onChangeText={(name) => onChange({ name })} placeholder="Nombre" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.name} />
+    <TextInput accessibilityLabel="Día de la semana" editable={!disabled} inputMode="numeric" onChangeText={(dayOfWeek) => onChange({ dayOfWeek })} placeholder="Día de la semana (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.dayOfWeek} />
+    <TextInput accessibilityLabel="Notas de rutina" editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onChange({ notes })} placeholder="Notas (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.notes} />
     <Text style={textStyles.heading}>Catálogo</Text>
     <TextInput accessibilityLabel="Buscar ejercicio para rutina" autoCapitalize="none" maxLength={80} onChangeText={onSearchChange} placeholder="Buscar ejercicio" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={catalogSearch} />
-    {exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}><Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text><PrimaryButton accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)}>Ver</PrimaryButton><PrimaryButton disabled={pending} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)}>Agregar</PrimaryButton></View>)}
+    {catalogLoading ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
+    {catalogError ? <><Text accessibilityRole="alert" style={textStyles.error}>{catalogError.message}</Text><PrimaryButton disabled={catalogLoading} accessibilityLabel="Reintentar catálogo" onPress={onRetryCatalog}>Reintentar catálogo</PrimaryButton></> : null}
+    {catalogNotice ? <Text style={textStyles.muted}>{catalogNotice}</Text> : null}
+    {catalogSuccess && exercises.length === 0 ? <Text style={textStyles.muted}>{catalogSource === 'cache' ? 'No hay coincidencias en la copia local.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text> : null}
+    {catalogSuccess && !catalogError ? exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}><Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text><PrimaryButton disabled={disabled} accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)}>Ver</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)}>Agregar</PrimaryButton></View>) : null}
     {preview ? <View accessibilityLabel={`Vista previa de ${preview.name}`} style={styles.preview}><Text style={textStyles.body}>Vista previa: {preview.name}</Text></View> : null}
-    <View style={styles.row}><PrimaryButton disabled={catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)}>Anterior</PrimaryButton><PrimaryButton disabled={catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)}>Siguiente</PrimaryButton></View>
+    <View style={styles.row}><PrimaryButton disabled={disabled || catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)}>Anterior</PrimaryButton><PrimaryButton disabled={disabled || catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)}>Siguiente</PrimaryButton></View>
     <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
     {draft.exercises.map((item, index) => <View key={item.exercise.id} style={styles.card}>
-      <Text style={textStyles.body}>{index + 1}. {item.exercise.name}</Text><View style={styles.row}><PrimaryButton disabled={pending || index === 0} accessibilityLabel={`Subir ${item.exercise.name}`} onPress={() => onMove(index, -1)}>Subir</PrimaryButton><PrimaryButton disabled={pending || index === draft.exercises.length - 1} accessibilityLabel={`Bajar ${item.exercise.name}`} onPress={() => onMove(index, 1)}>Bajar</PrimaryButton><PrimaryButton disabled={pending} accessibilityLabel={`Quitar ${item.exercise.name}`} onPress={() => onRemove(index)}>Quitar</PrimaryButton></View>
-      <TextInput accessibilityLabel={`Series de ${item.exercise.name}`} inputMode="numeric" onChangeText={(targetSets) => onUpdateTargetSets(index, targetSets)} placeholder="Series" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetSets} />
-      <TextInput accessibilityLabel={`Repeticiones de ${item.exercise.name}`} inputMode="numeric" onChangeText={(targetReps) => onUpdateExercise(index, { targetReps })} placeholder="Repeticiones (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetReps} />
-      <TextInput accessibilityLabel={`Peso kg de ${item.exercise.name}`} inputMode="decimal" onChangeText={(targetWeightKg) => onUpdateExercise(index, { targetWeightKg })} placeholder="Peso kg (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetWeightKg} />
-      <TextInput accessibilityLabel={`Notas de ${item.exercise.name}`} maxLength={2000} multiline onChangeText={(notes) => onUpdateExercise(index, { notes })} placeholder="Notas del ejercicio (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.notes} />
-      {item.seriesPlan ? <PrimaryButton disabled={pending} accessibilityLabel={`Quitar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, false)}>Quitar plan por serie</PrimaryButton> : <PrimaryButton disabled={pending} accessibilityLabel={`Configurar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, true)}>Configurar plan por serie</PrimaryButton>}
-      {item.seriesPlan?.map((plan, planIndex) => <View key={planIndex} style={styles.row}><TextInput accessibilityLabel={`Repeticiones plan ${planIndex + 1} de ${item.exercise.name}`} inputMode="numeric" onChangeText={(reps) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, reps } : value) ?? null })} placeholder={`Reps serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.reps} /><TextInput accessibilityLabel={`Peso plan ${planIndex + 1} de ${item.exercise.name}`} inputMode="decimal" onChangeText={(weightKg) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, weightKg } : value) ?? null })} placeholder={`Peso serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.weightKg} /></View>)}
+      <Text style={textStyles.body}>{index + 1}. {item.exercise.name}</Text><View style={styles.row}><PrimaryButton disabled={disabled || index === 0} accessibilityLabel={`Subir ${item.exercise.name}`} onPress={() => onMove(index, -1)}>Subir</PrimaryButton><PrimaryButton disabled={disabled || index === draft.exercises.length - 1} accessibilityLabel={`Bajar ${item.exercise.name}`} onPress={() => onMove(index, 1)}>Bajar</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Quitar ${item.exercise.name}`} onPress={() => onRemove(index)}>Quitar</PrimaryButton></View>
+      <TextInput accessibilityLabel={`Series de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetSets) => onUpdateTargetSets(index, targetSets)} placeholder="Series" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetSets} />
+      <TextInput accessibilityLabel={`Repeticiones de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetReps) => onUpdateExercise(index, { targetReps })} placeholder="Repeticiones (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetReps} />
+      <TextInput accessibilityLabel={`Peso kg de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(targetWeightKg) => onUpdateExercise(index, { targetWeightKg })} placeholder="Peso kg (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetWeightKg} />
+      <TextInput accessibilityLabel={`Notas de ${item.exercise.name}`} editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onUpdateExercise(index, { notes })} placeholder="Notas del ejercicio (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.notes} />
+      {item.seriesPlan ? <PrimaryButton disabled={disabled} accessibilityLabel={`Quitar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, false)}>Quitar plan por serie</PrimaryButton> : <PrimaryButton disabled={disabled} accessibilityLabel={`Configurar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, true)}>Configurar plan por serie</PrimaryButton>}
+      {item.seriesPlan?.map((plan, planIndex) => <View key={planIndex} style={styles.row}><TextInput accessibilityLabel={`Repeticiones plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(reps) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, reps } : value) ?? null })} placeholder={`Reps serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.reps} /><TextInput accessibilityLabel={`Peso plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(weightKg) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, weightKg } : value) ?? null })} placeholder={`Peso serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.weightKg} /></View>)}
     </View>)}
-    <View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar edición" onPress={onCancel}>Cancelar</PrimaryButton><PrimaryButton disabled={pending} accessibilityLabel={draft.id ? 'Guardar cambios' : 'Guardar rutina'} onPress={onSave}>{draft.id ? 'Guardar cambios' : 'Guardar rutina'}</PrimaryButton></View>
+    <View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar edición" onPress={onCancel}>Cancelar</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={draft.id ? 'Guardar cambios' : 'Guardar rutina'} onPress={onSave}>{draft.id ? 'Guardar cambios' : 'Guardar rutina'}</PrimaryButton></View>
   </View>;
 }
 

@@ -69,8 +69,13 @@ export default function TrainScreen() {
           catalogPage={page}
           catalogHasMore={Boolean(exercisesQuery.data?.hasMore)}
           catalogLoading={exercisesQuery.isFetching}
+          catalogError={exercisesQuery.isError ? exercisesQuery.error : null}
+          catalogNotice={exercisesQuery.data?.notice ?? null}
+          catalogSource={exercisesQuery.data?.source ?? null}
+          catalogSuccess={exercisesQuery.isSuccess}
           onSearchChange={changeSearch}
           onChangePage={changePage}
+          onRetryCatalog={() => void exercisesQuery.refetch()}
         /> : null}
       </Screen>
     );
