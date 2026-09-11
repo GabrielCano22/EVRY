@@ -4,6 +4,11 @@ import { useMemo, useState } from 'react';
 import type { Ejercicio } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+type EjercicioMapa = Pick<
+  Ejercicio,
+  'target' | 'bodyPart' | 'category' | 'secondaryMuscles' | 'muscleGroup'
+>;
+
 type VistaCuerpo = 'FRENTE' | 'ESPALDA';
 type SexoMapa = 'MASCULINO' | 'FEMENINO';
 
@@ -79,7 +84,7 @@ function normalizar(valor: string | null | undefined): string {
     .replace(/[_-]/g, ' ');
 }
 
-function musculosDeEjercicio(ejercicio: Ejercicio): Musculo[] {
+function musculosDeEjercicio(ejercicio: EjercicioMapa): Musculo[] {
   const textos = [
     ejercicio.target,
     ejercicio.bodyPart,
@@ -121,7 +126,7 @@ function musculosDeEjercicio(ejercicio: Ejercicio): Musculo[] {
   return [...resultado];
 }
 
-export function obtenerMusculos(ejercicios: Ejercicio[]): Musculo[] {
+export function obtenerMusculos(ejercicios: EjercicioMapa[]): Musculo[] {
   const resultado = new Set<Musculo>();
   ejercicios.forEach((ejercicio) => musculosDeEjercicio(ejercicio).forEach((musculo) => resultado.add(musculo)));
   return [...resultado];
@@ -154,7 +159,7 @@ function Region({
   );
 }
 
-export function MapaMuscular({ ejercicios }: { ejercicios: Ejercicio[] }) {
+export function MapaMuscular({ ejercicios }: { ejercicios: EjercicioMapa[] }) {
   const [sexo, setSexo] = useState<SexoMapa>('MASCULINO');
   const [vista, setVista] = useState<VistaCuerpo>('FRENTE');
   const activos = useMemo(() => new Set(obtenerMusculos(ejercicios)), [ejercicios]);

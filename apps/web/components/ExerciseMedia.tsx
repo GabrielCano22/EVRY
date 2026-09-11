@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import type { Ejercicio } from '@/lib/types';
-import { exerciseGifUrl, exerciseImageUrl } from '@/lib/exercise-media';
+import {
+  exerciseGifUrl,
+  exerciseImageUrl,
+  type ExerciseMediaSource,
+} from '@/lib/exercise-media';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { Icon } from './ui/Icon';
 
@@ -11,7 +15,7 @@ export function ExerciseMedia({
   variant = 'thumbnail',
   className = '',
 }: {
-  exercise: Ejercicio;
+  exercise: ExerciseMediaSource & Pick<Ejercicio, 'id' | 'name'>;
   variant?: 'thumbnail' | 'detail';
   className?: string;
 }) {
@@ -25,7 +29,9 @@ export function ExerciseMedia({
     setImageFailed(false);
   }, [exercise.id, exercise.gifUrl, exercise.gifPath, exercise.imageUrl, exercise.imagePath]);
 
-  const src = !gifFailed && gifUrl ? gifUrl : !imageFailed && imageUrl ? imageUrl : null;
+  const src = variant === 'thumbnail'
+    ? (!imageFailed && imageUrl ? imageUrl : null)
+    : (!gifFailed && gifUrl ? gifUrl : !imageFailed && imageUrl ? imageUrl : null);
   const sizeClass = variant === 'detail' ? 'aspect-square w-full max-w-sm' : 'h-14 w-14 shrink-0';
 
   return (

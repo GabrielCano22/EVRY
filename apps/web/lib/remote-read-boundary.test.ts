@@ -14,7 +14,7 @@ describe('remote read boundary', () => {
       const source = readFileSync(resolve(process.cwd(), file), 'utf8');
       expect(source).not.toMatch(/api<[^>]+>\([^\n]*\)(?:\.then)?\.catch/);
       expect(source).not.toMatch(/\.catch\([^)]*=>\s*(?:\[\]|null|router\.replace)/);
-      expect(source).toContain('request');
+      expect(source).toMatch(/\b(?:request|useQuery|useInfiniteQuery)\b/);
     }
   });
 });

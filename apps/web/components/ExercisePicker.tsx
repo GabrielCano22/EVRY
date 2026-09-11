@@ -1,8 +1,14 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { request } from '@/lib/api';
-import type { Ejercicio, Equipo, GrupoMuscular, PaginaEjercicios } from '@/lib/types';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { useAutenticacion } from '@/lib/auth-store';
+import {
+  listExercises,
+  trainingKeys,
+  type ExerciseListFilters,
+  type ExerciseListItem,
+} from '@/lib/training-api';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExerciseMedia } from './ExerciseMedia';
@@ -16,6 +22,9 @@ import {
 } from '@/lib/exercise-i18n';
 
 const TAMANO_PAGINA = 30;
+
+type Equipo = ExerciseListItem['equipment'];
+type GrupoMuscular = ExerciseListItem['muscleGroup'];
 
 type FiltroZona = {
   valor: string;
@@ -66,85 +75,56 @@ export function ExercisePicker({
   onClose,
   idsExcluidos = [],
 }: {
-  onPick: (e: Ejercicio) => void;
+  onPick: (e: ExerciseListItem) => void;
   onClose: () => void;
   idsExcluidos?: string[];
 }) {
-  const [lista, setLista] = useState<Ejercicio[]>([]);
+  const accountId = useAutenticacion((state) => state.usuario?.id);
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaDiferida, setBusquedaDiferida] = useState('');
   const [zona, setZona] = useState('TODOS');
   const [equipo, setEquipo] = useState<Equipo | 'TODOS'>('TODOS');
-  const [pagina, setPagina] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [hayMas, setHayMas] = useState(false);
-  const [cargando, setCargando] = useState(true);
-  const [cargandoMas, setCargandoMas] = useState(false);
-  const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const solicitudActual = useRef(0);
-
-  const cargarPagina = useCallback(
-    async (paginaSolicitada: number, acumular: boolean) => {
-      const solicitud = ++solicitudActual.current;
-      const params = new URLSearchParams({
-        limit: String(TAMANO_PAGINA),
-        page: String(paginaSolicitada),
-      });
-      if (busqueda.trim()) params.set('q', busqueda.trim());
-      const filtroZona = zonas.find((opcion) => opcion.valor === zona);
-      if (filtroZona?.muscleGroup) params.set('muscleGroup', filtroZona.muscleGroup);
-      if (filtroZona?.category) params.set('category', filtroZona.category);
-      if (filtroZona?.target) params.set('target', filtroZona.target);
-      if (equipo !== 'TODOS') params.set('equipment', equipo);
-
-      if (acumular) setCargandoMas(true);
-      else setCargando(true);
-
-      try {
-        const result = await request<PaginaEjercicios>(`/exercises?${params.toString()}`);
-        if (solicitud !== solicitudActual.current) return;
-        if (!result.ok) {
-          if (result.error.code !== 'aborted') setErrorCarga(result.error.message);
-          return;
-        }
-        const respuesta = result.data;
-        setErrorCarga(null);
-
-        setLista((actual) => {
-          if (!acumular) return respuesta.items;
-          const idsActuales = new Set(actual.map((ejercicio) => ejercicio.id));
-          return [...actual, ...respuesta.items.filter((ejercicio) => !idsActuales.has(ejercicio.id))];
-        });
-        setPagina(respuesta.page);
-        setTotal(respuesta.total);
-        setHayMas(respuesta.hasMore);
-      } catch {
-        if (solicitud !== solicitudActual.current) return;
-        setErrorCarga('No pudimos cargar el catálogo.');
-      } finally {
-        if (solicitud === solicitudActual.current) {
-          if (acumular) setCargandoMas(false);
-          else setCargando(false);
-        }
-      }
-    },
-    [busqueda, equipo, zona],
-  );
 
   useEffect(() => {
-    setCargando(true);
-    setCargandoMas(false);
-    setLista([]);
-    setTotal(0);
-    setHayMas(false);
-    const timer = window.setTimeout(() => {
-      void cargarPagina(1, false);
-    }, 220);
+    const timer = window.setTimeout(() => setBusquedaDiferida(busqueda.trim()), 220);
+    return () => window.clearTimeout(timer);
+  }, [busqueda]);
 
-    return () => {
-      window.clearTimeout(timer);
-      solicitudActual.current += 1;
+  const filtros = useMemo<ExerciseListFilters>(() => {
+    const filtroZona = zonas.find((opcion) => opcion.valor === zona);
+    return {
+      limit: TAMANO_PAGINA,
+      ...(busquedaDiferida ? { q: busquedaDiferida } : {}),
+      ...(filtroZona?.muscleGroup ? { muscleGroup: filtroZona.muscleGroup } : {}),
+      ...(filtroZona?.category ? { category: filtroZona.category } : {}),
+      ...(filtroZona?.target ? { target: filtroZona.target } : {}),
+      ...(equipo !== 'TODOS' ? { equipment: equipo } : {}),
     };
-  }, [cargarPagina]);
+  }, [busquedaDiferida, equipo, zona]);
+
+  const catalogo = useInfiniteQuery({
+    queryKey: trainingKeys.exerciseList(accountId ?? 'sin-cuenta', filtros),
+    enabled: Boolean(accountId),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) => listExercises({ ...filtros, page: pageParam }, signal),
+    getNextPageParam: (ultimaPagina) => ultimaPagina.hasMore ? ultimaPagina.page + 1 : undefined,
+  });
+
+  const esperandoBusqueda = busqueda.trim() !== busquedaDiferida;
+  const lista = useMemo(() => {
+    if (esperandoBusqueda) return [];
+    const unicos = new Map<string, ExerciseListItem>();
+    for (const pagina of catalogo.data?.pages ?? []) {
+      for (const ejercicio of pagina.items) unicos.set(ejercicio.id, ejercicio);
+    }
+    return [...unicos.values()];
+  }, [catalogo.data?.pages, esperandoBusqueda]);
+  const cargando = esperandoBusqueda || catalogo.isPending;
+  const errorInicial = catalogo.isError && !catalogo.data;
+  const errorPagina = catalogo.isFetchNextPageError;
+  const total = catalogo.data?.pages.at(-1)?.total ?? 0;
+  const hayMas = catalogo.hasNextPage;
+  const cargandoMas = catalogo.isFetchingNextPage;
 
   useEffect(() => {
     const cerrarConEscape = (evento: KeyboardEvent) => {
@@ -163,7 +143,7 @@ export function ExercisePicker({
 
   function cargarMas() {
     if (cargando || cargandoMas || !hayMas) return;
-    void cargarPagina(pagina + 1, true);
+    void catalogo.fetchNextPage();
   }
 
   return (
@@ -236,9 +216,20 @@ export function ExercisePicker({
             ? 'Cargando catálogo…'
             : `Mostrando ${disponibles.length} de ${total} ejercicio${total === 1 ? '' : 's'}`}
         </span>
-        <span>GIF local · 180×180</span>
+        <span>Miniaturas locales · 180×180</span>
       </div>
-      {errorCarga && <p role="alert" className="mb-sm text-sm text-error">No pudimos cargar el catálogo. <button type="button" onClick={() => void cargarPagina(1, false)} className="underline">Reintentar</button></p>}
+      {errorInicial && (
+        <p role="alert" className="mb-sm text-sm text-error">
+          No pudimos cargar el catálogo.{' '}
+          <button type="button" onClick={() => void catalogo.refetch()} className="underline">Reintentar</button>
+        </p>
+      )}
+      {errorPagina && (
+        <p role="alert" className="mb-sm text-sm text-error">
+          No pudimos cargar más ejercicios. Los resultados anteriores siguen disponibles.{' '}
+          <button type="button" onClick={() => void catalogo.fetchNextPage()} className="underline">Reintentar página</button>
+        </p>
+      )}
       {cantidadExcluida > 0 && !cargando && (
         <p className="mb-sm rounded-lg border border-primary/20 bg-primary/5 px-sm py-xs text-xs text-primary">
           {cantidadExcluida === 1
@@ -248,7 +239,7 @@ export function ExercisePicker({
       )}
       <ul className="min-h-0 flex-1 space-y-xs overflow-y-auto pr-px">
         {cargando && <EsqueletoCatalogo />}
-        {!cargando && disponibles.length === 0 && (
+        {!cargando && !errorInicial && disponibles.length === 0 && (
           <li className="rounded-lg border border-white/5 bg-surface-container-low p-lg text-center text-sm text-on-surface-variant">
             {cantidadExcluida > 0
               ? 'Todos los ejercicios mostrados ya fueron seleccionados para este día.'
@@ -280,8 +271,8 @@ const OpcionEjercicio = memo(function OpcionEjercicio({
   ejercicio,
   onPick,
 }: {
-  ejercicio: Ejercicio;
-  onPick: (ejercicio: Ejercicio) => void;
+  ejercicio: ExerciseListItem;
+  onPick: (ejercicio: ExerciseListItem) => void;
 }) {
   return (
     <li>

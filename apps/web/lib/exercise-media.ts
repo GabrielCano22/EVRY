@@ -1,6 +1,11 @@
 import type { Ejercicio } from './types';
 import { resolveApiOrigin } from './api-origin';
 
+export type ExerciseMediaSource = Pick<
+  Ejercicio,
+  'imageUrl' | 'imagePath' | 'gifUrl' | 'gifPath'
+>;
+
 export function getExerciseMediaUrl(url: string | null | undefined) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
@@ -14,10 +19,10 @@ export function getExerciseInstruction(exercise: Ejercicio, locale = 'es') {
   return text ? [text] : [];
 }
 
-export function exerciseImageUrl(exercise: Ejercicio) {
+export function exerciseImageUrl(exercise: ExerciseMediaSource) {
   return getExerciseMediaUrl(exercise.imageUrl ?? exercise.imagePath);
 }
 
-export function exerciseGifUrl(exercise: Ejercicio) {
+export function exerciseGifUrl(exercise: ExerciseMediaSource) {
   return getExerciseMediaUrl(exercise.gifUrl ?? exercise.gifPath);
 }
