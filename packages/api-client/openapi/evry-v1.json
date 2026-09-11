@@ -6519,7 +6519,8 @@
         "type": "object",
         "properties": {
           "exerciseId": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64
           },
           "order": {
             "type": "number",
@@ -6537,16 +6538,19 @@
           },
           "targetWeightKg": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 500
           },
           "seriesPlan": {
+            "maxItems": 20,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoutineSeriesPlanDto"
             }
           },
           "notes": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           }
         },
         "required": [
@@ -6560,7 +6564,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 120
           },
           "dayOfWeek": {
             "type": "number",
@@ -6568,9 +6573,11 @@
             "maximum": 6
           },
           "notes": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "exercises": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoutineExerciseDto"
@@ -6586,7 +6593,9 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
           },
           "dayOfWeek": {
             "type": "number",
@@ -6595,9 +6604,11 @@
             "maximum": 6
           },
           "notes": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "exercises": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoutineExerciseDto"
