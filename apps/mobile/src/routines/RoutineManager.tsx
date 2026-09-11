@@ -1,9 +1,11 @@
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { MobileSession } from '../api/client';
 import type { Exercise } from '../catalog/catalog';
+import { mediaUrl } from '../catalog/media-url';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
 import { createRoutine, deleteRoutine, updateRoutine, type CreateRoutineInput, type Routine, type UpdateRoutineInput } from './routines';
@@ -52,8 +54,12 @@ function draftFromRoutine(routine: Routine): RoutineDraft {
   };
 }
 
-function validInteger(value: number | undefined, min: number, max: number): boolean {
-  return value !== undefined && Number.isInteger(value) && value >= min && value <= max;
+function validInteger(value: number | undefined, min: number, max: number): value is number {
+  return value !== undefined && Number.isFinite(value) && Number.isInteger(value) && value >= min && value <= max;
+}
+
+function validOptionalReps(value: number | undefined): boolean {
+  return value === undefined || validInteger(value, 1, 100);
 }
 
 function validOptionalNumber(value: number | undefined, min: number, max: number): boolean {
@@ -74,12 +80,13 @@ function routineInput(draft: RoutineDraft): { body: CreateRoutineInput; error: s
     const targetWeightKg = numberOrUndefined(item.targetWeightKg);
     if (!validInteger(targetSets, 1, 20)) return { body: {} as CreateRoutineInput, error: `Las series de ${item.exercise.name} deben estar entre 1 y 20.` };
     const validTargetSets = targetSets!;
-    if (!validOptionalNumber(targetReps, 1, 1000)) return { body: {} as CreateRoutineInput, error: `Las repeticiones de ${item.exercise.name} deben estar entre 1 y 1000.` };
+    if (!validOptionalReps(targetReps)) return { body: {} as CreateRoutineInput, error: `Las repeticiones de ${item.exercise.name} deben ser números enteros entre 1 y 100.` };
     if (!validOptionalNumber(targetWeightKg, 0, 500)) return { body: {} as CreateRoutineInput, error: `El peso de ${item.exercise.name} debe estar entre 0 y 500 kg.` };
     if (item.notes.length > 2000) return { body: {} as CreateRoutineInput, error: `Las notas de ${item.exercise.name} no pueden superar 2000 caracteres.` };
     const seriesPlan = item.seriesPlan?.map((plan) => ({ reps: numberOrUndefined(plan.reps), weightKg: numberOrUndefined(plan.weightKg) }));
     if (seriesPlan && seriesPlan.length !== validTargetSets) return { body: {} as CreateRoutineInput, error: `El plan de ${item.exercise.name} debe tener una fila por serie.` };
-    if (seriesPlan?.some((plan) => !validOptionalNumber(plan.reps, 1, 1000) || !validOptionalNumber(plan.weightKg, 0, 500))) return { body: {} as CreateRoutineInput, error: `Revisa el plan por serie de ${item.exercise.name}.` };
+    if (seriesPlan?.some((plan) => !validOptionalReps(plan.reps))) return { body: {} as CreateRoutineInput, error: `Las repeticiones del plan de ${item.exercise.name} deben ser números enteros entre 1 y 100.` };
+    if (seriesPlan?.some((plan) => !validOptionalNumber(plan.weightKg, 0, 500))) return { body: {} as CreateRoutineInput, error: `Revisa el peso del plan por serie de ${item.exercise.name}: entre 0 y 500 kg.` };
     exercises.push({ exerciseId: item.exercise.id, order, targetSets: validTargetSets, ...(targetReps === undefined ? {} : { targetReps }), ...(targetWeightKg === undefined ? {} : { targetWeightKg }), ...(item.notes.trim() ? { notes: item.notes } : {}), ...(seriesPlan ? { seriesPlan } : {}) });
   }
   return { body: { name, ...(dayOfWeek === undefined ? {} : { dayOfWeek }), ...(draft.notes.trim() ? { notes: draft.notes } : {}), exercises }, error: null };
@@ -109,12 +116,17 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
   };
   const setPlan = (index: number, enabled: boolean) => {
     const item = draft?.exercises[index]; if (!item) return;
-    const count = numberOrUndefined(item.targetSets) ?? 0;
-    updateExercise(index, { seriesPlan: enabled ? Array.from({ length: count }, () => ({ reps: '', weightKg: '' })) : null });
+    if (!enabled) { updateExercise(index, { seriesPlan: null }); return; }
+    const count = numberOrUndefined(item.targetSets);
+    if (!validInteger(count, 1, 20)) { setError(`Las series de ${item.exercise.name} deben estar entre 1 y 20.`); return; }
+    updateExercise(index, { seriesPlan: Array.from({ length: count }, () => ({ reps: '', weightKg: '' })) });
   };
   const updateTargetSets = (index: number, targetSets: string) => {
-    const item = draft?.exercises[index]; const count = numberOrUndefined(targetSets) ?? 0;
-    const plan = item?.seriesPlan ? Array.from({ length: count }, (_, planIndex) => item.seriesPlan?.[planIndex] ?? { reps: '', weightKg: '' }) : null;
+    const item = draft?.exercises[index]; if (!item) return;
+    const count = numberOrUndefined(targetSets);
+    const plan = item.seriesPlan && validInteger(count, 1, 20)
+      ? Array.from({ length: count }, (_, planIndex) => item.seriesPlan?.[planIndex] ?? { reps: '', weightKg: '' })
+      : item.seriesPlan;
     updateExercise(index, { targetSets, seriesPlan: plan });
   };
   const save = async () => {
@@ -123,7 +135,7 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     setError(null); setPending(true);
     try {
       if (draft.id) {
-        const body: UpdateRoutineInput = { ...result.body, dayOfWeek: result.body.dayOfWeek ?? null };
+        const body: UpdateRoutineInput = { ...result.body, dayOfWeek: result.body.dayOfWeek ?? null, notes: result.body.notes ?? '' };
         await updateRoutine(session, draft.id, body); setSuccess('Rutina actualizada correctamente.');
       } else { await createRoutine(session, result.body); setSuccess('Rutina creada correctamente.'); }
       setDraft(null);
@@ -158,11 +170,28 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
       <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
     </View>)}
     {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
-    {draft ? <RoutineEditor draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
+    {draft ? <RoutineEditor serverUrl={session.serverUrl} draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
   </View>;
 }
 
-function RoutineEditor({ draft, exercises, pending, disabled, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
+function ExercisePreview({ exercise, serverUrl }: { exercise: Exercise; serverUrl: string }) {
+  const [playingGif, setPlayingGif] = useState(false);
+  const image = mediaUrl(exercise.imageUrl ?? exercise.imagePath, serverUrl);
+  const gif = mediaUrl(exercise.gifUrl ?? exercise.gifPath, serverUrl);
+  const source = playingGif ? gif : image;
+  return <View accessibilityLabel={`Vista previa de ${exercise.name}`} style={styles.preview}>
+    <Text style={textStyles.heading}>{exercise.name}</Text>
+    <Text style={textStyles.body}>Equipo: {exercise.equipmentLabel ?? exercise.equipment}</Text>
+    <Text style={textStyles.body}>Músculo: {exercise.target ?? exercise.muscleGroup}</Text>
+    {exercise.description ? <Text style={textStyles.body}>{exercise.description}</Text> : null}
+    {source ? <Image accessibilityLabel={`Demostración de ${exercise.name}`} cachePolicy="disk" contentFit="contain" source={{ uri: source }} style={styles.exerciseMedia} /> : null}
+    {exercise.attribution ? <Text style={textStyles.muted}>{exercise.attribution}</Text> : null}
+    {gif ? <PrimaryButton onPress={() => setPlayingGif((value) => !value)}>{playingGif ? 'Detener demostración' : 'Reproducir GIF'}</PrimaryButton> : null}
+  </View>;
+}
+
+function RoutineEditor({ serverUrl, draft, exercises, pending, disabled, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
+  serverUrl: string;
   draft: RoutineDraft; exercises: Exercise[]; pending: boolean; disabled: boolean; preview: Exercise | null; catalogSearch: string; catalogPage: number; catalogHasMore: boolean; catalogLoading: boolean; catalogError: Error | null; catalogNotice: string | null; catalogSource: 'server' | 'cache' | null; catalogSuccess: boolean; onSearchChange: (value: string) => void; onChangePage: (page: number) => void; onRetryCatalog: () => void; onChange: (next: Partial<RoutineDraft>) => void; onUpdateExercise: (index: number, next: Partial<DraftExercise>) => void; onUpdateTargetSets: (index: number, targetSets: string) => void; onSetPlan: (index: number, enabled: boolean) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void; onPreview: (exercise: Exercise) => void; onAdd: (exercise: Exercise) => void; onCancel: () => void; onSave: () => void;
 }) {
   return <View style={styles.editor}>
@@ -177,7 +206,7 @@ function RoutineEditor({ draft, exercises, pending, disabled, preview, catalogSe
     {catalogNotice ? <Text style={textStyles.muted}>{catalogNotice}</Text> : null}
     {catalogSuccess && exercises.length === 0 ? <Text style={textStyles.muted}>{catalogSource === 'cache' ? 'No hay coincidencias en la copia local.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text> : null}
     {catalogSuccess && !catalogError ? exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}><Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text><PrimaryButton disabled={disabled} accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)}>Ver</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)}>Agregar</PrimaryButton></View>) : null}
-    {preview ? <View accessibilityLabel={`Vista previa de ${preview.name}`} style={styles.preview}><Text style={textStyles.body}>Vista previa: {preview.name}</Text></View> : null}
+    {preview ? <ExercisePreview key={preview.id} exercise={preview} serverUrl={serverUrl} /> : null}
     <View style={styles.row}><PrimaryButton disabled={disabled || catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)}>Anterior</PrimaryButton><PrimaryButton disabled={disabled || catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)}>Siguiente</PrimaryButton></View>
     <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
     {draft.exercises.map((item, index) => <View key={item.exercise.id} style={styles.card}>
@@ -194,5 +223,6 @@ function RoutineEditor({ draft, exercises, pending, disabled, preview, catalogSe
 }
 
 const styles = StyleSheet.create({
+  exerciseMedia: { width: '100%', height: 220 },
   container: { gap: 12 }, card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 14 }, catalogRow: { alignItems: 'center', flexDirection: 'row', gap: 8 }, confirmation: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 12, gap: 10, padding: 14 }, editor: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 12, gap: 10, padding: 14 }, input: { backgroundColor: theme.colors.surface, borderRadius: 8, color: theme.colors.text, minHeight: 46, paddingHorizontal: 12 }, preview: { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12 }, row: { flexDirection: 'row', gap: 8 },
 });

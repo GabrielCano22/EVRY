@@ -98,6 +98,121 @@ it('edits an existing routine', async () => {
   expect(screen.getByText('Rutina actualizada correctamente.')).toBeTruthy();
 });
 
+it.each(['', '   '])('clears saved routine notes with an explicit empty PATCH value for %j', async (notes) => {
+  await show();
+  await fireEvent.press(screen.getByRole('button', { name: 'Editar Piernas' }));
+  await fireEvent.changeText(screen.getByLabelText('Notas de rutina'), notes);
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(updateRoutine).toHaveBeenCalledWith(session, 'routine-1', expect.objectContaining({ notes: '' })));
+});
+
+it('omits blank optional notes when creating a routine', async () => {
+  await show({ routines: [] });
+  await fireEvent.press(screen.getByRole('button', { name: 'Crear rutina' }));
+  await fireEvent.changeText(screen.getByLabelText('Nombre de rutina'), 'Piernas');
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar rutina' }));
+  await waitFor(() => expect(createRoutine).toHaveBeenCalledWith(session, { name: 'Piernas', exercises: [] }));
+});
+
+async function editWithPlan() {
+  await show();
+  await fireEvent.press(screen.getByRole('button', { name: 'Editar Piernas' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Configurar plan por serie de Sentadilla' }));
+  await fireEvent.changeText(screen.getByLabelText('Repeticiones plan 1 de Sentadilla'), '8');
+  await fireEvent.changeText(screen.getByLabelText('Peso plan 1 de Sentadilla'), '60');
+  await fireEvent.changeText(screen.getByLabelText('Repeticiones plan 3 de Sentadilla'), '6');
+}
+
+it.each(['1e100', '1e309', 'Infinity', '', 'abc', '0', '21', '2.5'])('preserves plan rows while set count %j is invalid and refuses to save', async (count) => {
+  await editWithPlan();
+  await fireEvent.changeText(screen.getByLabelText('Series de Sentadilla'), count);
+  expect(screen.getByLabelText('Repeticiones plan 1 de Sentadilla')).toHaveProp('value', '8');
+  expect(screen.getByLabelText('Peso plan 1 de Sentadilla')).toHaveProp('value', '60');
+  expect(screen.getByLabelText('Repeticiones plan 3 de Sentadilla')).toHaveProp('value', '6');
+  expect(screen.queryByLabelText('Repeticiones plan 4 de Sentadilla')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar cambios' }));
+  expect(updateRoutine).not.toHaveBeenCalled();
+  expect(screen.getByRole('alert')).toHaveTextContent(/entre 1 y 20/);
+});
+
+it.each(['1e309', '', '21', '2.5'])('does not create a plan from invalid set count %j', async (count) => {
+  await show();
+  await fireEvent.press(screen.getByRole('button', { name: 'Editar Piernas' }));
+  await fireEvent.changeText(screen.getByLabelText('Series de Sentadilla'), count);
+  await fireEvent.press(screen.getByRole('button', { name: 'Configurar plan por serie de Sentadilla' }));
+  expect(screen.queryByLabelText('Repeticiones plan 1 de Sentadilla')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Configurar plan por serie de Sentadilla' })).toBeTruthy();
+});
+
+it('resizes a plan only after a valid count is restored, preserving rows and matching the payload length', async () => {
+  await editWithPlan();
+  await fireEvent.changeText(screen.getByLabelText('Series de Sentadilla'), '');
+  await fireEvent.changeText(screen.getByLabelText('Series de Sentadilla'), '20');
+  expect(screen.getByLabelText('Repeticiones plan 1 de Sentadilla')).toHaveProp('value', '8');
+  expect(screen.getByLabelText('Repeticiones plan 3 de Sentadilla')).toHaveProp('value', '6');
+  expect(screen.getByLabelText('Repeticiones plan 20 de Sentadilla')).toHaveProp('value', '');
+  expect(screen.queryByLabelText('Repeticiones plan 21 de Sentadilla')).toBeNull();
+  await fireEvent.changeText(screen.getByLabelText('Series de Sentadilla'), '1');
+  expect(screen.queryByLabelText('Repeticiones plan 2 de Sentadilla')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(updateRoutine).toHaveBeenCalledWith(session, 'routine-1', expect.objectContaining({
+    exercises: [expect.objectContaining({ targetSets: 1, seriesPlan: [{ reps: 8, weightKg: 60 }] })],
+  })));
+});
+
+describe.each(['target', 'per-set'])('%s repetitions', (field) => {
+  const label = field === 'target' ? 'Repeticiones de Sentadilla' : 'Repeticiones plan 1 de Sentadilla';
+
+  it.each(['0', '101', '1000', '1.5', '99,5'])('blocks backend-invalid value %j without losing the draft', async (value) => {
+    await editWithPlan();
+    await fireEvent.changeText(screen.getByLabelText(label), value);
+    await fireEvent.press(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(updateRoutine).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/enteros entre 1 y 100/);
+    expect(screen.getByLabelText(label)).toHaveProp('value', value);
+  });
+
+  it.each(['1', '100', ''])('sends valid boundary or optional value %j', async (value) => {
+    await editWithPlan();
+    await fireEvent.changeText(screen.getByLabelText(label), value);
+    await fireEvent.press(screen.getByRole('button', { name: 'Guardar cambios' }));
+    const expected = value === '' ? undefined : Number(value);
+    await waitFor(() => expect(updateRoutine).toHaveBeenCalled());
+    const saved = jest.mocked(updateRoutine).mock.calls[0][2].exercises![0];
+    if (field === 'target') expect(saved.targetReps).toBe(expected);
+    else expect(saved.seriesPlan![0].reps).toBe(expected);
+  });
+});
+
+it('previews catalog details, image and attribution and loads GIF only after play, resetting on selection', async () => {
+  const detailed = { ...exercises[0], equipmentLabel: 'Barra', target: 'Cuádriceps', description: 'Flexiona las rodillas manteniendo la espalda recta.',
+    attribution: '© Gym visual', imageUrl: 'https://cdn.example/squat.jpg', gifUrl: 'https://cdn.example/squat.gif' };
+  const second = { ...exercises[1], imagePath: 'images/deadlift.jpg', gifPath: 'videos/deadlift.gif' };
+  await show({ routines: [], exercises: [detailed, second] });
+  await fireEvent.press(screen.getByRole('button', { name: 'Crear rutina' }));
+  expect(screen.queryByLabelText('Demostración de Sentadilla')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Ver Sentadilla' }));
+  expect(screen.getByText('Equipo: Barra')).toBeTruthy();
+  expect(screen.getByText('Músculo: Cuádriceps')).toBeTruthy();
+  expect(screen.getByText(detailed.description)).toBeTruthy();
+  expect(screen.getByText('© Gym visual')).toBeTruthy();
+  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]);
+  expect(screen.queryByText('1. Sentadilla')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Reproducir GIF' }));
+  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.gifUrl }]);
+  await fireEvent.press(screen.getByRole('button', { name: 'Detener demostración' }));
+  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]);
+  await fireEvent.press(screen.getByRole('button', { name: 'Reproducir GIF' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Ver Peso muerto' }));
+  expect(screen.getByLabelText('Demostración de Peso muerto')).toHaveProp('source', [{ uri: 'https://api.example.com/media/exercises/images/deadlift.jpg' }]);
+  expect(screen.getByText('Equipo: BARBELL')).toBeTruthy();
+  expect(screen.getByText('Músculo: QUADS')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Reproducir GIF' })).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Agregar Sentadilla' }));
+  expect(screen.getByLabelText('Vista previa de Peso muerto')).toBeTruthy();
+  expect(screen.getByText('1. Sentadilla')).toBeTruthy();
+});
+
 it('prevents an exercise from being added twice', async () => {
   await show({ routines: [] });
   await fireEvent.press(screen.getByRole('button', { name: 'Crear rutina' }));

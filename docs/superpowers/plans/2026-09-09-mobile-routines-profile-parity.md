@@ -16,7 +16,7 @@ Finish mobile routine management and expose every profile field already supporte
 - Every remote operation must expose distinct pending, recoverable error, empty, and success feedback where those states apply. Never turn a server or network error into an empty result.
 - Mobile routine mutations require connectivity. Existing cached routines remain usable to start an offline workout; failed mutations must preserve the last confirmed query/cache state and show a recoverable error.
 - The routine editor supports name, optional day of week, optional notes, ordered exercises, target sets, optional target repetitions, optional target weight, optional per-exercise notes, and optional per-set plans. Exercise selection must distinguish viewing details from adding/removing an exercise.
-- Routine form bounds: name 1-120 characters after trimming, notes and per-exercise notes at most 2,000 characters, at most 100 exercises, target sets 1-20, target repetitions 1-1,000, target weight 0-500 kg, and series plan length exactly equal to target sets when present.
+- Routine form bounds: name 1-120 characters after trimming, notes and per-exercise notes at most 2,000 characters, at most 100 exercises, target sets 1-20, integer target repetitions 1-100, target weight 0-500 kg, integer per-set repetitions 1-100, and series plan length exactly equal to target sets when present.
 - Profile editing supports `name`, `biologicalSex`, `birthDate`, `goals`, `trackCycle`, `avgCycleLen`, and `avgPeriodLen` using the exact generated enum values. Birth date input is `YYYY-MM-DD`; cycle lengths are visible only while tracking is enabled and remain within backend bounds (20-45 and 2-10).
 - Cycle tracking remains optional for any person regardless of biological sex.
 - Follow strict TDD: write a behavioral test, run it and record the expected failure, add the minimum implementation, then record the passing focused test. Run the full mobile suite, lint, and type-check before each task commit.
@@ -83,4 +83,3 @@ Finish mobile routine management and expose every profile field already supporte
 - The complete mobile Jest suite passes.
 - `npm run lint -w @evry/mobile` and `npm run type-check -w @evry/mobile` pass.
 - Work is self-reviewed and committed.
-
