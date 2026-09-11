@@ -1,4 +1,5 @@
 import createClient from 'openapi-fetch';
+export type { FetchResponse } from 'openapi-fetch';
 import type { paths as ServerPaths } from './schema';
 
 // Callers supply the versioned base URL; derive route keys without repeating it.

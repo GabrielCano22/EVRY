@@ -178,6 +178,67 @@ function encodeBody(body: unknown): BodyInit | undefined {
   return JSON.stringify(body);
 }
 
+function responseWithControlledBody(
+  response: Response,
+  signal: AbortSignal,
+  abortError: () => ApiError,
+  releaseControls: () => void,
+): Response {
+  if (!response.body) {
+    releaseControls();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  let finished = false;
+  let output: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const finish = () => {
+    if (finished) return false;
+    finished = true;
+    signal.removeEventListener('abort', onAbort);
+    releaseControls();
+    return true;
+  };
+  const onAbort = () => {
+    if (!finish()) return;
+    void reader.cancel(signal.reason).catch(() => undefined);
+    output?.error(abortError());
+  };
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      output = controller;
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    },
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (finished) return;
+        if (chunk.done) {
+          finish();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        if (!finish()) return;
+        controller.error(signal.aborted ? abortError() : error);
+      }
+    },
+    cancel(reason) {
+      finish();
+      return reader.cancel(reason);
+    },
+  });
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 async function fetchWithControls(url: string, init: RequestInit, options: RequestOptions): Promise<ApiResult<Response>> {
   const controller = new AbortController();
   let timedOut = false;
@@ -193,20 +254,37 @@ async function fetchWithControls(url: string, init: RequestInit, options: Reques
     timedOut = true;
     controller.abort();
   }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let controlsReleased = false;
+  const releaseControls = () => {
+    if (controlsReleased) return;
+    controlsReleased = true;
+    clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
+  };
+  let responseReturned = false;
 
   try {
     const pending = fetch(url, { ...init, signal: controller.signal });
     if (externallyAbortedBeforeFetch) onExternalAbort();
     const response = await pending;
-    return { ok: true, data: response };
+    const controlledResponse = responseWithControlledBody(
+      response,
+      controller.signal,
+      () => new ApiError(abortedFailure(timedOut)),
+      releaseControls,
+    );
+    responseReturned = true;
+    return {
+      ok: true,
+      data: controlledResponse,
+    };
   } catch (error) {
     const isAbort = error instanceof DOMException ? error.name === 'AbortError' : (error as { name?: string })?.name === 'AbortError';
     if (timedOut) return { ok: false, error: abortedFailure(true) };
     if (externallyAborted || isAbort) return { ok: false, error: abortedFailure(false) };
     return { ok: false, error: networkFailure() };
   } finally {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener('abort', onExternalAbort);
+    if (!responseReturned) releaseControls();
   }
 }
 
@@ -321,6 +399,7 @@ export async function fetchWithSession(input: Request, options: SessionFetchOpti
   let fetched = await execute();
   if (!fetched.ok) throw new ApiError(fetched.error);
   if (fetched.data.status !== 401 || !auth || !allowRefresh) return fetched.data;
+  await fetched.data.body?.cancel();
 
   const refreshed = await waitForRefresh(tryRefresh(generation), controls);
   if (!refreshed.ok) {

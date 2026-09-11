@@ -3,11 +3,11 @@ import { createEvryApiClient } from './index';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
-it('uses an injected fetch without bypassing generated URLs, credentials or bearer middleware', async () => {
+it('uses an injected fetch without changing the generated URL, method, body, credentials or bearer middleware', async () => {
   let received: Request | undefined;
   const injectedFetch = vi.fn(async (request: Request) => {
     received = request;
-    return Response.json({ items: [], page: 1, limit: 30, total: 0, hasMore: false });
+    return Response.json({ accessToken: 'registered-token' }, { status: 201 });
   });
   const globalFetch = vi.fn(() => Promise.reject(new Error('global fetch must not run')));
   vi.stubGlobal('fetch', globalFetch);
@@ -17,14 +17,22 @@ it('uses an injected fetch without bypassing generated URLs, credentials or bear
     () => 'in-memory-token',
     { fetch: injectedFetch },
   );
-  const result = await client.GET('/exercises', { params: { query: { page: 1, limit: 30 } } });
+  const result = await client.POST('/auth/register', {
+    body: { email: 'person@example.invalid', password: 'long-test-password', name: 'Persona' },
+  });
 
-  expect(result.data).toEqual({ items: [], page: 1, limit: 30, total: 0, hasMore: false });
+  expect(result.data).toEqual({ accessToken: 'registered-token' });
   expect(injectedFetch).toHaveBeenCalledTimes(1);
   expect(globalFetch).not.toHaveBeenCalled();
-  expect(received?.url).toBe('https://api.example.com/api/v1/exercises?page=1&limit=30');
+  expect(received?.url).toBe('https://api.example.com/api/v1/auth/register');
+  expect(received?.method).toBe('POST');
   expect(received?.credentials).toBe('include');
   expect(received?.headers.get('Authorization')).toBe('Bearer in-memory-token');
+  expect(await received?.clone().json()).toEqual({
+    email: 'person@example.invalid',
+    password: 'long-test-password',
+    name: 'Persona',
+  });
 });
 
 it('sends generated catalog query parameters to exactly one versioned API prefix', async () => {

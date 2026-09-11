@@ -247,6 +247,66 @@ describe('request', () => {
 });
 
 describe('fetchWithSession', () => {
+  it('keeps its timeout active after headers arrive while the response body stalls', async () => {
+    vi.useFakeTimers();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/exercises`), { timeoutMs: 10 })
+      .then((response) => response.json())
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      await Promise.resolve();
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toMatchObject({ name: 'ApiError', code: 'timeout', retryable: true });
+    } finally {
+      try { bodyController.close(); } catch { /* The fixed transport cancels the stalled body. */ }
+      await pending;
+    }
+  });
+
+  it('keeps caller cancellation active after headers arrive while the response body stalls', async () => {
+    const caller = new AbortController();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/exercises`, { signal: caller.signal }))
+      .then((response) => response.json())
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      caller.abort();
+      await vi.waitFor(() => {
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).toMatchObject({ name: 'ApiError', code: 'aborted', retryable: false });
+      });
+    } finally {
+      try { bodyController.close(); } catch { /* The fixed transport cancels the stalled body. */ }
+      await pending;
+    }
+  });
+
   it('preserves the request body and returns the original successful response', async () => {
     setAccessToken('current-token');
     let received: Request | undefined;

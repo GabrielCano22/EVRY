@@ -1,5 +1,6 @@
-import { afterEach, expect, it, vi } from 'vitest';
-import { setAccessToken } from './api';
+import type { components } from '@evry/api-client';
+import { afterEach, expect, expectTypeOf, it, vi } from 'vitest';
+import { ApiError, setAccessToken } from './api';
 import { evryApi, unwrapApiResponse } from './generated-api';
 
 afterEach(() => {
@@ -19,6 +20,7 @@ it('unwraps typed generated-client data through the authenticated web transport'
     params: { query: { page: 1, limit: 30 } },
   }));
 
+  expectTypeOf(result).toEqualTypeOf<components['schemas']['ExercisePageDto']>();
   expect(result).toEqual({ items: [], page: 1, limit: 30, total: 0, hasMore: false });
   expect(received?.url).toBe('http://localhost:4000/api/v1/exercises?page=1&limit=30');
   expect(received?.headers.get('authorization')).toBe('Bearer memory-token');
@@ -51,4 +53,34 @@ it('returns undefined for a successful no-content generated operation', async ()
   await expect(unwrapApiResponse(evryApi.DELETE('/routines/{id}', {
     params: { path: { id: 'routine-1' } },
   }))).resolves.toBeUndefined();
+});
+
+it('normalizes malformed successful JSON without exposing the parser failure', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"items":', {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })));
+
+  const operation = evryApi.GET('/exercises', {
+    params: { query: { page: 1, limit: 30 } },
+  });
+
+  await expect(unwrapApiResponse(operation)).rejects.toMatchObject({
+    name: 'ApiError',
+    status: 0,
+    code: 'invalid_response',
+    retryable: false,
+  });
+});
+
+it('preserves an ApiError rejected by the generated operation', async () => {
+  const expected = new ApiError({
+    status: 0,
+    code: 'timeout',
+    message: 'La solicitud tardó demasiado. Inténtalo de nuevo.',
+    retryable: true,
+  });
+  const operation = Promise.reject(expected) as ReturnType<typeof evryApi.GET>;
+
+  await expect(unwrapApiResponse(operation)).rejects.toBe(expected);
 });
