@@ -35,6 +35,19 @@ describe('request', () => {
     expect(fetch).toHaveBeenCalledWith(`${apiUrl}/users/me`, expect.objectContaining({ credentials: 'include' }));
   });
 
+  it.each([
+    ['GET', '/users/me', undefined],
+    ['POST', '/readiness/check-ins', { sleepHrs: 7, stress: 3 }],
+  ] as const)('starts a legacy %s transport before yielding to its caller', async (method, path, body) => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', network);
+
+    const pending = request(path, { method, body });
+
+    expect(network).toHaveBeenCalledTimes(1);
+    await pending;
+  });
+
   it('keeps an empty successful body as undefined', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
 
@@ -418,5 +431,33 @@ describe('fetchWithSession', () => {
 
     await expect(pending).rejects.toMatchObject({ code: 'aborted', retryable: false });
     expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it('normalizes caller cancellation while the legacy response body is being consumed', async () => {
+    const caller = new AbortController();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+    const pending = request('/users/me', { signal: caller.signal });
+
+    try {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      caller.abort();
+
+      await expect(pending).resolves.toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: 'aborted', retryable: false }),
+      });
+    } finally {
+      try { bodyController.close(); } catch { /* Cancellation already closed the source. */ }
+      await pending.catch(() => undefined);
+    }
   });
 });

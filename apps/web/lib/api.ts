@@ -345,6 +345,7 @@ interface SessionFetchOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   generation?: number;
+  preparedInit?: RequestInit;
 }
 
 function isPublicAuthRequest(url: string): boolean {
@@ -352,16 +353,11 @@ function isPublicAuthRequest(url: string): boolean {
   return /\/auth\/(?:login|register|refresh)$/.test(pathname);
 }
 
-async function reusableRequestInit(input: Request, headers: Headers): Promise<RequestInit> {
-  const body = input.body && input.method !== 'GET' && input.method !== 'HEAD'
-    ? await input.clone().arrayBuffer()
-    : undefined;
-
-  return {
+function reusableRequestInit(input: Request, headers: Headers): RequestInit | Promise<RequestInit> {
+  const init: RequestInit = {
     method: input.method,
     headers,
     credentials: input.credentials,
-    body,
     cache: input.cache,
     integrity: input.integrity,
     keepalive: input.keepalive,
@@ -370,6 +366,8 @@ async function reusableRequestInit(input: Request, headers: Headers): Promise<Re
     referrer: input.referrer,
     referrerPolicy: input.referrerPolicy,
   };
+  if (!input.body || input.method === 'GET' || input.method === 'HEAD') return init;
+  return input.clone().arrayBuffer().then((body) => ({ ...init, body }));
 }
 
 export async function fetchWithSession(input: Request, options: SessionFetchOptions = {}): Promise<Response> {
@@ -384,7 +382,10 @@ export async function fetchWithSession(input: Request, options: SessionFetchOpti
 
   let init: RequestInit;
   try {
-    init = await reusableRequestInit(input, headers);
+    const reusableInit = options.preparedInit
+      ? { ...options.preparedInit, headers }
+      : reusableRequestInit(input, headers);
+    init = reusableInit instanceof Promise ? await reusableInit : reusableInit;
   } catch {
     throw new ApiError({ status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false });
   }
@@ -446,8 +447,9 @@ async function requestInternal<T>(path: string, options: RequestOptions, allowRe
       timeoutMs: options.timeoutMs,
       signal: options.signal,
       generation,
+      preparedInit: { method, headers, credentials: 'include', body: encodedBody },
     });
-    return parseResponse(response) as Promise<ApiResult<T>>;
+    return await parseResponse(response) as ApiResult<T>;
   } catch (error) {
     if (error instanceof ApiError) return { ok: false, error };
     return { ok: false, error: networkFailure() };
