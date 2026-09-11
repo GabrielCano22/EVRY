@@ -3,6 +3,30 @@ import { createEvryApiClient } from './index';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+it('uses an injected fetch without bypassing generated URLs, credentials or bearer middleware', async () => {
+  let received: Request | undefined;
+  const injectedFetch = vi.fn(async (request: Request) => {
+    received = request;
+    return Response.json({ items: [], page: 1, limit: 30, total: 0, hasMore: false });
+  });
+  const globalFetch = vi.fn(() => Promise.reject(new Error('global fetch must not run')));
+  vi.stubGlobal('fetch', globalFetch);
+
+  const client = createEvryApiClient(
+    'https://api.example.com/api/v1',
+    () => 'in-memory-token',
+    { fetch: injectedFetch },
+  );
+  const result = await client.GET('/exercises', { params: { query: { page: 1, limit: 30 } } });
+
+  expect(result.data).toEqual({ items: [], page: 1, limit: 30, total: 0, hasMore: false });
+  expect(injectedFetch).toHaveBeenCalledTimes(1);
+  expect(globalFetch).not.toHaveBeenCalled();
+  expect(received?.url).toBe('https://api.example.com/api/v1/exercises?page=1&limit=30');
+  expect(received?.credentials).toBe('include');
+  expect(received?.headers.get('Authorization')).toBe('Bearer in-memory-token');
+});
+
 it('sends generated catalog query parameters to exactly one versioned API prefix', async () => {
   let received: Request | undefined;
   vi.stubGlobal('fetch', async (request: Request) => {

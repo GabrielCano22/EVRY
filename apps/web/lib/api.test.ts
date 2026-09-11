@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { request, requestOrThrow } from './api';
+import { fetchWithSession, request, requestOrThrow } from './api';
 import { beginNewSession } from './auth-session';
 import { getAccessToken, setAccessToken } from './api';
 
@@ -243,5 +243,120 @@ describe('request', () => {
     resolveRefresh(jsonResponse({}, 401));
     await pending;
     expect(getAccessToken()).toBe('new');
+  });
+});
+
+describe('fetchWithSession', () => {
+  it('preserves the request body and returns the original successful response', async () => {
+    setAccessToken('current-token');
+    let received: Request | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      received = input instanceof Request ? input : new Request(input, init);
+      return new Response(JSON.stringify({ id: 'workout-1' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json', 'x-response-marker': 'kept' },
+      });
+    }));
+    const input = new Request(`${apiUrl}/workouts`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer current-token' },
+      body: JSON.stringify({ name: 'Fuerza' }),
+    });
+
+    const response = await fetchWithSession(input);
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('x-response-marker')).toBe('kept');
+    expect(await response.json()).toEqual({ id: 'workout-1' });
+    expect(received?.method).toBe('POST');
+    expect(received?.credentials).toBe('include');
+    expect(received?.headers.get('authorization')).toBe('Bearer current-token');
+    expect(await received?.clone().json()).toEqual({ name: 'Fuerza' });
+  });
+
+  it('rotates once after a protected 401 and retries with the fresh token', async () => {
+    setAccessToken('expired-token');
+    const calls: Request[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      calls.push(request.clone());
+      if (new URL(request.url).pathname.endsWith('/auth/refresh')) {
+        return jsonResponse({ accessToken: 'fresh-token' });
+      }
+      if (calls.filter((call) => new URL(call.url).pathname.endsWith('/workouts')).length === 1) {
+        return jsonResponse({ code: 'UNAUTHORIZED' }, 401);
+      }
+      return jsonResponse({ id: 'workout-1' }, 201);
+    }));
+
+    const response = await fetchWithSession(new Request(`${apiUrl}/workouts`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer expired-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Fuerza' }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(calls.filter((call) => new URL(call.url).pathname.endsWith('/auth/refresh'))).toHaveLength(1);
+    expect(calls.at(-1)?.headers.get('authorization')).toBe('Bearer fresh-token');
+    expect(await calls.at(-1)?.json()).toEqual({ name: 'Fuerza' });
+    expect(getAccessToken()).toBe('fresh-token');
+  });
+
+  it('shares one refresh between concurrent protected requests', async () => {
+    setAccessToken('expired-token');
+    let releaseRefresh!: (response: Response) => void;
+    let refreshCalls = 0;
+    const protectedCalls = new Map<string, number>();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const pathname = new URL(request.url).pathname;
+      if (pathname.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return new Promise<Response>((resolve) => { releaseRefresh = resolve; });
+      }
+      const count = (protectedCalls.get(pathname) ?? 0) + 1;
+      protectedCalls.set(pathname, count);
+      return count === 1 ? jsonResponse({}, 401) : jsonResponse({ path: pathname });
+    }));
+
+    const first = fetchWithSession(new Request(`${apiUrl}/workouts`, { headers: { authorization: 'Bearer expired-token' } }));
+    const second = fetchWithSession(new Request(`${apiUrl}/routines`, { headers: { authorization: 'Bearer expired-token' } }));
+    await vi.waitFor(() => expect(releaseRefresh).toBeTypeOf('function'));
+    releaseRefresh(jsonResponse({ accessToken: 'fresh-token' }));
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(refreshCalls).toBe(1);
+  });
+
+  it('returns an unauthenticated 401 without trying refresh', async () => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ code: 'UNAUTHORIZED' }, 401));
+    vi.stubGlobal('fetch', network);
+
+    const response = await fetchWithSession(new Request(`${apiUrl}/auth/login`, { method: 'POST' }));
+
+    expect(response.status).toBe(401);
+    expect(network).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates caller cancellation as a normalized ApiError', async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      receivedSignal = request.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+    }));
+    const pending = fetchWithSession(new Request(`${apiUrl}/workouts`, {
+      signal: controller.signal,
+      headers: { authorization: 'Bearer token' },
+    }));
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ code: 'aborted', retryable: false });
+    expect(receivedSignal?.aborted).toBe(true);
   });
 });

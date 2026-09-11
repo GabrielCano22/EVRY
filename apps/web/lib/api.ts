@@ -12,6 +12,7 @@ export interface ApiFailure {
   code: string;
   message: string;
   retryable: boolean;
+  requestId?: string;
   fieldErrors?: Record<string, string[]>;
   details?: unknown;
 }
@@ -41,6 +42,7 @@ export class ApiError extends Error implements ApiFailure {
   readonly status: number;
   readonly code: string;
   readonly retryable: boolean;
+  readonly requestId?: string;
   readonly fieldErrors?: Record<string, string[]>;
   readonly details?: unknown;
 
@@ -50,6 +52,7 @@ export class ApiError extends Error implements ApiFailure {
     this.status = failure.status;
     this.code = failure.code;
     this.retryable = failure.retryable;
+    this.requestId = failure.requestId;
     this.fieldErrors = failure.fieldErrors;
     this.details = failure.details;
   }
@@ -132,6 +135,10 @@ function safeCode(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,64}$/.test(value) ? value : fallback;
 }
 
+function safeRequestId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,128}$/.test(value) ? value : undefined;
+}
+
 function validFieldErrors(value: unknown): Record<string, string[]> | undefined {
   if (!isRecord(value)) return undefined;
   const fieldErrors: Record<string, string[]> = {};
@@ -143,13 +150,14 @@ function validFieldErrors(value: unknown): Record<string, string[]> | undefined 
   return Object.keys(fieldErrors).length > 0 ? fieldErrors : undefined;
 }
 
-function httpFailure(response: Response, payload: unknown): ApiFailure {
+export function failureFromResponse(response: Response, payload: unknown): ApiFailure {
   const record = isRecord(payload) ? payload : undefined;
   return {
     status: response.status,
     code: safeCode(record?.code, defaultCode(response.status)),
     message: safeMessage(record?.message, defaultMessage(response.status)),
-    retryable: response.status === 429 || response.status >= 500,
+    retryable: typeof record?.retryable === 'boolean' ? record.retryable : response.status === 429 || response.status >= 500,
+    requestId: safeRequestId(record?.requestId),
     fieldErrors: validFieldErrors(record?.fieldErrors),
   };
 }
@@ -179,15 +187,17 @@ async function fetchWithControls(url: string, init: RequestInit, options: Reques
     controller.abort();
   };
   const externalSignal = options.signal;
-  if (externalSignal?.aborted) onExternalAbort();
-  else externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+  const externallyAbortedBeforeFetch = externalSignal?.aborted ?? false;
+  if (!externallyAbortedBeforeFetch) externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
   }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const pending = fetch(url, { ...init, signal: controller.signal });
+    if (externallyAbortedBeforeFetch) onExternalAbort();
+    const response = await pending;
     return { ok: true, data: response };
   } catch (error) {
     const isAbort = error instanceof DOMException ? error.name === 'AbortError' : (error as { name?: string })?.name === 'AbortError';
@@ -205,7 +215,7 @@ async function parseResponse(response: Response): Promise<ApiResult<unknown>> {
 
   const contentType = response.headers.get('content-type') ?? '';
   const text = await response.text();
-  if (!text.trim()) return response.ok ? { ok: true, data: undefined } : { ok: false, error: httpFailure(response, undefined) };
+  if (!text.trim()) return response.ok ? { ok: true, data: undefined } : { ok: false, error: failureFromResponse(response, undefined) };
 
   let body: unknown;
   if (contentType.includes('application/json')) {
@@ -218,13 +228,13 @@ async function parseResponse(response: Response): Promise<ApiResult<unknown>> {
           error: { status: response.status, code: 'invalid_response', message: 'El servidor devolvió una respuesta inválida.', retryable: false },
         };
       }
-      return { ok: false, error: httpFailure(response, undefined) };
+      return { ok: false, error: failureFromResponse(response, undefined) };
     }
   } else {
     body = text;
   }
 
-  return response.ok ? { ok: true, data: body } : { ok: false, error: httpFailure(response, body) };
+  return response.ok ? { ok: true, data: body } : { ok: false, error: failureFromResponse(response, body) };
 }
 
 async function waitForRefresh(
@@ -251,6 +261,82 @@ async function waitForRefresh(
   }
 }
 
+interface SessionFetchOptions {
+  auth?: boolean;
+  allowRefresh?: boolean;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  generation?: number;
+}
+
+function isPublicAuthRequest(url: string): boolean {
+  const pathname = new URL(url).pathname;
+  return /\/auth\/(?:login|register|refresh)$/.test(pathname);
+}
+
+async function reusableRequestInit(input: Request, headers: Headers): Promise<RequestInit> {
+  const body = input.body && input.method !== 'GET' && input.method !== 'HEAD'
+    ? await input.clone().arrayBuffer()
+    : undefined;
+
+  return {
+    method: input.method,
+    headers,
+    credentials: input.credentials,
+    body,
+    cache: input.cache,
+    integrity: input.integrity,
+    keepalive: input.keepalive,
+    mode: input.mode,
+    redirect: input.redirect,
+    referrer: input.referrer,
+    referrerPolicy: input.referrerPolicy,
+  };
+}
+
+export async function fetchWithSession(input: Request, options: SessionFetchOptions = {}): Promise<Response> {
+  const generation = options.generation ?? currentSessionGeneration();
+  const auth = options.auth ?? !isPublicAuthRequest(input.url);
+  const allowRefresh = options.allowRefresh ?? true;
+  const headers = new Headers(input.headers);
+  if (auth && !headers.has('Authorization')) {
+    const token = getAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  let init: RequestInit;
+  try {
+    init = await reusableRequestInit(input, headers);
+  } catch {
+    throw new ApiError({ status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false });
+  }
+
+  const controls: RequestOptions = {
+    auth,
+    timeoutMs: options.timeoutMs,
+    signal: options.signal ?? input.signal,
+  };
+  const execute = () => fetchWithControls(input.url, init, controls);
+
+  let fetched = await execute();
+  if (!fetched.ok) throw new ApiError(fetched.error);
+  if (fetched.data.status !== 401 || !auth || !allowRefresh) return fetched.data;
+
+  const refreshed = await waitForRefresh(tryRefresh(generation), controls);
+  if (!refreshed.ok) {
+    if ((refreshed.error.status === 401 || refreshed.error.status === 403) && isCurrentSessionGeneration(generation)) {
+      setAccessToken(null, generation);
+    }
+    throw new ApiError(refreshed.error);
+  }
+  if (!setAccessToken(refreshed.data, generation)) throw new ApiError(abortedFailure(false));
+
+  headers.set('Authorization', `Bearer ${refreshed.data}`);
+  fetched = await execute();
+  if (!fetched.ok) throw new ApiError(fetched.error);
+  return fetched.data;
+}
+
 async function requestInternal<T>(path: string, options: RequestOptions, allowRefresh: boolean, generation = currentSessionGeneration()): Promise<ApiResult<T>> {
   const { auth = true, body, headers: suppliedHeaders, method = 'GET' } = options;
   const headers = new Headers(suppliedHeaders);
@@ -267,24 +353,26 @@ async function requestInternal<T>(path: string, options: RequestOptions, allowRe
   } catch {
     return { ok: false, error: { status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false } };
   }
-  const execute = () => fetchWithControls(`${BASE}${path}`, { method, headers, credentials: 'include', body: encodedBody }, options);
-
-  let fetched = await execute();
-  if (!fetched.ok) return fetched;
-  if (fetched.data.status === 401 && auth && allowRefresh) {
-    const refreshed = await waitForRefresh(tryRefresh(generation), options);
-    if (!refreshed.ok) {
-      if ((refreshed.error.status === 401 || refreshed.error.status === 403) && isCurrentSessionGeneration(generation)) {
-        setAccessToken(null, generation);
-      }
-      return refreshed as ApiResult<T>;
-    }
-    if (!setAccessToken(refreshed.data, generation)) return { ok: false, error: abortedFailure(false) };
-    headers.set('Authorization', `Bearer ${refreshed.data}`);
-    fetched = await execute();
-    if (!fetched.ok) return fetched;
+  let input: Request;
+  try {
+    input = new Request(`${BASE}${path}`, { method, headers, credentials: 'include', body: encodedBody });
+  } catch {
+    return { ok: false, error: { status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false } };
   }
-  return parseResponse(fetched.data) as Promise<ApiResult<T>>;
+
+  try {
+    const response = await fetchWithSession(input, {
+      auth,
+      allowRefresh,
+      timeoutMs: options.timeoutMs,
+      signal: options.signal,
+      generation,
+    });
+    return parseResponse(response) as Promise<ApiResult<T>>;
+  } catch (error) {
+    if (error instanceof ApiError) return { ok: false, error };
+    return { ok: false, error: networkFailure() };
+  }
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
