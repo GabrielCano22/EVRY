@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -16,8 +16,16 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - Inicio consume `ProgressOverview` generado: sesiones/volumen, racha histórica y cinco sesiones recientes escalares son canónicos; la comparación es real y las marcas separan unidades por tipo. Ya no solicita `/workouts?take=20` ni descarga series para reconstruir la racha o el volumen. Sus consultas independientes usan TanStack Query, cancelación y claves por cuenta/día; no presenta ceros o marcas vacías durante carga/fallo inicial, y distingue datos conservados tras fallar una actualización.
 - El estado diario comparte una sola consulta entre formulario y métrica. Guardar actualiza ambas vistas; un fallo conserva valores y permite reintentar. La fecha civil de readiness tiene prioridad sobre el timestamp, con compatibilidad para registros antiguos sin fecha civil.
 - El calendario web consulta actividad agregada y registros de ciclo por el mes visible. Ya no descarga sesiones completas ni reconstruye fechas o volumen en el navegador; conserva nombre, series, volumen y fase almacenada, limita actividad hasta hoy y solo solicita proyecciones de ciclo con consentimiento explícito.
+- El móvil ya permite crear, editar y eliminar rutinas con el contrato generado, conservar rutinas cacheadas para iniciar una sesión sin conexión, previsualizar ejercicios sin descargar GIF antes de reproducirlos y editar todos los campos de perfil soportados por la API.
 
 ## Evidencia observada
+
+### Cierre de registro, ciclo, progreso, rutinas y perfil móvil, 9–11 de septiembre
+
+- El backend de registro móvil y traslado seguro de entradas del ciclo se publicó mediante el PR `#4`, con merge `b86eb6b2254df14b0d3735e07e8a0a6d07e9f8d5`; la CI `34311153231` terminó correctamente. La integración PostgreSQL final pasó 8 suites / 78 pruebas sobre un clúster sintético limpio de PostgreSQL 17.11.
+- El frontend de registro, ciclo y progreso móvil se publicó mediante el PR `#6`, con merge `5033e38f4ae7e6f32a464d7df5486673db17d211`; la CI `34312961468` terminó correctamente en calidad, contrato y E2E.
+- El bloque posterior de rutinas y perfil móvil siguió TDD y dos niveles de revisión. La verificación final pasó 23 suites / 172 pruebas móviles, lint y tipos. Rutinas cubre CRUD, confirmación, límites compatibles con backend, caché obsoleta, borrado idempotente en UI, previsualización y GIF bajo demanda. Perfil cubre los siete campos generados, fechas civiles, objetivos, ciclo opcional, errores por campo y respuesta canónica.
+- Sigue pendiente la comprobación física en Android/iPhone y la distribución privada APK. Ninguno de estos cambios autoriza o realiza un despliegue.
 
 ### Backend, 4 de septiembre
 
@@ -66,7 +74,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 ## Pendiente de cerrar antes de aceptar el plan
 
-### Registro móvil en curso, 7 de septiembre
+### Registro móvil (evidencia histórica previa al cierre), 7 de septiembre
 
 - El contrato local incorpora `/auth/mobile/register` del backend `ef60c351659b84c6598355cb09714aa01c4c305e`, todavía sin publicar. El backend aprobó nueve pruebas focales, tipos, lint, build y generación OpenAPI; la integración PostgreSQL sigue pendiente porque el entorno rechazó arrancar el clúster de pruebas.
 - El cliente móvil generado envía el registro nativo y guarda el refresh token con la cola SecureStore existente. La acción de sesión obtiene el perfil autenticado antes de abrir la cuenta y descarta respuestas tardías. La suite del cliente pasó 29 pruebas, incluido registro y logout concurrente; los tipos móviles también pasaron.
@@ -74,14 +82,14 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 - Falta ejecutar la integración real y completar las puertas antes del push de ambos repositorios. El lock apunta a un commit local: no publicar el frontend antes del backend correspondiente.
 - Ajuste posterior: una respuesta de registro exitosa seguida de fallo al obtener el perfil muestra una cuenta creada y ofrece login, sin presentar otra vez el formulario. El perfil no validado permanece fuera de la sesión. La regresión llevó el cliente a 30 pruebas correctas; tipos y lint móviles pasaron después del ajuste. Las exportaciones anteriores corresponden al formulario previo a este ajuste.
 
-### Edición móvil del ciclo, 7 de septiembre
+### Edición móvil del ciclo (evidencia histórica previa al cierre), 7 de septiembre
 
 - La pantalla permite crear y editar fecha civil, flujo, síntomas, energía, ánimo, notas e inicio del periodo con el contrato generado. Conserva los campos previos y envía `previousDate` al mover un registro. Rechaza fechas imposibles/futuras y valores fuera de rango; advierte si otra entrada cargada ya ocupa la fecha.
 - El consentimiento y la identidad controlan el montaje de la pantalla; cambiar de cuenta o desactivar el ciclo descarta el formulario. La consulta admite cancelación y guardar ofrece confirmación visible.
 - Pasaron 18 suites / 91 pruebas móviles, tipos y lint. Las dos pruebas nuevas del formulario verifican fechas y conservación de campos con controles reales; falta integración HTTP de la pantalla, prueba en dispositivo y exportación posterior a este cambio.
 - La prevención de colisiones en pantalla solo conoce las entradas cargadas. El backend local `a3f84f4b3386af39e7792ded914ddba678201edb` ahora traslada mediante UPDATE conservando ID/campos, con 409 para destino ocupado y 404 para origen ausente. Pasaron siete pruebas focales, tipos, lint, build y generación OpenAPI; la integración PostgreSQL y la carrera real siguen pendientes. El frontend importó ese contrato y `api:check` pasó; ambos commits del backend aún deben publicarse antes de este lock.
 
-### Detalle móvil del progreso, 7 de septiembre
+### Detalle móvil del progreso (evidencia histórica previa al cierre), 7 de septiembre
 
 - Progreso incluye selector de ejercicios con búsqueda cancelable y catálogo de 30 elementos por página, reutilizando su caché local. El detalle usa el contrato generado, resumen y comparación canónicos, intervalos de evolución y carga incremental del historial por cursor (20 sesiones por petición).
 - Peso, repeticiones, duración y RPE conservan sus unidades y valores ausentes; los estados de carga/error/vacío se muestran por separado y el historial conserva lo ya cargado cuando falla una página posterior.
@@ -96,7 +104,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 ### Móvil
 
-- Completar paridad: crear/editar rutinas y todos los campos de perfil. Registro, detalle de progreso y edición de ciclo están implementados localmente; falta su aceptación de integración y dispositivo según la evidencia anterior.
+- La paridad funcional principal de registro, rutinas, perfil, ciclo y detalle de progreso está implementada y verificada en pruebas automatizadas. Falta su aceptación en dispositivos físicos y condiciones reales de red.
 - Validar aislamiento y reapertura offline en Android/iOS reales, incluida la vida real de SecureStore/SQLite y sincronización contra PostgreSQL.
 - Si existe un `evry.db` heredado sin propietario, conservarlo intacto: la recuperación exige identificar al propietario e importación explícita; no se asignan automáticamente esos datos a la siguiente cuenta.
 - La migración conserva datos ante caché malformada, pero falta una recuperación de caché dañada orientada a la persona usuaria.
@@ -114,7 +122,7 @@ Actualizado: 6 de septiembre de 2026. Este registro separa implementación, evid
 
 ## Preservación de datos y límites
 
-No se reinició, migró ni restauró una base real, ni se desplegaron recursos externos. La integración usa solo PostgreSQL sintético con una URL de prueba explícita, diferente de la URL runtime bloqueada. Este estado no acepta el plan completo ni modifica `main`.
+No se reinició, migró ni restauró una base real, ni se desplegaron recursos externos. La integración usa solo PostgreSQL sintético con una URL de prueba explícita, diferente de la URL runtime bloqueada. Este estado todavía no acepta el plan completo.
 
 El clúster PostgreSQL temporal se detuvo limpiamente al finalizar las pruebas del 4 de septiembre; se conservaron sus datos y binarios. La guía reproducible está en `EVRY-Backend/docs/operations/integration-tests.md`.
 

@@ -7,6 +7,7 @@ import { API_BASE_URL } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
 import { mediaUrl } from '@/src/catalog/media-url';
+import { RoutineManager } from '@/src/routines/RoutineManager';
 import { useTrainingStore } from '@/src/training/training-store';
 import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
@@ -25,6 +26,12 @@ export default function TrainScreen() {
   const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: ({ signal }) => loadRoutines(session, signal) });
   function changePage(nextPage: number) {
     setPage(nextPage);
+    setSelectedExerciseId(null);
+    setPlayingGif(false);
+  }
+  function changeSearch(value: string) {
+    setSearch(value);
+    setPage(1);
     setSelectedExerciseId(null);
     setPlayingGif(false);
   }
@@ -52,17 +59,24 @@ export default function TrainScreen() {
         {routinesQuery.isSuccess && routinesQuery.data.items.length === 0 ? (
           <Text style={textStyles.muted}>{routinesQuery.data.source === 'cache' ? 'No hay rutinas en la copia local.' : 'No tienes rutinas guardadas.'}</Text>
         ) : null}
-        {routinesQuery.data?.items.map((routine) => (
-          <Pressable
-            accessibilityRole="button"
-            key={routine.id}
-            onPress={() => void startWorkout(routine.name, routine.id)}
-            style={styles.routineCard}
-          >
-            <Text style={textStyles.heading}>{routine.name}</Text>
-            <Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text>
-          </Pressable>
-        ))}
+        {routinesQuery.isSuccess ? <RoutineManager
+          session={session}
+          routines={routinesQuery.data.items}
+          routinesStale={routinesQuery.data.stale}
+          exercises={exercises}
+          onStartRoutine={(routine) => void startWorkout(routine.name, routine.id)}
+          catalogSearch={search}
+          catalogPage={page}
+          catalogHasMore={Boolean(exercisesQuery.data?.hasMore)}
+          catalogLoading={exercisesQuery.isFetching}
+          catalogError={exercisesQuery.isError ? exercisesQuery.error : null}
+          catalogNotice={exercisesQuery.data?.notice ?? null}
+          catalogSource={exercisesQuery.data?.source ?? null}
+          catalogSuccess={exercisesQuery.isSuccess}
+          onSearchChange={changeSearch}
+          onChangePage={changePage}
+          onRetryCatalog={() => void exercisesQuery.refetch()}
+        /> : null}
       </Screen>
     );
   }
@@ -85,12 +99,7 @@ export default function TrainScreen() {
         accessibilityLabel="Buscar ejercicio"
         autoCapitalize="none"
         maxLength={80}
-        onChangeText={(value) => {
-          setSearch(value);
-          setPage(1);
-          setSelectedExerciseId(null);
-          setPlayingGif(false);
-        }}
+        onChangeText={changeSearch}
         placeholder="Buscar ejercicio"
         placeholderTextColor={theme.colors.textMuted}
         style={styles.searchInput}
@@ -227,7 +236,6 @@ const styles = StyleSheet.create({
   exerciseOption: { backgroundColor: theme.colors.surface, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   thumbnail: { width: 48, height: 48, borderRadius: 6, backgroundColor: theme.colors.surfaceHigh },
   exerciseOptionSelected: { borderColor: theme.colors.primary, borderWidth: 2 },
-  routineCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 4, padding: 18 },
   searchInput: {
     backgroundColor: theme.colors.surfaceHigh,
     borderRadius: 8,

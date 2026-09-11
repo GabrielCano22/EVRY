@@ -56,6 +56,13 @@ it('offers recovery for failed routine queries instead of silently hiding the fa
   expect(await screen.findByText(/No tienes rutinas guardadas/)).toBeTruthy();
 }, 20_000);
 
+it('shows the routine manager only when no workout is active', async () => {
+  useTrainingStore.setState({ activeWorkout: null });
+  await show();
+  expect(await screen.findByRole('button', { name: 'Crear rutina' })).toBeTruthy();
+  expect(screen.queryByLabelText('Buscar ejercicio')).toBeNull();
+});
+
 it('uses the server media URL and only switches the detail to GIF after pressing play', async () => {
   jest.mocked(loadExercises).mockResolvedValue({ ...result(), items: [{ ...items[0], imageUrl: 'https://cdn.example/one.jpg', gifUrl: 'https://cdn.example/one.gif' }], total: 1, hasMore: false });
   await show();
