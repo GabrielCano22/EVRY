@@ -16,6 +16,18 @@ const user = {
   birthDate: null, goals: [], trackCycle: true, avgCycleLen: 28, avgPeriodLen: 5, createdAt: '2026-01-01',
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function parsedRequestBody(call: unknown[]): unknown {
+  const body = (call[1] as RequestInit | undefined)?.body;
+  const text = body instanceof ArrayBuffer ? new TextDecoder().decode(body) : String(body);
+  return JSON.parse(text);
+}
+
 beforeEach(() => {
   push.mockReset();
   useAutenticacion.setState({ usuario: null, cargando: false, error: null, estado: 'anonymous' });
@@ -30,7 +42,7 @@ afterEach(() => { cleanup(); setAccessToken(null); vi.unstubAllGlobals(); });
 
 it('keeps explicit cycle consent when sex changes and sends it for a male registration', async () => {
   render(<PaginaRegistro />);
-  for (const name of ['Femenino', 'Masculino', 'Otro']) {
+  for (const name of ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']) {
     fireEvent.click(screen.getByRole('button', { name }));
     expect(screen.getByRole('checkbox', { name: 'Activar seguimiento del ciclo' })).not.toBeChecked();
   }
@@ -47,10 +59,51 @@ it('keeps explicit cycle consent when sex changes and sends it for a male regist
   await waitFor(() => {
     const call = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => String(input).includes('/auth/register'));
     expect(call).toBeDefined();
-    expect(JSON.parse(call![1].body)).toEqual({ email: 'alex@example.test', password: 'testing-password', name: 'Alex', biologicalSex: 'MALE', trackCycle: true });
+    expect(parsedRequestBody(call!)).toEqual({ email: 'alex@example.test', password: 'testing-password', name: 'Alex', biologicalSex: 'MALE', trackCycle: true });
   });
   await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
   expect(useAutenticacion.getState().estado).toBe('authenticated');
+});
+
+it('links API field errors to inputs and blocks a duplicate pending registration', async () => {
+  const pending = deferred<Response>();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path.endsWith('/auth/register')) return pending.promise;
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<PaginaRegistro />);
+  fireEvent.click(screen.getByRole('button', { name: 'Prefiero no decir' }));
+  fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Eva' } });
+  fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'eva@example.test' } });
+  fireEvent.change(screen.getByLabelText('Contraseña (mín. 8 caracteres)'), { target: { value: 'testing-password' } });
+  const form = screen.getByRole('button', { name: 'Crear cuenta' }).closest('form');
+  expect(form).not.toBeNull();
+
+  fireEvent.submit(form!);
+  await waitFor(() => expect(screen.getByRole('button', { name: '…' })).toBeDisabled());
+  fireEvent.submit(form!);
+  await waitFor(() => {
+    const registerCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/auth/register'));
+    expect(registerCalls).toHaveLength(1);
+  });
+
+  pending.resolve(Response.json({
+    code: 'validation_error',
+    message: 'Revisa los datos.',
+    retryable: false,
+    fieldErrors: {
+      email: ['Correo inválido.'],
+      password: ['Contraseña inválida.'],
+    },
+  }, { status: 422 }));
+
+  const emailError = await screen.findByText('Correo inválido.');
+  const passwordError = await screen.findByText('Contraseña inválida.');
+  expect(screen.getByRole('textbox', { name: /Correo electrónico/ }).closest('label')).toContainElement(emailError);
+  expect(screen.getByLabelText(/Contraseña/).closest('label')).toContainElement(passwordError);
+  expect(push).not.toHaveBeenCalled();
 });
 
 it('offers the optional consent to Otro and submits untouched consent as false', async () => {
@@ -63,7 +116,7 @@ it('offers the optional consent to Otro and submits untouched consent as false',
   fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
   await waitFor(() => {
     const call = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(([input]) => String(input).includes('/auth/register'));
-    expect(JSON.parse(call![1].body)).toEqual(expect.objectContaining({ biologicalSex: 'OTHER', trackCycle: false }));
+    expect(parsedRequestBody(call!)).toEqual(expect.objectContaining({ biologicalSex: 'OTHER', trackCycle: false }));
   });
   await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
   expect(useAutenticacion.getState().estado).toBe('authenticated');

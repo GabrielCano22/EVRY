@@ -7,6 +7,7 @@ import { useAutenticacion } from '@/lib/auth-store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Icon } from '@/components/ui/Icon';
+import { ApiError } from '@/lib/api';
 
 const EMAIL_RECORDADO_KEY = 'evry_email_recordado';
 
@@ -17,6 +18,7 @@ export default function PaginaIngreso() {
   const [password, setPassword] = useState('');
   const [recordarUsuario, setRecordarUsuario] = useState(false);
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
+  const [erroresCampos, setErroresCampos] = useState<Record<string, string[]> | undefined>();
 
   useEffect(() => {
     const emailGuardado = window.localStorage.getItem(EMAIL_RECORDADO_KEY);
@@ -28,7 +30,9 @@ export default function PaginaIngreso() {
 
   async function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
+    if (cargando) return;
     setErrorLocal(null);
+    setErroresCampos(undefined);
     try {
       await ingresar(email.trim(), password);
       if (recordarUsuario) {
@@ -38,6 +42,7 @@ export default function PaginaIngreso() {
       }
       router.push('/dashboard');
     } catch (causa) {
+      if (causa instanceof ApiError) setErroresCampos(causa.fieldErrors);
       setErrorLocal(causa instanceof Error ? causa.message : 'No se pudo ingresar. Inténtalo de nuevo.');
     }
   }
@@ -89,6 +94,7 @@ export default function PaginaIngreso() {
             required
             value={email}
             onChange={(evento) => setEmail(evento.target.value)}
+            error={erroresCampos?.email?.[0]}
           />
           <Input
             label="Contraseña"
@@ -98,6 +104,7 @@ export default function PaginaIngreso() {
             required
             value={password}
             onChange={(evento) => setPassword(evento.target.value)}
+            error={erroresCampos?.password?.[0]}
           />
 
           <label className="flex cursor-pointer items-center gap-sm text-sm text-on-surface-variant">

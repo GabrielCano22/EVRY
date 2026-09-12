@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Icon } from '@/components/ui/Icon';
 import type { Sexo } from '@/lib/types';
+import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export default function PaginaRegistro() {
@@ -20,10 +21,13 @@ export default function PaginaRegistro() {
     seguirCiclo: false,
   });
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
+  const [erroresCampos, setErroresCampos] = useState<Record<string, string[]> | undefined>();
 
   async function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
+    if (cargando) return;
     setErrorLocal(null);
+    setErroresCampos(undefined);
 
     if (!datos.sexoBiologico) {
       setErrorLocal('Selecciona una opción de sexo biológico.');
@@ -42,8 +46,8 @@ export default function PaginaRegistro() {
         trackCycle: datos.seguirCiclo,
       });
       router.push('/dashboard');
-    } catch {
-      // error de zustand store ya seteado
+    } catch (causa) {
+      if (causa instanceof ApiError) setErroresCampos(causa.fieldErrors);
     }
   }
 
@@ -51,6 +55,7 @@ export default function PaginaRegistro() {
     { valor: 'FEMALE', etiqueta: 'Femenino', icono: 'female' },
     { valor: 'MALE', etiqueta: 'Masculino', icono: 'male' },
     { valor: 'OTHER', etiqueta: 'Otro', icono: 'transgender' },
+    { valor: 'PREFER_NOT_SAY', etiqueta: 'Prefiero no decir', icono: 'help_outline' },
   ];
 
   const mensajeError = errorLocal ?? error;
@@ -82,7 +87,7 @@ export default function PaginaRegistro() {
           <label className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-primary mb-sm block">
             Sexo biológico
           </label>
-          <div className="grid grid-cols-3 gap-gutter">
+          <div className="grid grid-cols-2 gap-gutter">
             {opcionesSexo.map((opcion) => {
               const activo = datos.sexoBiologico === opcion.valor;
               return (
@@ -175,6 +180,7 @@ export default function PaginaRegistro() {
             required
             value={datos.email}
             onChange={(evento) => setDatos({ ...datos, email: evento.target.value })}
+            error={erroresCampos?.email?.[0]}
           />
           <Input
             label="Contraseña (mín. 8 caracteres)"
@@ -184,6 +190,7 @@ export default function PaginaRegistro() {
             required
             value={datos.password}
             onChange={(evento) => setDatos({ ...datos, password: evento.target.value })}
+            error={erroresCampos?.password?.[0]}
           />
         </div>
 

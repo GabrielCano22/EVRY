@@ -1,27 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMock = vi.hoisted(() => ({
-  request: vi.fn(),
-  requestOrThrow: vi.fn(),
+  loginWeb: vi.fn(),
+  registerWeb: vi.fn(),
+  logoutWeb: vi.fn(),
+  getCurrentUser: vi.fn(),
   setAccessToken: vi.fn(),
+  request: vi.fn(() => Promise.reject(new Error('legacy request used'))),
+  requestOrThrow: vi.fn(() => Promise.reject(new Error('legacy requestOrThrow used'))),
 }));
 
-vi.mock('./api', () => ({
-  ...apiMock,
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(status: number, message = 'error') { super(message); this.status = status; }
-  },
+vi.mock('./auth-api', () => ({
+  loginWeb: apiMock.loginWeb,
+  registerWeb: apiMock.registerWeb,
+  logoutWeb: apiMock.logoutWeb,
+  getCurrentUser: apiMock.getCurrentUser,
+}));
+
+vi.mock('./api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api')>()),
+  setAccessToken: apiMock.setAccessToken,
+  request: apiMock.request,
+  requestOrThrow: apiMock.requestOrThrow,
 }));
 
 import { useAutenticacion } from './auth-store';
+import { ApiError } from './api';
+import type { Usuario } from './types';
 
-const user = { id: 'u1', email: 'u@evry.test', name: 'Eva' } as never;
+const user: Usuario = {
+  id: 'u1',
+  email: 'u@evry.test',
+  name: 'Eva',
+  biologicalSex: 'FEMALE',
+  birthDate: null,
+  goals: [],
+  trackCycle: true,
+  avgCycleLen: 28,
+  avgPeriodLen: 5,
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -30,29 +54,92 @@ beforeEach(() => {
 });
 
 describe('useAutenticacion operation epochs', () => {
-  it('ignores a late initialize 401 after a newer successful login', async () => {
-    const late = deferred<{ ok: false; error: { status: number; message: string } }>();
-    apiMock.request.mockReturnValueOnce(late.promise);
-    apiMock.requestOrThrow.mockResolvedValueOnce({ accessToken: 'fresh' }).mockResolvedValueOnce(user);
+  it('ignores a late initialize 401 after a newer normalized login', async () => {
+    const late = deferred<typeof user>();
+    apiMock.getCurrentUser.mockReturnValueOnce(late.promise).mockResolvedValueOnce(user);
+    apiMock.loginWeb.mockResolvedValueOnce({ accessToken: 'fresh' });
 
     const initializing = useAutenticacion.getState().inicializar();
-    await useAutenticacion.getState().ingresar('u@evry.test', 'secret');
-    late.resolve({ ok: false, error: { status: 401, message: 'expired' } });
+    await useAutenticacion.getState().ingresar('  U@EVRY.TEST  ', 'secret');
+    late.reject(new ApiError({
+      status: 401,
+      code: 'unauthorized',
+      message: 'expired',
+      retryable: false,
+    }));
     await initializing;
 
+    expect(apiMock.loginWeb).toHaveBeenCalledWith({ email: 'u@evry.test', password: 'secret' });
+    expect(apiMock.getCurrentUser).toHaveBeenCalledTimes(2);
     expect(useAutenticacion.getState()).toMatchObject({ usuario: user, estado: 'authenticated' });
     expect(apiMock.setAccessToken).toHaveBeenCalledWith('fresh', expect.any(Number));
   });
 
   it('ignores a late initialize success after logout', async () => {
-    const late = deferred<{ ok: true; data: typeof user }>();
-    apiMock.request.mockReturnValueOnce(late.promise).mockResolvedValueOnce({ ok: true, data: undefined });
+    const late = deferred<typeof user>();
+    apiMock.getCurrentUser.mockReturnValueOnce(late.promise);
+    apiMock.logoutWeb.mockImplementationOnce(async () => {
+      expect(apiMock.setAccessToken).toHaveBeenCalledWith(null, expect.any(Number));
+      expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
+      return { ok: true };
+    });
 
     const initializing = useAutenticacion.getState().inicializar();
     await useAutenticacion.getState().cerrarSesion();
-    late.resolve({ ok: true, data: user });
+    late.resolve(user);
     await initializing;
 
+    expect(apiMock.logoutWeb).toHaveBeenCalledOnce();
     expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
+  });
+});
+
+it('registers with normalized generated input and loads the current user', async () => {
+  apiMock.registerWeb.mockResolvedValueOnce({ accessToken: 'fresh' });
+  apiMock.getCurrentUser.mockResolvedValueOnce(user);
+
+  await useAutenticacion.getState().registrar({
+    email: '  EVA@EXAMPLE.TEST ',
+    password: 'testing-password',
+    name: '  Eva  ',
+    biologicalSex: 'FEMALE',
+    trackCycle: true,
+  });
+
+  expect(apiMock.registerWeb).toHaveBeenCalledWith({
+    email: 'eva@example.test',
+    password: 'testing-password',
+    name: 'Eva',
+    biologicalSex: 'FEMALE',
+    trackCycle: true,
+  });
+  expect(apiMock.getCurrentUser).toHaveBeenCalledOnce();
+  expect(useAutenticacion.getState()).toMatchObject({ usuario: user, estado: 'authenticated' });
+});
+
+it('applies an updated matching user without losing createdAt', () => {
+  useAutenticacion.setState({ usuario: user });
+
+  useAutenticacion.getState().aplicarUsuarioActualizado({
+    id: user.id,
+    email: 'eva.updated@evry.test',
+    name: 'Eva Actualizada',
+    biologicalSex: 'PREFER_NOT_SAY',
+    birthDate: '1990-06-15T00:00:00.000Z',
+    goals: ['STRENGTH'],
+    trackCycle: false,
+    avgCycleLen: 30,
+    avgPeriodLen: 6,
+  });
+
+  expect(useAutenticacion.getState()).toMatchObject({
+    estado: 'authenticated',
+    error: null,
+    usuario: {
+      id: user.id,
+      email: 'eva.updated@evry.test',
+      name: 'Eva Actualizada',
+      createdAt: user.createdAt,
+    },
   });
 });
