@@ -34,7 +34,8 @@ export default function PaginaIngreso() {
     setErrorLocal(null);
     setErroresCampos(undefined);
     try {
-      await ingresar(email.trim(), password);
+      const autenticado = await ingresar(email.trim(), password);
+      if (!autenticado) return;
       if (recordarUsuario) {
         window.localStorage.setItem(EMAIL_RECORDADO_KEY, email.trim());
       } else {

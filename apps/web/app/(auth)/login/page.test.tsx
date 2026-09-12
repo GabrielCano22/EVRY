@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authApiMock = vi.hoisted(() => ({
@@ -20,10 +20,11 @@ import { ApiError, setAccessToken } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
 import PaginaIngreso from './page';
 
-function rejectedDeferred<T>() {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((_resolve, fail) => { reject = fail; });
-  return { promise, reject };
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -31,6 +32,7 @@ beforeEach(() => {
   localStorage.clear();
   setAccessToken(null);
   useAutenticacion.setState({ usuario: null, cargando: false, error: null, estado: 'anonymous' });
+  authApiMock.logoutWeb.mockResolvedValue({ ok: true });
 });
 afterEach(cleanup);
 
@@ -42,7 +44,7 @@ describe('PaginaIngreso', () => {
   });
 
   it('links API field errors to inputs and blocks a duplicate pending login', async () => {
-    const pending = rejectedDeferred<never>();
+    const pending = deferred<never>();
     authApiMock.loginWeb.mockReturnValueOnce(pending.promise);
     render(<PaginaIngreso />);
     fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: '  EVA@EXAMPLE.TEST  ' } });
@@ -74,5 +76,25 @@ describe('PaginaIngreso', () => {
     expect(screen.getByLabelText(/Contraseña/).closest('label')).toContainElement(passwordError);
     expect(push).not.toHaveBeenCalled();
     expect(localStorage.getItem('evry_email_recordado')).toBeNull();
+  });
+
+  it('does not navigate when logout supersedes a pending login', async () => {
+    const pending = deferred<{ accessToken: string }>();
+    authApiMock.loginWeb.mockReturnValueOnce(pending.promise);
+    render(<PaginaIngreso />);
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'eva@example.test' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'secreto' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Ingresar' }).closest('form')!);
+    await waitFor(() => expect(authApiMock.loginWeb).toHaveBeenCalledOnce());
+
+    await useAutenticacion.getState().cerrarSesion();
+    await act(async () => {
+      pending.resolve({ accessToken: 'stale' });
+      await pending.promise;
+      await Promise.resolve();
+    });
+
+    expect(push).not.toHaveBeenCalled();
+    expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
   });
 });

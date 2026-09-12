@@ -38,13 +38,14 @@ export default function PaginaRegistro() {
       return;
     }
     try {
-      await registrar({
+      const registrado = await registrar({
         email: datos.email.trim(),
         password: datos.password,
         name: datos.nombre.trim(),
         biologicalSex: datos.sexoBiologico,
         trackCycle: datos.seguirCiclo,
       });
+      if (!registrado) return;
       router.push('/dashboard');
     } catch (causa) {
       if (causa instanceof ApiError) setErroresCampos(causa.fieldErrors);

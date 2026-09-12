@@ -13,8 +13,8 @@ interface EstadoAutenticacion {
   error: string | null;
   estado: AuthStatus;
   inicializar: () => Promise<void>;
-  ingresar: (email: string, password: string) => Promise<void>;
-  registrar: (datos: RegisterInput) => Promise<void>;
+  ingresar: (email: string, password: string) => Promise<boolean>;
+  registrar: (datos: RegisterInput) => Promise<boolean>;
   cerrarSesion: () => Promise<void>;
   recargarUsuario: () => Promise<void>;
   aplicarUsuarioActualizado: (updated: UpdatedUser) => void;
@@ -56,21 +56,25 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   async ingresar(email, password) {
     const epoch = ++epochOperacion;
     const generation = beginNewSession();
+    let tokenAplicado = false;
     set({ cargando: true, error: null, estado: 'checking' });
     try {
       const emailNormalizado = email.trim().toLowerCase();
       const respuesta = await loginWeb({ email: emailNormalizado, password });
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       setAccessToken(respuesta.accessToken, generation);
+      tokenAplicado = true;
       const usuario = await getCurrentUser();
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       set({ usuario, cargando: false, estado: 'authenticated', error: null });
+      return true;
     } catch (error) {
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       const sesionInvalida = esSesionInvalida(error);
-      if (sesionInvalida) setAccessToken(null, generation);
+      const limpiarSesion = tokenAplicado || sesionInvalida;
+      if (limpiarSesion) setAccessToken(null, generation);
       set({
-        usuario: sesionInvalida ? null : get().usuario,
+        usuario: limpiarSesion ? null : get().usuario,
         error: mensajeSeguro(error, 'Error al ingresar'),
         cargando: false,
         estado: sesionInvalida ? 'anonymous' : 'error',
@@ -81,6 +85,7 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   async registrar(datos) {
     const epoch = ++epochOperacion;
     const generation = beginNewSession();
+    let tokenAplicado = false;
     set({ cargando: true, error: null, estado: 'checking' });
     try {
       const datosNormalizados = {
@@ -89,17 +94,20 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
         name: datos.name.trim(),
       };
       const respuesta = await registerWeb(datosNormalizados);
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       setAccessToken(respuesta.accessToken, generation);
+      tokenAplicado = true;
       const usuario = await getCurrentUser();
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       set({ usuario, cargando: false, estado: 'authenticated', error: null });
+      return true;
     } catch (error) {
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return false;
       const sesionInvalida = esSesionInvalida(error);
-      if (sesionInvalida) setAccessToken(null, generation);
+      const limpiarSesion = tokenAplicado || sesionInvalida;
+      if (limpiarSesion) setAccessToken(null, generation);
       set({
-        usuario: sesionInvalida ? null : get().usuario,
+        usuario: limpiarSesion ? null : get().usuario,
         error: mensajeSeguro(error, 'No se pudo crear la cuenta'),
         cargando: false,
         estado: sesionInvalida ? 'anonymous' : 'error',
@@ -111,7 +119,7 @@ export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
     ++epochOperacion;
     setAccessToken(null, invalidateSession());
     set({ usuario: null, estado: 'anonymous', cargando: false, error: null });
-    await logoutWeb().catch(() => undefined);
+    await logoutWeb();
   },
   async recargarUsuario() {
     await get().inicializar();

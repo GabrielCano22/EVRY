@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PaginaRegistro from '@/app/(auth)/register/page';
 import PaginaCiclo from '@/app/(app)/cycle/page';
@@ -104,6 +104,37 @@ it('links API field errors to inputs and blocks a duplicate pending registration
   expect(screen.getByRole('textbox', { name: /Correo electrónico/ }).closest('label')).toContainElement(emailError);
   expect(screen.getByLabelText(/Contraseña/).closest('label')).toContainElement(passwordError);
   expect(push).not.toHaveBeenCalled();
+});
+
+it('does not navigate when logout supersedes a pending registration', async () => {
+  const pending = deferred<Response>();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+    if (path.endsWith('/auth/register')) return pending.promise;
+    if (path.endsWith('/auth/logout')) return Response.json({ ok: true });
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<PaginaRegistro />);
+  fireEvent.click(screen.getByRole('button', { name: 'Prefiero no decir' }));
+  fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Eva' } });
+  fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'eva@example.test' } });
+  fireEvent.change(screen.getByLabelText('Contraseña (mín. 8 caracteres)'), { target: { value: 'testing-password' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Crear cuenta' }).closest('form')!);
+  await waitFor(() => {
+    const registerCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/auth/register'));
+    expect(registerCalls).toHaveLength(1);
+  });
+
+  await useAutenticacion.getState().cerrarSesion();
+  await act(async () => {
+    pending.resolve(Response.json({ accessToken: 'stale' }));
+    await pending.promise;
+    await Promise.resolve();
+  });
+
+  expect(push).not.toHaveBeenCalled();
+  expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
 });
 
 it('offers the optional consent to Otro and submits untouched consent as false', async () => {

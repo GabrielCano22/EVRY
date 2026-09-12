@@ -92,6 +92,36 @@ describe('useAutenticacion operation epochs', () => {
     expect(apiMock.logoutWeb).toHaveBeenCalledOnce();
     expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
   });
+
+  it('returns false to a login caller when logout supersedes the operation', async () => {
+    const late = deferred<{ accessToken: string }>();
+    apiMock.loginWeb.mockReturnValueOnce(late.promise);
+    apiMock.logoutWeb.mockResolvedValueOnce({ ok: true });
+
+    const login = useAutenticacion.getState().ingresar('eva@evry.test', 'secret');
+    await useAutenticacion.getState().cerrarSesion();
+    late.resolve({ accessToken: 'stale' });
+
+    await expect(login).resolves.toBe(false);
+    expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
+  });
+
+  it('returns false to a registration caller when logout supersedes the operation', async () => {
+    const late = deferred<{ accessToken: string }>();
+    apiMock.registerWeb.mockReturnValueOnce(late.promise);
+    apiMock.logoutWeb.mockResolvedValueOnce({ ok: true });
+
+    const registration = useAutenticacion.getState().registrar({
+      email: 'eva@evry.test',
+      password: 'testing-password',
+      name: 'Eva',
+    });
+    await useAutenticacion.getState().cerrarSesion();
+    late.resolve({ accessToken: 'stale' });
+
+    await expect(registration).resolves.toBe(false);
+    expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
+  });
 });
 
 it('registers with normalized generated input and loads the current user', async () => {
@@ -115,6 +145,70 @@ it('registers with normalized generated input and loads the current user', async
   });
   expect(apiMock.getCurrentUser).toHaveBeenCalledOnce();
   expect(useAutenticacion.getState()).toMatchObject({ usuario: user, estado: 'authenticated' });
+});
+
+it('clears the new login token and previous user when hydration fails', async () => {
+  const failure = new ApiError({
+    status: 503,
+    code: 'service_unavailable',
+    message: 'Servicio no disponible.',
+    retryable: true,
+  });
+  useAutenticacion.setState({ usuario: user, estado: 'authenticated' });
+  apiMock.loginWeb.mockResolvedValueOnce({ accessToken: 'next-login-token' });
+  apiMock.getCurrentUser.mockRejectedValueOnce(failure);
+
+  await expect(useAutenticacion.getState().ingresar('eva@evry.test', 'secret')).rejects.toBe(failure);
+
+  const generation = apiMock.setAccessToken.mock.calls[0]?.[1];
+  expect(apiMock.setAccessToken.mock.calls).toEqual([
+    ['next-login-token', generation],
+    [null, generation],
+  ]);
+  expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'error' });
+});
+
+it('clears the new registration token and previous user when hydration fails', async () => {
+  const failure = new ApiError({
+    status: 503,
+    code: 'service_unavailable',
+    message: 'Servicio no disponible.',
+    retryable: true,
+  });
+  useAutenticacion.setState({ usuario: user, estado: 'authenticated' });
+  apiMock.registerWeb.mockResolvedValueOnce({ accessToken: 'next-registration-token' });
+  apiMock.getCurrentUser.mockRejectedValueOnce(failure);
+
+  await expect(useAutenticacion.getState().registrar({
+    email: 'eva@evry.test',
+    password: 'testing-password',
+    name: 'Eva',
+  })).rejects.toBe(failure);
+
+  const generation = apiMock.setAccessToken.mock.calls[0]?.[1];
+  expect(apiMock.setAccessToken.mock.calls).toEqual([
+    ['next-registration-token', generation],
+    [null, generation],
+  ]);
+  expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'error' });
+});
+
+it('clears local session before propagating a remote logout failure', async () => {
+  const failure = new ApiError({
+    status: 503,
+    code: 'service_unavailable',
+    message: 'Servicio no disponible.',
+    retryable: true,
+  });
+  useAutenticacion.setState({ usuario: user, estado: 'authenticated' });
+  apiMock.logoutWeb.mockImplementationOnce(async () => {
+    expect(apiMock.setAccessToken).toHaveBeenCalledWith(null, expect.any(Number));
+    expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
+    throw failure;
+  });
+
+  await expect(useAutenticacion.getState().cerrarSesion()).rejects.toBe(failure);
+  expect(useAutenticacion.getState()).toMatchObject({ usuario: null, estado: 'anonymous' });
 });
 
 it('applies an updated matching user without losing createdAt', () => {
