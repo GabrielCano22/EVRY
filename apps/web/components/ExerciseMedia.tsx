@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Ejercicio } from '@/lib/types';
+import type { components } from '@evry/api-client';
 import {
   exerciseGifUrl,
   exerciseImageUrl,
@@ -15,7 +15,7 @@ export function ExerciseMedia({
   variant = 'thumbnail',
   className = '',
 }: {
-  exercise: ExerciseMediaSource & Pick<Ejercicio, 'id' | 'name'>;
+  exercise: ExerciseMediaSource & Pick<components['schemas']['ExerciseEntity'], 'id' | 'name'>;
   variant?: 'thumbnail' | 'detail';
   className?: string;
 }) {
@@ -43,7 +43,10 @@ export function ExerciseMedia({
           loading={variant === 'detail' ? 'eager' : 'lazy'}
           decoding="async"
           className="h-full w-full object-cover"
-          onError={() => (gifUrl && !gifFailed ? setGifFailed(true) : setImageFailed(true))}
+          onError={() => {
+            if (variant === 'detail' && gifUrl && !gifFailed) setGifFailed(true);
+            else setImageFailed(true);
+          }}
         />
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-on-surface-variant">

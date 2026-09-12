@@ -17,6 +17,7 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 - El estado diario comparte una sola consulta entre formulario y métrica. Guardar actualiza ambas vistas; un fallo conserva valores y permite reintentar. La fecha civil de readiness tiene prioridad sobre el timestamp, con compatibilidad para registros antiguos sin fecha civil.
 - El calendario web consulta actividad agregada y registros de ciclo por el mes visible. Ya no descarga sesiones completas ni reconstruye fechas o volumen en el navegador; conserva nombre, series, volumen y fase almacenada, limita actividad hasta hoy y solo solicita proyecciones de ciclo con consentimiento explícito.
 - El móvil ya permite crear, editar y eliminar rutinas con el contrato generado, conservar rutinas cacheadas para iniciar una sesión sin conexión, previsualizar ejercicios sin descargar GIF antes de reproducirlos y editar todos los campos de perfil soportados por la API.
+- Catálogo, rutinas, lista de entrenamientos, creación rápida, sesión activa e historial web consumen tipos y operaciones derivados de OpenAPI mediante TanStack Query. Sus consultas se cancelan, aíslan por cuenta y conservan datos canónicos ante fallos; las mutaciones muestran errores estructurados, evitan navegación prematura y refrescan únicamente las cachés correspondientes.
 
 ## Evidencia observada
 
@@ -26,6 +27,13 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 - El frontend de registro, ciclo y progreso móvil se publicó mediante el PR `#6`, con merge `5033e38f4ae7e6f32a464d7df5486673db17d211`; la CI `34312961468` terminó correctamente en calidad, contrato y E2E.
 - El bloque posterior de rutinas y perfil móvil siguió TDD y dos niveles de revisión. La verificación final pasó 23 suites / 172 pruebas móviles, lint y tipos. Rutinas cubre CRUD, confirmación, límites compatibles con backend, caché obsoleta, borrado idempotente en UI, previsualización y GIF bajo demanda. Perfil cubre los siete campos generados, fechas civiles, objetivos, ciclo opcional, errores por campo y respuesta canónica.
 - Sigue pendiente la comprobación física en Android/iPhone y la distribución privada APK. Ninguno de estos cambios autoriza o realiza un despliegue.
+
+### Cliente generado de entrenamiento web, 11 de septiembre
+
+- El contrato backend hizo explícitamente anulables las notas de rutina y ejercicio en `6038b7f`; el frontend fijó esa revisión y eliminó los contratos manuales de ejercicios, rutinas, sesiones, series y recomendaciones. La puerta backend completa pasó Prisma, OpenAPI, lint, tipos, build, 53 suites / 337 pruebas unitarias, las ocho migraciones existentes, 8 suites / 78 pruebas PostgreSQL y auditoría sin vulnerabilidades.
+- Las regresiones focales de catálogo/rutinas/medios pasaron 15/15. Las de lista, creación, detalle y medios de entrenamiento pasaron 4 archivos / 19 pruebas e incluyen bloqueo de envíos duplicados, caché tras iniciar, estados terminales, errores de actualización, reintentos e idempotencia de series. El transporte suma 34 pruebas para cancelación, refresh, multipart y un único presupuesto de timeout.
+- La puerta completa local pasó contrato 33/33, comparación exacta contra backend, lint y tipos de todos los workspaces, móvil 23 archivos / 172 pruebas, web 27 archivos / 152 pruebas, accesibilidad 1/1, build web, Expo Doctor 21/21 y exportaciones Android/iOS. La auditoría con umbral alto terminó sin vulnerabilidades altas; conserva 15 avisos conocidos (1 bajo y 14 moderados) que no se corrigieron de forma forzada.
+- Estas pruebas usan componentes, caché y transporte autenticado reales con HTTP simulado. Todavía no demuestran el flujo completo de entrenamiento en Playwright contra PostgreSQL, uso en dispositivo físico ni los presupuestos de rendimiento. No se realizó ningún despliegue.
 
 ### Backend, 4 de septiembre
 
@@ -98,7 +106,7 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
-- Revisar todos los consumidores web restantes; que TypeScript compile no demuestra que todas las pantallas y el calendario usen el cliente generado.
+- Catálogo, rutinas y entrenamientos web ya usan el cliente generado. Aún deben retirarse los contratos manuales restantes de autenticación, ciclo y algunos adaptadores de progreso donde el alcance lo permita; que TypeScript compile no demuestra esos flujos completos.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
 - Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
 
@@ -114,8 +122,8 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 
 ### Web, rendimiento y operación
 
-- Completar la migración de todas las pantallas a cliente generado y TanStack Query.
-- Completar la adopción del cliente generado: Inicio ya usa el resumen canónico acotado y readiness usa TanStack Query, pero el transporte sigue siendo el adaptador autenticado web existente, no la fábrica generada completa; ciclo y workouts conservan tipos manuales.
+- Completar la migración de autenticación, ciclo y los consumidores restantes de progreso al cliente generado y TanStack Query. Los flujos web de catálogo, rutinas y entrenamientos ya están migrados.
+- El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros; falta reducir los tipos manuales de ciclo y autenticación sin duplicar esa infraestructura.
 - Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.
@@ -124,7 +132,7 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 
 No se reinició, migró ni restauró una base real, ni se desplegaron recursos externos. La integración usa solo PostgreSQL sintético con una URL de prueba explícita, diferente de la URL runtime bloqueada. Este estado todavía no acepta el plan completo.
 
-El clúster PostgreSQL temporal se detuvo limpiamente al finalizar las pruebas del 4 de septiembre; se conservaron sus datos y binarios. La guía reproducible está en `EVRY-Backend/docs/operations/integration-tests.md`.
+Los clústeres PostgreSQL de integración son sintéticos y están detenidos fuera de las pruebas. El clúster limpio de PostgreSQL 17.11 se conserva para ejecuciones reproducibles; el clúster temporal antiguo que perdió `global/6100` no debe reutilizarse. La guía está en `EVRY-Backend/docs/operations/integration-tests.md`.
 
 ## Auditoría de dependencias
 

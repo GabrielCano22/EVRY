@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAutenticacion } from '@/lib/auth-store';
+import { trainingKeys, type Routine } from '@/lib/training-api';
 import EditarRutina from './page';
 
 const account = {
@@ -12,9 +13,20 @@ const account = {
 const routine = { id: 'r2', name: 'Rutina nueva', exercises: [] };
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/EditorRutina', () => ({
-  EditorRutina: ({ titulo }: { titulo: string }) => <div>{titulo}</div>,
-}));
+vi.mock('@/components/EditorRutina', async () => {
+  const { useState } = await import('react');
+  return {
+    EditorRutina: ({ titulo, rutinaExistente }: { titulo: string; rutinaExistente: Routine }) => {
+      const [name, setName] = useState(rutinaExistente.name);
+      return (
+        <div>
+          <div>{titulo}</div>
+          <label>Nombre de rutina<input aria-label="Nombre de rutina" value={name} onChange={(event) => setName(event.target.value)} /></label>
+        </div>
+      );
+    },
+  };
+});
 
 function resolvedParams(id: string): Promise<{ id: string }> {
   const params = Promise.resolve({ id }) as Promise<{ id: string }> & {
@@ -25,10 +37,11 @@ function resolvedParams(id: string): Promise<{ id: string }> {
   return params;
 }
 
-function show(id: string) {
+function show(id: string, seed?: typeof routine) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
   });
+  if (seed) client.setQueryData(trainingKeys.routineDetail(account.id, id), seed);
   const view = render(
     <QueryClientProvider client={client}>
       <EditarRutina params={resolvedParams(id)} />
@@ -88,5 +101,38 @@ describe('EditarRutina generated query states', () => {
 
     expect(await screen.findByText('Editar: Rutina nueva')).toBeInTheDocument();
     expect(requests[0].signal.aborted).toBe(true);
+  });
+
+  it('keeps cached editor data mounted when a background refetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      Response.json({ code: 'SERVER_ERROR', message: 'Temporal' }, { status: 503 }),
+    ));
+    show('r2', routine);
+
+    expect(screen.getByText('Editar: Rutina nueva')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos actualizar la rutina');
+    expect(screen.getByText('Editar: Rutina nueva')).toBeInTheDocument();
+  });
+
+  it('remounts editor state when navigation changes to another cached routine', async () => {
+    const first = { ...routine, id: 'old', name: 'Rutina anterior' };
+    const second = { ...routine, id: 'new', name: 'Rutina siguiente' };
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input);
+      const id = new URL(request.url).pathname.endsWith('/new') ? 'new' : 'old';
+      return Promise.resolve(Response.json(id === 'new' ? second : first));
+    }));
+    const view = show('old', first);
+    const name = screen.getByRole('textbox', { name: 'Nombre de rutina' });
+    fireEvent.change(name, { target: { value: 'Borrador local' } });
+
+    view.client.setQueryData(trainingKeys.routineDetail(account.id, 'new'), second);
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <EditarRutina params={resolvedParams('new')} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Nombre de rutina' })).toHaveValue('Rutina siguiente');
   });
 });

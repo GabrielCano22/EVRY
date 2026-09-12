@@ -1,11 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Ejercicio } from '@/lib/types';
+import type { components } from '@evry/api-client';
 import { cn } from '@/lib/utils';
 
 type EjercicioMapa = Pick<
-  Ejercicio,
+  components['schemas']['ExerciseEntity'],
   'target' | 'bodyPart' | 'category' | 'secondaryMuscles' | 'muscleGroup'
 >;
 

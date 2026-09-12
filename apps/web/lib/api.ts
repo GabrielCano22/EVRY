@@ -248,8 +248,10 @@ async function fetchWithControls(url: string, init: RequestInit, options: Reques
     controller.abort();
   };
   const externalSignal = options.signal;
-  const externallyAbortedBeforeFetch = externalSignal?.aborted ?? false;
-  if (!externallyAbortedBeforeFetch) externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+  if (externalSignal?.aborted) {
+    return { ok: false, error: abortedFailure(false) };
+  }
+  externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -265,7 +267,6 @@ async function fetchWithControls(url: string, init: RequestInit, options: Reques
 
   try {
     const pending = fetch(url, { ...init, signal: controller.signal });
-    if (externallyAbortedBeforeFetch) onExternalAbort();
     const response = await pending;
     const controlledResponse = responseWithControlledBody(
       response,
@@ -319,12 +320,14 @@ async function waitForRefresh(
   shared: Promise<ApiResult<string>>,
   options: RequestOptions,
 ): Promise<ApiResult<string>> {
+  if (options.signal?.aborted) return { ok: false, error: abortedFailure(false) };
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (timeoutMs <= 0) return { ok: false, error: abortedFailure(true) };
   const controller = new AbortController();
   let timedOut = false;
   const onAbort = () => controller.abort();
-  if (options.signal?.aborted) onAbort();
-  else options.signal?.addEventListener('abort', onAbort, { once: true });
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   try {
     return await Promise.race([
       shared,
@@ -375,6 +378,7 @@ export async function fetchWithSession(input: Request, options: SessionFetchOpti
   const auth = options.auth ?? !isPublicAuthRequest(input.url);
   const allowRefresh = options.allowRefresh ?? true;
   const headers = new Headers(input.headers);
+  if (options.preparedInit?.body instanceof FormData) headers.delete('content-type');
   if (auth && !headers.has('Authorization')) {
     const token = getAccessToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -390,19 +394,21 @@ export async function fetchWithSession(input: Request, options: SessionFetchOpti
     throw new ApiError({ status: 0, code: 'invalid_request', message: 'No se pudo preparar la solicitud.', retryable: false });
   }
 
-  const controls: RequestOptions = {
+  const totalTimeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + Math.max(0, totalTimeoutMs);
+  const controls = (): RequestOptions => ({
     auth,
-    timeoutMs: options.timeoutMs,
+    timeoutMs: Math.max(0, deadline - Date.now()),
     signal: options.signal ?? input.signal,
-  };
-  const execute = () => fetchWithControls(input.url, init, controls);
+  });
+  const execute = () => fetchWithControls(input.url, init, controls());
 
   let fetched = await execute();
   if (!fetched.ok) throw new ApiError(fetched.error);
   if (fetched.data.status !== 401 || !auth || !allowRefresh) return fetched.data;
   await fetched.data.body?.cancel();
 
-  const refreshed = await waitForRefresh(tryRefresh(generation), controls);
+  const refreshed = await waitForRefresh(tryRefresh(generation), controls());
   if (!refreshed.ok) {
     if ((refreshed.error.status === 401 || refreshed.error.status === 403) && isCurrentSessionGeneration(generation)) {
       setAccessToken(null, generation);

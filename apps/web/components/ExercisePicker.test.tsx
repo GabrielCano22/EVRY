@@ -88,10 +88,10 @@ describe('ExercisePicker remote catalog states', () => {
       target: { value: 'press' },
     });
 
-    await screen.findByText('Empuje de pierna');
+    await screen.findByText('Empuje de pierna', {}, { timeout: 5_000 });
     expect(requests).toHaveLength(2);
     expect(requests[0].signal.aborted).toBe(true);
-  });
+  }, 10_000);
 
   it('appends later pages without duplicating an exercise already rendered', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

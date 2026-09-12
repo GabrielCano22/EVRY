@@ -16,15 +16,24 @@ export default function EditarRutina({ params }: { params: Promise<{ id: string 
     queryFn: ({ signal }) => getRoutine(id, signal),
   });
 
-  if (rutina.isError) return <p role="alert" className="text-error">No pudimos cargar la rutina. <button type="button" onClick={() => void rutina.refetch()} className="underline">Reintentar</button></p>;
+  if (rutina.isError && !rutina.data) return <p role="alert" className="text-error">No pudimos cargar la rutina. <button type="button" onClick={() => void rutina.refetch()} className="underline">Reintentar</button></p>;
   if (rutina.isPending || !rutina.data) return <p role="status" className="text-on-surface-variant">Cargando…</p>;
 
   return (
-    <EditorRutina
-      titulo={`Editar: ${rutina.data.name}`}
-      rutinaExistente={rutina.data}
-      onListo={() => router.push('/workout')}
-      onCancelar={() => router.back()}
-    />
+    <>
+      {rutina.isError && (
+        <p role="alert" className="mb-md text-sm text-error">
+          No pudimos actualizar la rutina; conservamos tus datos actuales.{' '}
+          <button type="button" onClick={() => void rutina.refetch()} className="underline">Reintentar actualización</button>
+        </p>
+      )}
+      <EditorRutina
+        key={rutina.data.id}
+        titulo={`Editar: ${rutina.data.name}`}
+        rutinaExistente={rutina.data}
+        onListo={() => router.push('/workout')}
+        onCancelar={() => router.back()}
+      />
+    </>
   );
 }

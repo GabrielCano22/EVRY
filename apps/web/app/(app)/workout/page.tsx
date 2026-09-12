@@ -1,9 +1,20 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, request } from '@/lib/api';
-import type { Entrenamiento, Rutina } from '@/lib/types';
+import { ApiError } from '@/lib/api';
+import { useAutenticacion } from '@/lib/auth-store';
+import {
+  createWorkout,
+  deleteRoutine,
+  listRoutines,
+  listWorkouts,
+  startRoutine,
+  trainingKeys,
+  type Routine,
+  type Workout,
+} from '@/lib/training-api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Icon } from '@/components/ui/Icon';
@@ -16,68 +27,81 @@ type Pestana = 'rutinas' | 'rapida' | 'historial';
 
 export default function ListaEntrenamientos() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const accountId = useAutenticacion((state) => state.usuario?.id);
   const [pestana, setPestana] = useState<Pestana>('rutinas');
-  const [entrenamientos, setEntrenamientos] = useState<Entrenamiento[]>([]);
-  const [rutinas, setRutinas] = useState<Rutina[]>([]);
   const [nombre, setNombre] = useState('Sesión rápida');
-  const [creando, setCreando] = useState(false);
-  const [iniciandoRutinaId, setIniciandoRutinaId] = useState<string | null>(null);
-  const [errorInicio, setErrorInicio] = useState<string | null>(null);
-
-  async function cargar() {
-    const [ent, rut] = await Promise.all([
-      request<Entrenamiento[]>('/workouts'),
-      request<Rutina[]>('/routines'),
-    ]);
-    if (ent.ok) setEntrenamientos(ent.data);
-    if (rut.ok) setRutinas(rut.data);
-    const error = !ent.ok ? ent.error : !rut.ok ? rut.error : null;
-    if (error && error.code !== 'aborted') setErrorInicio(error.message);
-  }
-
-  useEffect(() => {
-    cargar();
-  }, []);
-
-  async function iniciarRapida() {
-    setErrorInicio(null);
-    setCreando(true);
-    try {
-      const nuevo = await api<Entrenamiento>('/workouts', {
-        method: 'POST',
-        json: { name: nombre },
+  const entrenamientos = useQuery({
+    queryKey: trainingKeys.workoutList(accountId ?? 'sin-cuenta'),
+    enabled: Boolean(accountId),
+    queryFn: ({ signal }) => listWorkouts({}, signal),
+  });
+  const rutinasRemotas = useQuery({
+    queryKey: trainingKeys.routineList(accountId ?? 'sin-cuenta'),
+    enabled: Boolean(accountId),
+    queryFn: ({ signal }) => listRoutines(signal),
+  });
+  function conservarSesionIniciada(workout: Workout) {
+    if (accountId) {
+      queryClient.setQueryData<Workout[]>(trainingKeys.workoutList(accountId), (current = []) => [
+        workout,
+        ...current.filter((item) => item.id !== workout.id),
+      ]);
+      void queryClient.invalidateQueries({
+        queryKey: trainingKeys.workouts(accountId),
+        refetchType: 'none',
       });
-      router.push(`/workout/${nuevo.id}`);
-    } catch (error: unknown) {
-      setErrorInicio(error instanceof Error ? error.message : 'No se pudo iniciar la sesión. Comprueba que el backend esté activo.');
-    } finally {
-      setCreando(false);
     }
+    router.push(`/workout/${workout.id}`);
+  }
+  const inicioRapido = useMutation({
+    mutationFn: () => createWorkout({ name: nombre.trim() || 'Sesión rápida' }),
+    onSuccess: conservarSesionIniciada,
+  });
+  const inicioRutina = useMutation({
+    mutationFn: (rutina: Routine) => startRoutine(rutina.id),
+    onSuccess: conservarSesionIniciada,
+  });
+  const borradoRutina = useMutation({
+    mutationFn: (rutina: Routine) => deleteRoutine(rutina.id),
+    onSuccess: async () => {
+      if (accountId) {
+        await queryClient.invalidateQueries({ queryKey: trainingKeys.routines(accountId) });
+      }
+    },
+  });
+
+  function iniciarRapida() {
+    inicioRutina.reset();
+    borradoRutina.reset();
+    if (!inicioRapido.isPending) inicioRapido.mutate();
   }
 
-  async function iniciarRutina(rutina: Rutina) {
-    if (iniciandoRutinaId) return;
-    setErrorInicio(null);
-    setIniciandoRutinaId(rutina.id);
-    try {
-      const nuevo = await api<Entrenamiento>(`/routines/${rutina.id}/start`, { method: 'POST' });
-      router.push(`/workout/${nuevo.id}`);
-    } catch (error: unknown) {
-      setErrorInicio(error instanceof Error ? error.message : 'No se pudo iniciar la rutina. Comprueba tu conexión e inténtalo de nuevo.');
-    } finally {
-      setIniciandoRutinaId(null);
-    }
+  function iniciarRutina(rutina: Routine) {
+    inicioRapido.reset();
+    borradoRutina.reset();
+    if (!inicioRutina.isPending) inicioRutina.mutate(rutina);
   }
 
-  async function eliminarRutina(rutina: Rutina) {
+  function eliminarRutina(rutina: Routine) {
     if (!confirm(`¿Eliminar rutina "${rutina.name}"?`)) return;
-    await api(`/routines/${rutina.id}`, { method: 'DELETE' });
-    cargar();
+    inicioRapido.reset();
+    inicioRutina.reset();
+    if (!borradoRutina.isPending) borradoRutina.mutate(rutina);
   }
 
-  const activo = entrenamientos.find((e) => !e.endedAt);
-  const finalizados = entrenamientos.filter((e) => e.endedAt);
-  const rutinasPorDia: (Rutina | null)[] = Array.from({ length: 7 }, (_, i) => {
+  const listaEntrenamientos = entrenamientos.data ?? [];
+  const rutinas = rutinasRemotas.data ?? [];
+  const activo = listaEntrenamientos.find((workout) => workout.status === 'ACTIVE');
+  const finalizados = listaEntrenamientos.filter((workout) => workout.status === 'COMPLETED');
+  const iniciandoRutinaId = inicioRutina.isPending ? inicioRutina.variables.id : null;
+  const errorMutacion = inicioRapido.error ?? inicioRutina.error ?? borradoRutina.error;
+  const errorInicio = errorMutacion
+    ? errorMutacion instanceof ApiError
+      ? errorMutacion.message
+      : 'No se pudo completar la acción. Inténtalo de nuevo.'
+    : null;
+  const rutinasPorDia: (Routine | null)[] = Array.from({ length: 7 }, (_, i) => {
     return rutinas.find((r) => r.dayOfWeek === i) ?? null;
   });
   const rutinasSinDia = rutinas.filter((r) => r.dayOfWeek === null);
@@ -96,7 +120,13 @@ export default function ListaEntrenamientos() {
           Inicia, continúa o gestiona tus rutinas.
         </p>
       </header>
-      {errorInicio && <button type="button" onClick={() => void cargar()} className="text-sm text-primary underline">Reintentar carga</button>}
+      {entrenamientos.isError && (
+        <p role="alert" className="text-sm text-error">
+          No pudimos cargar los entrenamientos.{' '}
+          <button type="button" onClick={() => void entrenamientos.refetch()} className="underline">Reintentar entrenamientos</button>
+        </p>
+      )}
+      {entrenamientos.isPending && <p role="status" className="text-sm text-on-surface-variant">Cargando entrenamientos…</p>}
 
       {activo && (
         <div className="bg-surface-container rounded-xl p-md border border-primary/30 relative overflow-hidden">
@@ -147,6 +177,13 @@ export default function ListaEntrenamientos() {
       {/* Mis rutinas */}
       {pestana === 'rutinas' && (
         <div className="space-y-md">
+          {rutinasRemotas.isError && (
+            <p role="alert" className="text-sm text-error">
+              No pudimos cargar las rutinas.{' '}
+              <button type="button" onClick={() => void rutinasRemotas.refetch()} className="underline">Reintentar rutinas</button>
+            </p>
+          )}
+          {rutinasRemotas.isPending && <p role="status" className="text-sm text-on-surface-variant">Cargando rutinas…</p>}
           <div className="flex items-center justify-between">
             <h2 className="font-headline-md text-headline-md text-on-surface">Por día de la semana</h2>
             <Link href="/workout/routines/new">
@@ -157,7 +194,7 @@ export default function ListaEntrenamientos() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+          {rutinasRemotas.data && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
             {rutinasPorDia.map((rutina, dia) => (
               <TarjetaDia
                 key={dia}
@@ -168,7 +205,7 @@ export default function ListaEntrenamientos() {
                 iniciando={rutina ? iniciandoRutinaId === rutina.id : false}
               />
             ))}
-          </div>
+          </div>}
 
           {rutinasSinDia.length > 0 && (
             <div className="space-y-sm">
@@ -205,7 +242,7 @@ export default function ListaEntrenamientos() {
               placeholder="Nombre de la sesión"
               icon="edit"
             />
-            <Button onClick={iniciarRapida} loading={creando} size="lg" className="md:w-48">
+            <Button onClick={iniciarRapida} loading={inicioRapido.isPending} size="lg" className="md:w-48">
               <Icon name="play_arrow" />
               Iniciar
             </Button>
@@ -216,7 +253,11 @@ export default function ListaEntrenamientos() {
       {/* Historial */}
       {pestana === 'historial' && (
         <div className="space-y-md">
-          {finalizados.length === 0 ? (
+          {entrenamientos.isError && !entrenamientos.data ? (
+            <div className="rounded-xl border border-error/20 bg-error/5 p-lg text-center text-sm text-error">
+              El historial no está disponible hasta recuperar la conexión.
+            </div>
+          ) : finalizados.length === 0 ? (
             <div className="bg-surface-container-low rounded-xl border border-white/5 p-lg text-center">
               <Icon name="history" size={32} className="text-on-surface-variant mb-sm" />
               <p className="font-body-md text-on-surface-variant">Sin historial aún.</p>
@@ -270,9 +311,9 @@ function TarjetaDia({
   iniciando,
 }: {
   dia: string;
-  rutina: Rutina | null;
-  onIniciar: (r: Rutina) => void;
-  onEliminar: (r: Rutina) => void;
+  rutina: Routine | null;
+  onIniciar: (r: Routine) => void;
+  onEliminar: (r: Routine) => void;
   iniciando: boolean;
 }) {
   if (!rutina) {
@@ -299,10 +340,10 @@ function TarjetaRutina({
   onEliminar,
   iniciando,
 }: {
-  rutina: Rutina;
+  rutina: Routine;
   dia?: string;
-  onIniciar: (r: Rutina) => void;
-  onEliminar: (r: Rutina) => void;
+  onIniciar: (r: Routine) => void;
+  onEliminar: (r: Routine) => void;
   iniciando: boolean;
 }) {
   return (
@@ -322,12 +363,13 @@ function TarjetaRutina({
         </div>
         <div className="flex gap-xs">
           <Link href={`/workout/routines/${rutina.id}`}>
-            <button className="w-8 h-8 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface-variant flex items-center justify-center">
+            <button aria-label={`Editar rutina ${rutina.name}`} className="w-8 h-8 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface-variant flex items-center justify-center">
               <Icon name="edit" size={16} />
             </button>
           </Link>
           <button
             onClick={() => onEliminar(rutina)}
+            aria-label={`Eliminar rutina ${rutina.name}`}
             className="w-8 h-8 rounded-lg bg-error/10 hover:bg-error/20 text-error flex items-center justify-center"
           >
             <Icon name="delete" size={16} />

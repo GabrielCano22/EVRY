@@ -1,10 +1,20 @@
-import type { Ejercicio } from './types';
+import type { components } from '@evry/api-client';
 import { resolveApiOrigin } from './api-origin';
 
-export type ExerciseMediaSource = Pick<
-  Ejercicio,
-  'imageUrl' | 'imagePath' | 'gifUrl' | 'gifPath'
->;
+type ExerciseEntity = components['schemas']['ExerciseEntity'];
+type ExerciseListItem = components['schemas']['ExerciseListItemDto'];
+
+export type ExerciseMediaSource = Pick<ExerciseEntity, 'imagePath' | 'gifPath'>
+  & Partial<Pick<ExerciseListItem, 'imageUrl' | 'gifUrl'>>;
+
+export type ExerciseInstructionSource = {
+  instructions?: unknown;
+  instructionSteps?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
 export function getExerciseMediaUrl(url: string | null | undefined) {
   if (!url) return null;
@@ -12,11 +22,15 @@ export function getExerciseMediaUrl(url: string | null | undefined) {
   return `${resolveApiOrigin()}/${url.trim().replace(/^\/+/, '')}`;
 }
 
-export function getExerciseInstruction(exercise: Ejercicio, locale = 'es') {
-  const steps = exercise.instructionSteps?.[locale] ?? exercise.instructionSteps?.en;
-  if (steps?.length) return steps;
-  const text = exercise.instructions?.[locale] ?? exercise.instructions?.en;
-  return text ? [text] : [];
+export function getExerciseInstruction(exercise: ExerciseInstructionSource, locale = 'es') {
+  const localized = (value: unknown) => {
+    if (!isRecord(value)) return undefined;
+    return locale in value ? value[locale] : 'en' in value ? value.en : undefined;
+  };
+  const steps = localized(exercise.instructionSteps);
+  if (Array.isArray(steps)) return steps.filter((step): step is string => typeof step === 'string');
+  const text = localized(exercise.instructions);
+  return typeof text === 'string' && text ? [text] : [];
 }
 
 export function exerciseImageUrl(exercise: ExerciseMediaSource) {

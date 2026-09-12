@@ -41,9 +41,6 @@ export type Equipo =
   | 'OTHER';
 export type Equipment = Equipo;
 
-export type TextoLocalizado = Record<string, string>;
-export type PasosLocalizados = Record<string, string[]>;
-
 export type FaseCiclo = 'MENSTRUAL' | 'FOLLICULAR' | 'OVULATION' | 'LUTEAL';
 export type CyclePhase = FaseCiclo;
 
@@ -67,70 +64,6 @@ export type User = Usuario;
 export type EstadoAutenticacionRemota = 'checking' | 'authenticated' | 'anonymous' | 'error';
 export type AuthStatus = EstadoAutenticacionRemota;
 
-export interface Ejercicio {
-  id: string;
-  sourceId?: string | null;
-  name: string;
-  muscleGroup: GrupoMuscular;
-  equipment: Equipo;
-  category?: string | null;
-  bodyPart?: string | null;
-  target?: string | null;
-  secondaryMuscles?: string[];
-  equipmentLabel?: string | null;
-  isCustom: boolean;
-  ownerId: string | null;
-  isCompound: boolean;
-  tags: string[];
-  description: string | null;
-  instructions?: TextoLocalizado | null;
-  instructionSteps?: PasosLocalizados | null;
-  mediaId?: string | null;
-  imagePath?: string | null;
-  gifPath?: string | null;
-  attribution?: string | null;
-  imageUrl?: string | null;
-  gifUrl?: string | null;
-}
-export type Exercise = Ejercicio;
-
-export interface PaginaEjercicios {
-  items: Ejercicio[];
-  page: number;
-  limit: number;
-  total: number;
-  hasMore: boolean;
-}
-export type ExercisePage = PaginaEjercicios;
-
-export interface SerieEntrenamiento {
-  id: string;
-  workoutId: string;
-  exerciseId: string;
-  exercise?: Ejercicio;
-  order: number;
-  weightKg: number | null;
-  reps: number | null;
-  durationS: number | null;
-  rpe: number | null;
-  isWarmup: boolean;
-  completedAt: string;
-}
-export type WorkoutSet = SerieEntrenamiento;
-
-export interface Entrenamiento {
-  id: string;
-  userId: string;
-  name: string;
-  startedAt: string;
-  endedAt: string | null;
-  cyclePhase: FaseCiclo | null;
-  notes: string | null;
-  routine?: Rutina | null;
-  sets: SerieEntrenamiento[];
-}
-export type Workout = Entrenamiento;
-
 export interface RegistroCiclo {
   id: string;
   date: string;
@@ -153,47 +86,6 @@ export interface InfoFase {
   volumeCap: number;
 }
 export type PhaseInfo = InfoFase;
-
-export interface Recomendacion {
-  exerciseId: string;
-  targetWeightKg: number | null;
-  targetReps: number | null;
-  rationale: string[];
-  confidence: number;
-  action: 'PROGRESS' | 'HOLD' | 'DELOAD' | 'NEW';
-}
-export type Recommendation = Recomendacion;
-
-export interface EjercicioRutina {
-  id: string;
-  routineId: string;
-  exerciseId: string;
-  exercise?: Ejercicio;
-  order: number;
-  targetSets: number;
-  targetReps: number | null;
-  targetWeightKg: number | null;
-  seriesPlan?: SerieObjetivo[] | null;
-  notes: string | null;
-}
-
-/** Objetivo independiente para una serie de una rutina. */
-export interface SerieObjetivo {
-  reps: number | null;
-  weightKg: number | null;
-}
-
-export interface Rutina {
-  id: string;
-  userId: string;
-  name: string;
-  // 0=Lunes, 6=Domingo
-  dayOfWeek: number | null;
-  notes: string | null;
-  createdAt: string;
-  exercises: EjercicioRutina[];
-}
-export type Routine = Rutina;
 
 export interface ResumenProgreso {
   windowDays: number;

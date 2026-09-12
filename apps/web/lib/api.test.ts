@@ -217,6 +217,58 @@ describe('request', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('keeps the multipart boundary aligned with the serialized FormData body', async () => {
+    let received: Request | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      received = input instanceof Request ? input.clone() : new Request(input, init);
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }));
+    const body = new FormData();
+    body.set('name', 'Sentadilla');
+
+    await expect(request('/uploads', { method: 'POST', body, auth: false })).resolves.toEqual({
+      ok: true,
+      data: { ok: true },
+    });
+
+    const contentType = received?.headers.get('content-type') ?? '';
+    const boundary = /boundary=(.+)$/.exec(contentType)?.[1];
+    expect(boundary).toBeTruthy();
+    expect(await received?.text()).toContain(`--${boundary}`);
+  });
+
+  it('honors cancellation that occurs while releasing the first 401 response', async () => {
+    const caller = new AbortController();
+    let resolveRefresh!: (response: Response) => void;
+    const unauthorizedBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        caller.abort();
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+      }
+      return Promise.resolve(new Response(unauthorizedBody, { status: 401 }));
+    }));
+
+    const pending = request('/users/me', { signal: caller.signal, timeoutMs: 1_000 });
+    const outcome = await Promise.race([
+      pending,
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 50)),
+    ]);
+
+    try {
+      expect(outcome).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: 'aborted', retryable: false }),
+      });
+    } finally {
+      resolveRefresh(jsonResponse({}, 401));
+      await pending;
+    }
+  });
+
   it('does not let an aborted caller cancel another caller sharing refresh', async () => {
     let resolveRefresh!: (response: Response) => void;
     const first = new AbortController();
@@ -260,6 +312,47 @@ describe('request', () => {
 });
 
 describe('fetchWithSession', () => {
+  it('uses one timeout budget across the request, refresh wait, and retry', async () => {
+    vi.useFakeTimers();
+    let protectedCalls = 0;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        return new Promise<Response>((resolve) => {
+          setTimeout(() => resolve(jsonResponse({ accessToken: 'fresh-token' })), 6);
+        });
+      }
+      protectedCalls += 1;
+      if (protectedCalls === 1) {
+        return new Promise<Response>((resolve) => {
+          setTimeout(() => resolve(jsonResponse({}, 401)), 6);
+        });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true },
+        );
+      });
+    }));
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/workouts`), { timeoutMs: 10 })
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      await vi.advanceTimersByTimeAsync(6);
+      await vi.advanceTimersByTimeAsync(4);
+      await Promise.resolve();
+
+      expect(failure).toMatchObject({ name: 'ApiError', code: 'timeout', retryable: true });
+      expect(protectedCalls).toBe(1);
+    } finally {
+      await vi.advanceTimersByTimeAsync(100);
+      await pending;
+    }
+  });
+
   it('keeps its timeout active after headers arrive while the response body stalls', async () => {
     vi.useFakeTimers();
     let bodyController!: ReadableStreamDefaultController<Uint8Array>;
@@ -431,6 +524,22 @@ describe('fetchWithSession', () => {
 
     await expect(pending).rejects.toMatchObject({ code: 'aborted', retryable: false });
     expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it('does not call fetch when the external signal was already aborted', async () => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ shouldNot: 'run' }));
+    vi.stubGlobal('fetch', network);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(request('/cancelled-before-start', {
+      auth: false,
+      signal: controller.signal,
+    })).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'aborted', retryable: false }),
+    });
+    expect(network).not.toHaveBeenCalled();
   });
 
   it('normalizes caller cancellation while the legacy response body is being consumed', async () => {
