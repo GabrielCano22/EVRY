@@ -1,8 +1,21 @@
 'use client';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { use, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, request } from '@/lib/api';
-import type { Entrenamiento, Ejercicio, SerieEntrenamiento, Recomendacion, SerieObjetivo } from '@/lib/types';
+import { ApiError } from '@/lib/api';
+import { useAutenticacion } from '@/lib/auth-store';
+import {
+  addWorkoutSet,
+  finishWorkout,
+  getExercise,
+  getRecommendation,
+  getWorkout,
+  trainingKeys,
+  type AdaptiveRecommendation,
+  type ExerciseListItem,
+  type Workout,
+  type WorkoutSet,
+} from '@/lib/training-api';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Stepper } from '@/components/ui/Stepper';
@@ -13,11 +26,10 @@ import { formatearFechaHora } from '@/lib/utils';
 import { getExerciseInstruction } from '@/lib/exercise-media';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
-const ACCIONES_ESPANOL: Record<Recomendacion['action'], string> = {
+const ACCIONES_ESPANOL: Record<AdaptiveRecommendation['action'], string> = {
   PROGRESS: 'Progresar',
   HOLD: 'Mantener',
   DELOAD: 'Bajar carga',
-  NEW: 'Nuevo',
 };
 
 const FASES_ESPANOL: Record<string, string> = {
@@ -29,12 +41,29 @@ const FASES_ESPANOL: Record<string, string> = {
 
 interface EjercicioEnSesion {
   id: string;
-  exercise?: Ejercicio;
-  series: SerieEntrenamiento[];
+  exercise?: WorkoutSet['exercise'];
+  series: WorkoutSet[];
   targetSets?: number;
   targetReps?: number | null;
   targetWeightKg?: number | null;
-  seriesPlan?: SerieObjetivo[] | null;
+  seriesPlan?: ObjetivoSerie[] | null;
+}
+
+type ObjetivoSerie = { reps: number | null; weightKg: number | null };
+
+function planDeSerie(value: unknown): ObjetivoSerie[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    return [{
+      reps: 'reps' in item && typeof item.reps === 'number' ? item.reps : null,
+      weightKg: 'weightKg' in item && typeof item.weightKg === 'number' ? item.weightKg : null,
+    }];
+  });
+}
+
+function mensajeError(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback;
 }
 
 export default function DetalleEntrenamiento({
@@ -43,86 +72,100 @@ export default function DetalleEntrenamiento({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  return <ContenidoEntrenamiento key={id} id={id} />;
+}
+
+function ContenidoEntrenamiento({ id }: { id: string }) {
   const router = useRouter();
-  const [entrenamiento, setEntrenamiento] = useState<Entrenamiento | null>(null);
+  const queryClient = useQueryClient();
+  const accountId = useAutenticacion((state) => state.usuario?.id);
   const [seleccionando, setSeleccionando] = useState(false);
-  const [ejercicioActivo, setEjercicioActivo] = useState<Ejercicio | null>(null);
-  const [recomendacion, setRecomendacion] = useState<Recomendacion | null>(null);
+  const [ejercicioSeleccionadoId, setEjercicioSeleccionadoId] = useState<string | null>(null);
   const [peso, setPeso] = useState(20);
   const [reps, setReps] = useState(8);
   const [rpe, setRpe] = useState(7);
   const [resetTimer, setResetTimer] = useState(0);
-  const [guardandoSerie, setGuardandoSerie] = useState(false);
-  const [errorSerie, setErrorSerie] = useState<string | null>(null);
+  const [clientMutationId, setClientMutationId] = useState(() => crypto.randomUUID());
+  const workoutKey = trainingKeys.workoutDetail(accountId ?? 'sin-cuenta', id);
+  const entrenamientoRemoto = useQuery({
+    queryKey: workoutKey,
+    enabled: Boolean(accountId),
+    queryFn: ({ signal }) => getWorkout(id, signal),
+  });
+  const detalleEjercicio = useQuery({
+    queryKey: trainingKeys.exerciseDetail(accountId ?? 'sin-cuenta', ejercicioSeleccionadoId ?? 'sin-ejercicio'),
+    enabled: Boolean(accountId && ejercicioSeleccionadoId),
+    queryFn: ({ signal }) => getExercise(ejercicioSeleccionadoId!, signal),
+  });
+  const recomendacionRemota = useQuery({
+    queryKey: trainingKeys.recommendation(accountId ?? 'sin-cuenta', ejercicioSeleccionadoId ?? 'sin-ejercicio'),
+    enabled: Boolean(accountId && ejercicioSeleccionadoId),
+    queryFn: ({ signal }) => getRecommendation(ejercicioSeleccionadoId!, signal),
+  });
+  const entrenamiento = entrenamientoRemoto.data;
+  const ejercicioActivo = detalleEjercicio.data ?? null;
+  const recomendacion = recomendacionRemota.data ?? null;
 
-  async function recargar() {
-    const result = await request<Entrenamiento>(`/workouts/${id}`);
-    if (result.ok) setEntrenamiento(result.data);
-    else if (result.error.code !== 'aborted') setErrorSerie(result.error.message);
+  function seleccionarEjercicio(ejercicio: ExerciseListItem | WorkoutSet['exercise']) {
+    setEjercicioSeleccionadoId(ejercicio.id);
+    setSeleccionando(false);
   }
-  useEffect(() => {
-    void recargar();
-  }, [id]);
 
-  async function seleccionarEjercicio(ejercicio: Ejercicio) {
-    setErrorSerie(null);
-    const detalleResult = await request<Ejercicio>(`/exercises/${ejercicio.id}`);
-    if (!detalleResult.ok) {
-      if (detalleResult.error.code !== 'aborted') setErrorSerie(detalleResult.error.message);
+  useEffect(() => {
+    if (!ejercicioActivo || !entrenamiento) return;
+    const plan = planDeSerie(entrenamiento.routine?.exercises.find(
+      (item) => item.exerciseId === ejercicioActivo.id,
+    )?.seriesPlan);
+    const numeroSerie = entrenamiento.sets.filter((serie) => serie.exerciseId === ejercicioActivo.id).length;
+    const objetivo = plan?.[numeroSerie] ?? plan?.at(-1);
+    if (objetivo) {
+      setPeso(objetivo.weightKg ?? 0);
+      setReps(objetivo.reps ?? 0);
       return;
     }
-    const detalle = detalleResult.data;
-    setEjercicioActivo(detalle);
-    setSeleccionando(false);
-    const plan = entrenamiento?.routine?.exercises.find((item) => item.exerciseId === detalle.id)?.seriesPlan ?? null;
-    const numeroSerie = entrenamiento?.sets.filter((serie) => serie.exerciseId === detalle.id).length ?? 0;
-    const objetivo = plan?.[numeroSerie] ?? plan?.at(-1);
-    {
-      const result = await request<Recomendacion>(`/adaptive/recommend/${detalle.id}`);
-      if (result.ok) {
-        const rec = result.data;
-      setRecomendacion(rec);
-      if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
-      else if (rec.targetWeightKg !== null) setPeso(rec.targetWeightKg);
-      if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
-      else if (rec.targetReps !== null) setReps(rec.targetReps);
-      } else {
-      setRecomendacion(null);
-      if (result.error.code !== 'aborted') setErrorSerie(result.error.message);
-      if (objetivo?.weightKg !== undefined) setPeso(objetivo.weightKg ?? 0);
-      if (objetivo?.reps !== undefined) setReps(objetivo.reps ?? 0);
-      }
-    }
-  }
+    if (recomendacion?.targetWeightKg != null) setPeso(recomendacion.targetWeightKg);
+    if (recomendacion?.targetReps != null) setReps(recomendacion.targetReps);
+  }, [ejercicioActivo, entrenamiento, recomendacion]);
 
-  async function registrarSerie() {
-    if (!ejercicioActivo || !entrenamiento || guardandoSerie) return;
-    const orden =
-      entrenamiento.sets.filter((s) => s.exerciseId === ejercicioActivo.id).length + 1;
-    setGuardandoSerie(true);
-    setErrorSerie(null);
-    try {
-      await api<SerieEntrenamiento>(`/workouts/${id}/sets`, {
-        method: 'POST',
-        json: { exerciseId: ejercicioActivo.id, order: orden, weightKg: peso, reps, rpe },
+  const registroSerie = useMutation({
+    mutationFn: () => {
+      if (!ejercicioActivo || !entrenamiento) throw new Error('No hay un ejercicio activo.');
+      const order = entrenamiento.sets.filter((set) => set.exerciseId === ejercicioActivo.id).length + 1;
+      return addWorkoutSet(id, {
+        exerciseId: ejercicioActivo.id,
+        order,
+        weightKg: peso,
+        reps,
+        rpe,
+        clientMutationId,
+      });
+    },
+    onSuccess: async (workoutSet) => {
+      queryClient.setQueryData<Workout>(workoutKey, (current) => {
+        if (!current) return current;
+        const existingIndex = current.sets.findIndex((set) => set.id === workoutSet.id);
+        const sets = existingIndex === -1
+          ? [...current.sets, workoutSet]
+          : current.sets.map((set, index) => index === existingIndex ? workoutSet : set);
+        return { ...current, sets };
       });
       setResetTimer((k) => k + 1);
-      await recargar();
-    } catch (error: unknown) {
-      setErrorSerie(error instanceof Error ? error.message : 'No se pudo registrar la serie. Inténtalo de nuevo.');
-    } finally {
-      setGuardandoSerie(false);
-    }
-  }
-
-  async function finalizar() {
-    await api(`/workouts/${id}/finish`, { method: 'POST', json: {} });
-    router.push('/dashboard');
-  }
+      setClientMutationId(crypto.randomUUID());
+      await queryClient.invalidateQueries({ queryKey: workoutKey });
+    },
+  });
+  const finalizacion = useMutation({
+    mutationFn: () => finishWorkout(id),
+    onSuccess: async (workout) => {
+      queryClient.setQueryData(workoutKey, workout);
+      if (accountId) await queryClient.invalidateQueries({ queryKey: trainingKeys.workouts(accountId) });
+      router.push('/dashboard');
+    },
+  });
 
   const agrupado = useMemo(() => {
-    if (!entrenamiento) return new Map<string, SerieEntrenamiento[]>();
-    const mapa = new Map<string, SerieEntrenamiento[]>();
+    if (!entrenamiento) return new Map<string, WorkoutSet[]>();
+    const mapa = new Map<string, WorkoutSet[]>();
     for (const serie of entrenamiento.sets) {
       const lista = mapa.get(serie.exerciseId) ?? [];
       lista.push(serie);
@@ -141,7 +184,7 @@ export default function DetalleEntrenamiento({
       targetSets: item.targetSets,
       targetReps: item.targetReps,
       targetWeightKg: item.targetWeightKg,
-      seriesPlan: item.seriesPlan,
+      seriesPlan: planDeSerie(item.seriesPlan),
     }));
     const idsPlaneados = new Set(ejerciciosPlaneados.map((item) => item.id));
 
@@ -158,9 +201,10 @@ export default function DetalleEntrenamiento({
     return ejerciciosPlaneados;
   }, [agrupado, entrenamiento]);
 
-  if (!entrenamiento && errorSerie) return <p role="alert" className="text-error">No pudimos cargar el entrenamiento. <button type="button" onClick={() => void recargar()} className="underline">Reintentar</button></p>;
+  if (entrenamientoRemoto.isError && !entrenamiento) return <p role="alert" className="text-error">No pudimos cargar el entrenamiento. <button type="button" onClick={() => void entrenamientoRemoto.refetch()} className="underline">Reintentar</button></p>;
   if (!entrenamiento) return <p role="status" className="text-on-surface-variant">Cargando…</p>;
-  const finalizada = !!entrenamiento.endedAt;
+  const finalizada = entrenamiento.status !== 'ACTIVE';
+  const etiquetaEstado = entrenamiento.status === 'CANCELLED' ? 'CANCELADA' : 'FINALIZADA';
   const volumenTotal = entrenamiento.sets
     .filter((s) => !s.isWarmup)
     .reduce((acc, s) => acc + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
@@ -177,18 +221,32 @@ export default function DetalleEntrenamiento({
             {formatearFechaHora(entrenamiento.startedAt)}
             {finalizada && (
               <span className="ml-sm px-sm py-xs bg-secondary/20 text-secondary font-grotesk text-[10px] tracking-wider rounded">
-                FINALIZADA
+                {etiquetaEstado}
               </span>
             )}
           </p>
         </div>
         {!finalizada && (
-          <Button variant="outline" onClick={finalizar}>
+          <Button variant="outline" onClick={() => finalizacion.mutate()} loading={finalizacion.isPending}>
             <Icon name="check_circle" size={16} />
             Finalizar
           </Button>
         )}
       </header>
+      {entrenamientoRemoto.isError && (
+        <p role="alert" className="text-sm text-error">
+          Mostramos la última versión guardada; no pudimos comprobar cambios recientes.{' '}
+          <button type="button" onClick={() => void entrenamientoRemoto.refetch()} className="underline">
+            Reintentar actualización
+          </button>
+        </p>
+      )}
+      {finalizacion.isError && !finalizada && (
+        <p role="alert" className="text-sm text-error">
+          {mensajeError(finalizacion.error, 'No se pudo finalizar el entrenamiento.')} {' '}
+          <button type="button" onClick={() => finalizacion.mutate()} className="underline">Reintentar finalizar</button>
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
         <div className="lg:col-span-8 space-y-lg">
@@ -314,6 +372,13 @@ export default function DetalleEntrenamiento({
             />
           )}
 
+          {!finalizada && ejercicioSeleccionadoId && detalleEjercicio.isError && (
+            <p role="alert" className="text-sm text-error">
+              No pudimos cargar el ejercicio.{' '}
+              <button type="button" onClick={() => void detalleEjercicio.refetch()} className="underline">Reintentar ejercicio</button>
+            </p>
+          )}
+
           {!finalizada && ejercicioActivo && (
             <div className="bg-surface-container rounded-xl p-lg border border-white/5">
               <div className="flex items-center justify-between mb-md">
@@ -329,7 +394,8 @@ export default function DetalleEntrenamiento({
                   </div>
                 </div>
                 <button
-                  onClick={() => setEjercicioActivo(null)}
+                  onClick={() => setEjercicioSeleccionadoId(null)}
+                  aria-label="Cerrar registro de serie"
                   className="text-on-surface-variant hover:text-on-surface"
                 >
                   <Icon name="close" />
@@ -369,6 +435,12 @@ export default function DetalleEntrenamiento({
                   </ul>
                 </div>
               )}
+              {recomendacionRemota.isError && (
+                <p role="alert" className="mb-md text-sm text-error">
+                  No pudimos cargar la sugerencia; puedes registrar la serie manualmente.{' '}
+                  <button type="button" onClick={() => void recomendacionRemota.refetch()} className="underline">Reintentar sugerencia</button>
+                </p>
+              )}
 
               <div className="space-y-lg">
                 <div>
@@ -389,13 +461,14 @@ export default function DetalleEntrenamiento({
                   </span>
                   <Stepper value={rpe} step={1} min={1} max={10} onChange={setRpe} />
                 </div>
-                <Button onClick={registrarSerie} loading={guardandoSerie} size="lg" className="w-full">
+                <Button onClick={() => registroSerie.mutate()} loading={registroSerie.isPending} size="lg" className="w-full">
                   <Icon name="check" fill />
                   Registrar serie
                 </Button>
-                {errorSerie && (
+                {registroSerie.isError && (
                   <p role="alert" className="text-center text-sm text-error">
-                    {errorSerie}
+                    {mensajeError(registroSerie.error, 'No se pudo registrar la serie.')} {' '}
+                    <button type="button" onClick={() => registroSerie.mutate()} className="underline">Reintentar serie</button>
                   </p>
                 )}
               </div>

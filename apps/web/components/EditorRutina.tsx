@@ -1,7 +1,17 @@
 'use client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import type { Ejercicio, Rutina, SerieObjetivo } from '@/lib/types';
+import { ApiError } from '@/lib/api';
+import { useAutenticacion } from '@/lib/auth-store';
+import {
+  createRoutine,
+  trainingKeys,
+  updateRoutine,
+  type CreateRoutineInput,
+  type ExerciseListItem,
+  type Routine,
+  type UpdateRoutineInput,
+} from '@/lib/training-api';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
@@ -19,7 +29,7 @@ const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', '
 
 interface ItemRutina {
   exerciseId: string;
-  exercise: Ejercicio;
+  exercise: ExerciseListItem | Routine['exercises'][number]['exercise'];
   targetSets: number;
   targetReps: number | null;
   targetWeightKg: number | null;
@@ -27,17 +37,31 @@ interface ItemRutina {
   notes?: string;
 }
 
+type SerieObjetivo = { reps: number | null; weightKg: number | null };
+
 function crearPlan(series: number, reps: number | null, peso: number | null): SerieObjetivo[] {
   return Array.from({ length: Math.max(1, series) }, () => ({ reps, weightKg: peso }));
 }
 
 function normalizarPlan(
-  plan: SerieObjetivo[] | null | undefined,
+  plan: unknown,
   series: number,
   reps: number | null,
   peso: number | null,
 ): SerieObjetivo[] {
-  const base = plan?.length ? plan : crearPlan(series, reps, peso);
+  const planValido = Array.isArray(plan)
+    ? plan.flatMap((objetivo) => {
+        if (!objetivo || typeof objetivo !== 'object') return [];
+        const repsObjetivo = 'reps' in objetivo && typeof objetivo.reps === 'number'
+          ? objetivo.reps
+          : null;
+        const pesoObjetivo = 'weightKg' in objetivo && typeof objetivo.weightKg === 'number'
+          ? objetivo.weightKg
+          : null;
+        return [{ reps: repsObjetivo, weightKg: pesoObjetivo }];
+      })
+    : [];
+  const base = planValido.length ? planValido : crearPlan(series, reps, peso);
   return base.slice(0, Math.max(1, series)).concat(
     Array.from({ length: Math.max(0, series - base.length) }, () => ({
       reps: base.at(-1)?.reps ?? reps,
@@ -49,12 +73,14 @@ function normalizarPlan(
 interface Props {
   titulo: string;
   diaInicial?: number | null;
-  rutinaExistente?: Rutina;
+  rutinaExistente?: Routine;
   onListo: () => void;
   onCancelar: () => void;
 }
 
 export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onCancelar }: Props) {
+  const accountId = useAutenticacion((state) => state.usuario?.id);
+  const queryClient = useQueryClient();
   const [nombre, setNombre] = useState(rutinaExistente?.name ?? '');
   const [dia, setDia] = useState<number | null>(
     rutinaExistente ? rutinaExistente.dayOfWeek : diaInicial ?? null,
@@ -71,15 +97,61 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
     })) ?? [],
   );
   const [seleccionando, setSeleccionando] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorLocal, setErrorLocal] = useState<string | null>(null);
 
-  function agregarEjercicio(ej: Ejercicio) {
+  const guardarRutina = useMutation({
+    mutationFn: async () => {
+      const exercises = items.map((item, order) => {
+        const firstSet = item.seriesPlan[0];
+        return {
+          exerciseId: item.exerciseId,
+          order,
+          targetSets: item.targetSets,
+          ...(firstSet?.reps == null ? {} : { targetReps: firstSet.reps }),
+          ...(firstSet?.weightKg == null ? {} : { targetWeightKg: firstSet.weightKg }),
+          seriesPlan: item.seriesPlan,
+          notes: item.notes ?? null,
+        };
+      });
+      if (rutinaExistente) {
+        const body: UpdateRoutineInput = {
+          name: nombre.trim(),
+          dayOfWeek: dia,
+          notes: rutinaExistente.notes,
+          exercises,
+        };
+        return updateRoutine(rutinaExistente.id, body);
+      }
+      const body: CreateRoutineInput = {
+        name: nombre.trim(),
+        ...(dia === null ? {} : { dayOfWeek: dia }),
+        notes: null,
+        exercises,
+      };
+      return createRoutine(body);
+    },
+    onSuccess: async () => {
+      if (accountId) {
+        await queryClient.invalidateQueries({ queryKey: trainingKeys.routines(accountId) });
+      }
+      onListo();
+    },
+  });
+
+  const apiError = guardarRutina.error instanceof ApiError ? guardarRutina.error : null;
+  const errorNombre = apiError?.fieldErrors?.name?.[0];
+  const errorRemoto = guardarRutina.isError
+    ? apiError?.message ?? 'No se pudo guardar la rutina.'
+    : null;
+  const error = errorLocal ?? errorRemoto;
+
+  function agregarEjercicio(ej: ExerciseListItem) {
     if (items.some((item) => item.exerciseId === ej.id)) {
-      setError('Este ejercicio ya fue seleccionado para este día de entrenamiento.');
+      setErrorLocal('Este ejercicio ya fue seleccionado para este día de entrenamiento.');
       return;
     }
-    setError(null);
+    setErrorLocal(null);
+    guardarRutina.reset();
     setItems((arr) => [
       ...arr,
       {
@@ -139,40 +211,12 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
     setItems(copia);
   }
 
-  async function guardar() {
-    setError(null);
-    if (!nombre.trim()) return setError('Ponle un nombre a la rutina.');
-    if (items.length === 0) return setError('Agrega al menos un ejercicio.');
-
-    setGuardando(true);
-    const payload = {
-      name: nombre.trim(),
-      dayOfWeek: dia,
-      exercises: items.map((it, i) => ({
-        exerciseId: it.exerciseId,
-        order: i,
-        targetSets: it.targetSets,
-        targetReps: it.seriesPlan[0]?.reps ?? undefined,
-        targetWeightKg: it.seriesPlan[0]?.weightKg ?? undefined,
-        seriesPlan: it.seriesPlan.map((serie) => ({
-          reps: serie.reps,
-          weightKg: serie.weightKg,
-        })),
-        notes: it.notes,
-      })),
-    };
-    try {
-      if (rutinaExistente) {
-        await api(`/routines/${rutinaExistente.id}`, { method: 'PATCH', json: payload });
-      } else {
-        await api('/routines', { method: 'POST', json: payload });
-      }
-      onListo();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar la rutina.');
-    } finally {
-      setGuardando(false);
-    }
+  function guardar() {
+    setErrorLocal(null);
+    guardarRutina.reset();
+    if (!nombre.trim()) return setErrorLocal('Ponle un nombre a la rutina.');
+    if (items.length === 0) return setErrorLocal('Agrega al menos un ejercicio.');
+    guardarRutina.mutate();
   }
 
   return (
@@ -197,9 +241,13 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
       <div className="bg-surface-container rounded-xl p-lg border border-white/5 space-y-md">
         <Input
           label="Nombre de la rutina"
+          error={errorNombre}
           icon="title"
           value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
+          onChange={(e) => {
+            setNombre(e.target.value);
+            if (guardarRutina.isError) guardarRutina.reset();
+          }}
           placeholder="Ej: Pierna fuerte"
         />
 
@@ -358,7 +406,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
         <Button onClick={onCancelar} variant="secondary" size="lg" className="flex-1">
           Cancelar
         </Button>
-        <Button onClick={guardar} loading={guardando} size="lg" className="flex-1">
+        <Button onClick={guardar} loading={guardarRutina.isPending} size="lg" className="flex-1">
           <Icon name="save" />
           Guardar rutina
         </Button>

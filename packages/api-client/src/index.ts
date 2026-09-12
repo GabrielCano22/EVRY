@@ -1,4 +1,5 @@
 import createClient from 'openapi-fetch';
+export type { FetchResponse } from 'openapi-fetch';
 import type { paths as ServerPaths } from './schema';
 
 // Callers supply the versioned base URL; derive route keys without repeating it.
@@ -8,8 +9,16 @@ export type paths = {
 
 export type AccessTokenProvider = () => string | null | Promise<string | null>;
 
-export function createEvryApiClient(baseUrl: string, accessToken: AccessTokenProvider) {
-  const client = createClient<paths>({ baseUrl, credentials: 'include' });
+export interface EvryApiClientOptions {
+  fetch?: (input: Request) => Promise<Response>;
+}
+
+export function createEvryApiClient(
+  baseUrl: string,
+  accessToken: AccessTokenProvider,
+  options: EvryApiClientOptions = {},
+) {
+  const client = createClient<paths>({ baseUrl, credentials: 'include', fetch: options.fetch });
   client.use({
     async onRequest({ request }) {
       const token = await accessToken();

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { request, requestOrThrow } from './api';
+import { fetchWithSession, request, requestOrThrow } from './api';
 import { beginNewSession } from './auth-session';
 import { getAccessToken, setAccessToken } from './api';
 
@@ -33,6 +33,19 @@ describe('request', () => {
       data: { id: 'user-1' },
     });
     expect(fetch).toHaveBeenCalledWith(`${apiUrl}/users/me`, expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it.each([
+    ['GET', '/users/me', undefined],
+    ['POST', '/readiness/check-ins', { sleepHrs: 7, stress: 3 }],
+  ] as const)('starts a legacy %s transport before yielding to its caller', async (method, path, body) => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', network);
+
+    const pending = request(path, { method, body });
+
+    expect(network).toHaveBeenCalledTimes(1);
+    await pending;
   });
 
   it('keeps an empty successful body as undefined', async () => {
@@ -204,6 +217,58 @@ describe('request', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('keeps the multipart boundary aligned with the serialized FormData body', async () => {
+    let received: Request | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      received = input instanceof Request ? input.clone() : new Request(input, init);
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }));
+    const body = new FormData();
+    body.set('name', 'Sentadilla');
+
+    await expect(request('/uploads', { method: 'POST', body, auth: false })).resolves.toEqual({
+      ok: true,
+      data: { ok: true },
+    });
+
+    const contentType = received?.headers.get('content-type') ?? '';
+    const boundary = /boundary=(.+)$/.exec(contentType)?.[1];
+    expect(boundary).toBeTruthy();
+    expect(await received?.text()).toContain(`--${boundary}`);
+  });
+
+  it('honors cancellation that occurs while releasing the first 401 response', async () => {
+    const caller = new AbortController();
+    let resolveRefresh!: (response: Response) => void;
+    const unauthorizedBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        caller.abort();
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+      }
+      return Promise.resolve(new Response(unauthorizedBody, { status: 401 }));
+    }));
+
+    const pending = request('/users/me', { signal: caller.signal, timeoutMs: 1_000 });
+    const outcome = await Promise.race([
+      pending,
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 50)),
+    ]);
+
+    try {
+      expect(outcome).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: 'aborted', retryable: false }),
+      });
+    } finally {
+      resolveRefresh(jsonResponse({}, 401));
+      await pending;
+    }
+  });
+
   it('does not let an aborted caller cancel another caller sharing refresh', async () => {
     let resolveRefresh!: (response: Response) => void;
     const first = new AbortController();
@@ -243,5 +308,265 @@ describe('request', () => {
     resolveRefresh(jsonResponse({}, 401));
     await pending;
     expect(getAccessToken()).toBe('new');
+  });
+});
+
+describe('fetchWithSession', () => {
+  it('uses one timeout budget across the request, refresh wait, and retry', async () => {
+    vi.useFakeTimers();
+    let protectedCalls = 0;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        return new Promise<Response>((resolve) => {
+          setTimeout(() => resolve(jsonResponse({ accessToken: 'fresh-token' })), 6);
+        });
+      }
+      protectedCalls += 1;
+      if (protectedCalls === 1) {
+        return new Promise<Response>((resolve) => {
+          setTimeout(() => resolve(jsonResponse({}, 401)), 6);
+        });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true },
+        );
+      });
+    }));
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/workouts`), { timeoutMs: 10 })
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      await vi.advanceTimersByTimeAsync(6);
+      await vi.advanceTimersByTimeAsync(4);
+      await Promise.resolve();
+
+      expect(failure).toMatchObject({ name: 'ApiError', code: 'timeout', retryable: true });
+      expect(protectedCalls).toBe(1);
+    } finally {
+      await vi.advanceTimersByTimeAsync(100);
+      await pending;
+    }
+  });
+
+  it('keeps its timeout active after headers arrive while the response body stalls', async () => {
+    vi.useFakeTimers();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/exercises`), { timeoutMs: 10 })
+      .then((response) => response.json())
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      await Promise.resolve();
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toMatchObject({ name: 'ApiError', code: 'timeout', retryable: true });
+    } finally {
+      try { bodyController.close(); } catch { /* The fixed transport cancels the stalled body. */ }
+      await pending;
+    }
+  });
+
+  it('keeps caller cancellation active after headers arrive while the response body stalls', async () => {
+    const caller = new AbortController();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    let failure: unknown;
+    const pending = fetchWithSession(new Request(`${apiUrl}/exercises`, { signal: caller.signal }))
+      .then((response) => response.json())
+      .catch((error: unknown) => { failure = error; });
+
+    try {
+      caller.abort();
+      await vi.waitFor(() => {
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).toMatchObject({ name: 'ApiError', code: 'aborted', retryable: false });
+      });
+    } finally {
+      try { bodyController.close(); } catch { /* The fixed transport cancels the stalled body. */ }
+      await pending;
+    }
+  });
+
+  it('preserves the request body and returns the original successful response', async () => {
+    setAccessToken('current-token');
+    let received: Request | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      received = input instanceof Request ? input : new Request(input, init);
+      return new Response(JSON.stringify({ id: 'workout-1' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json', 'x-response-marker': 'kept' },
+      });
+    }));
+    const input = new Request(`${apiUrl}/workouts`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer current-token' },
+      body: JSON.stringify({ name: 'Fuerza' }),
+    });
+
+    const response = await fetchWithSession(input);
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('x-response-marker')).toBe('kept');
+    expect(await response.json()).toEqual({ id: 'workout-1' });
+    expect(received?.method).toBe('POST');
+    expect(received?.credentials).toBe('include');
+    expect(received?.headers.get('authorization')).toBe('Bearer current-token');
+    expect(await received?.clone().json()).toEqual({ name: 'Fuerza' });
+  });
+
+  it('rotates once after a protected 401 and retries with the fresh token', async () => {
+    setAccessToken('expired-token');
+    const calls: Request[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      calls.push(request.clone());
+      if (new URL(request.url).pathname.endsWith('/auth/refresh')) {
+        return jsonResponse({ accessToken: 'fresh-token' });
+      }
+      if (calls.filter((call) => new URL(call.url).pathname.endsWith('/workouts')).length === 1) {
+        return jsonResponse({ code: 'UNAUTHORIZED' }, 401);
+      }
+      return jsonResponse({ id: 'workout-1' }, 201);
+    }));
+
+    const response = await fetchWithSession(new Request(`${apiUrl}/workouts`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer expired-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Fuerza' }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(calls.filter((call) => new URL(call.url).pathname.endsWith('/auth/refresh'))).toHaveLength(1);
+    expect(calls.at(-1)?.headers.get('authorization')).toBe('Bearer fresh-token');
+    expect(await calls.at(-1)?.json()).toEqual({ name: 'Fuerza' });
+    expect(getAccessToken()).toBe('fresh-token');
+  });
+
+  it('shares one refresh between concurrent protected requests', async () => {
+    setAccessToken('expired-token');
+    let releaseRefresh!: (response: Response) => void;
+    let refreshCalls = 0;
+    const protectedCalls = new Map<string, number>();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const pathname = new URL(request.url).pathname;
+      if (pathname.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return new Promise<Response>((resolve) => { releaseRefresh = resolve; });
+      }
+      const count = (protectedCalls.get(pathname) ?? 0) + 1;
+      protectedCalls.set(pathname, count);
+      return count === 1 ? jsonResponse({}, 401) : jsonResponse({ path: pathname });
+    }));
+
+    const first = fetchWithSession(new Request(`${apiUrl}/workouts`, { headers: { authorization: 'Bearer expired-token' } }));
+    const second = fetchWithSession(new Request(`${apiUrl}/routines`, { headers: { authorization: 'Bearer expired-token' } }));
+    await vi.waitFor(() => expect(releaseRefresh).toBeTypeOf('function'));
+    releaseRefresh(jsonResponse({ accessToken: 'fresh-token' }));
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(refreshCalls).toBe(1);
+  });
+
+  it('returns an unauthenticated 401 without trying refresh', async () => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ code: 'UNAUTHORIZED' }, 401));
+    vi.stubGlobal('fetch', network);
+
+    const response = await fetchWithSession(new Request(`${apiUrl}/auth/login`, { method: 'POST' }));
+
+    expect(response.status).toBe(401);
+    expect(network).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates caller cancellation as a normalized ApiError', async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      receivedSignal = request.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+    }));
+    const pending = fetchWithSession(new Request(`${apiUrl}/workouts`, {
+      signal: controller.signal,
+      headers: { authorization: 'Bearer token' },
+    }));
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ code: 'aborted', retryable: false });
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it('does not call fetch when the external signal was already aborted', async () => {
+    const network = vi.fn().mockResolvedValue(jsonResponse({ shouldNot: 'run' }));
+    vi.stubGlobal('fetch', network);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(request('/cancelled-before-start', {
+      auth: false,
+      signal: controller.signal,
+    })).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'aborted', retryable: false }),
+    });
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('normalizes caller cancellation while the legacy response body is being consumed', async () => {
+    const caller = new AbortController();
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller;
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+    const pending = request('/users/me', { signal: caller.signal });
+
+    try {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      caller.abort();
+
+      await expect(pending).resolves.toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: 'aborted', retryable: false }),
+      });
+    } finally {
+      try { bodyController.close(); } catch { /* Cancellation already closed the source. */ }
+      await pending.catch(() => undefined);
+    }
   });
 });

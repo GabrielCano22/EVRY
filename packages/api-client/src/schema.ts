@@ -1160,25 +1160,25 @@ export interface components {
             weightKg?: number | null;
         };
         RoutineExerciseDto: {
+            notes?: string | null;
             exerciseId: string;
             order: number;
             targetSets: number;
             targetReps?: number;
             targetWeightKg?: number;
             seriesPlan?: components["schemas"]["RoutineSeriesPlanDto"][];
-            notes?: string;
         };
         CreateRoutineDto: {
+            notes?: string | null;
+            exercises: components["schemas"]["RoutineExerciseDto"][];
             name: string;
             dayOfWeek?: number;
-            notes?: string;
-            exercises: components["schemas"]["RoutineExerciseDto"][];
         };
         UpdateRoutineDto: {
+            notes?: string | null;
+            exercises?: components["schemas"]["RoutineExerciseDto"][];
             name?: string;
             dayOfWeek?: number | null;
-            notes?: string;
-            exercises?: components["schemas"]["RoutineExerciseDto"][];
         };
         HealthLiveness: {
             /** @enum {string} */

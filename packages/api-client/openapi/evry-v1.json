@@ -6518,6 +6518,11 @@
       "RoutineExerciseDto": {
         "type": "object",
         "properties": {
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
           "exerciseId": {
             "type": "string",
             "maxLength": 64
@@ -6547,10 +6552,6 @@
             "items": {
               "$ref": "#/components/schemas/RoutineSeriesPlanDto"
             }
-          },
-          "notes": {
-            "type": "string",
-            "maxLength": 2000
           }
         },
         "required": [
@@ -6562,6 +6563,18 @@
       "CreateRoutineDto": {
         "type": "object",
         "properties": {
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "exercises": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutineExerciseDto"
+            }
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -6571,9 +6584,19 @@
             "type": "number",
             "minimum": 0,
             "maximum": 6
-          },
+          }
+        },
+        "required": [
+          "exercises",
+          "name"
+        ]
+      },
+      "UpdateRoutineDto": {
+        "type": "object",
+        "properties": {
           "notes": {
             "type": "string",
+            "nullable": true,
             "maxLength": 2000
           },
           "exercises": {
@@ -6582,16 +6605,7 @@
             "items": {
               "$ref": "#/components/schemas/RoutineExerciseDto"
             }
-          }
-        },
-        "required": [
-          "name",
-          "exercises"
-        ]
-      },
-      "UpdateRoutineDto": {
-        "type": "object",
-        "properties": {
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -6602,17 +6616,6 @@
             "nullable": true,
             "minimum": 0,
             "maximum": 6
-          },
-          "notes": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "exercises": {
-            "maxItems": 100,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RoutineExerciseDto"
-            }
           }
         }
       },

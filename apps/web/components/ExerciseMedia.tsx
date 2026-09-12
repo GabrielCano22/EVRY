@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Ejercicio } from '@/lib/types';
-import { exerciseGifUrl, exerciseImageUrl } from '@/lib/exercise-media';
+import type { components } from '@evry/api-client';
+import {
+  exerciseGifUrl,
+  exerciseImageUrl,
+  type ExerciseMediaSource,
+} from '@/lib/exercise-media';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { Icon } from './ui/Icon';
 
@@ -11,7 +15,7 @@ export function ExerciseMedia({
   variant = 'thumbnail',
   className = '',
 }: {
-  exercise: Ejercicio;
+  exercise: ExerciseMediaSource & Pick<components['schemas']['ExerciseEntity'], 'id' | 'name'>;
   variant?: 'thumbnail' | 'detail';
   className?: string;
 }) {
@@ -25,7 +29,9 @@ export function ExerciseMedia({
     setImageFailed(false);
   }, [exercise.id, exercise.gifUrl, exercise.gifPath, exercise.imageUrl, exercise.imagePath]);
 
-  const src = !gifFailed && gifUrl ? gifUrl : !imageFailed && imageUrl ? imageUrl : null;
+  const src = variant === 'thumbnail'
+    ? (!imageFailed && imageUrl ? imageUrl : null)
+    : (!gifFailed && gifUrl ? gifUrl : !imageFailed && imageUrl ? imageUrl : null);
   const sizeClass = variant === 'detail' ? 'aspect-square w-full max-w-sm' : 'h-14 w-14 shrink-0';
 
   return (
@@ -37,7 +43,10 @@ export function ExerciseMedia({
           loading={variant === 'detail' ? 'eager' : 'lazy'}
           decoding="async"
           className="h-full w-full object-cover"
-          onError={() => (gifUrl && !gifFailed ? setGifFailed(true) : setImageFailed(true))}
+          onError={() => {
+            if (variant === 'detail' && gifUrl && !gifFailed) setGifFailed(true);
+            else setImageFailed(true);
+          }}
         />
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-on-surface-variant">
