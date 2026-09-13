@@ -28,6 +28,13 @@ function parsedRequestBody(call: unknown[]): unknown {
   return JSON.parse(text);
 }
 
+function renderProfile() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}><PaginaPerfil /></QueryClientProvider>);
+}
+
 beforeEach(() => {
   push.mockReset();
   useAutenticacion.setState({ usuario: null, cargando: false, error: null, estado: 'anonymous' });
@@ -182,20 +189,20 @@ it('shows the cycle form and loaded non-female history only with explicit consen
   expect(await screen.findByText(/1 síntomas/)).toBeInTheDocument();
 });
 
-it.each(['MALE', 'OTHER', 'PREFER_NOT_SAY'] as const)('lets %s save both consent values and reload the session', async (biologicalSex) => {
+it.each(['MALE', 'OTHER', 'PREFER_NOT_SAY'] as const)('lets %s save both consent values without reloading the session', async (biologicalSex) => {
   useAutenticacion.setState({ usuario: { ...user, biologicalSex, trackCycle: false } });
   const requests: unknown[] = [];
   let savedConsent = false;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
-    if (path.endsWith('/users/me') && init?.method === 'PATCH') {
-      const body = JSON.parse(String(init.body)); requests.push(body); savedConsent = body.trackCycle;
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const path = new URL(request.url).pathname;
+    if (path.endsWith('/users/me') && request.method === 'PATCH') {
+      const body = JSON.parse(await request.text()); requests.push(body); savedConsent = body.trackCycle;
       return Response.json({ ...user, biologicalSex, trackCycle: savedConsent });
     }
-    if (path.endsWith('/users/me')) return Response.json({ ...user, biologicalSex, trackCycle: savedConsent });
     throw new Error(`Unexpected request: ${path}`);
   }));
-  render(<PaginaPerfil />);
+  renderProfile();
   const toggle = screen.getByRole('checkbox', { name: 'Activar seguimiento' });
   expect(toggle).not.toBeChecked();
   fireEvent.click(toggle);
@@ -209,23 +216,28 @@ it.each(['MALE', 'OTHER', 'PREFER_NOT_SAY'] as const)('lets %s save both consent
   fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
   await waitFor(() => expect(useAutenticacion.getState().usuario?.trackCycle).toBe(false));
   expect(requests).toContainEqual(expect.objectContaining({ trackCycle: false }));
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 it('persists explicit profile opt-out and does not render length controls', async () => {
   useAutenticacion.setState({ usuario: { ...user, trackCycle: true } });
   const bodies: unknown[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
-    if (path.endsWith('/users/me') && init?.method === 'PATCH') { bodies.push(JSON.parse(String(init.body))); return Response.json({}); }
-    if (path.endsWith('/users/me')) return Response.json({ ...user, trackCycle: false });
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const path = new URL(request.url).pathname;
+    if (path.endsWith('/users/me') && request.method === 'PATCH') {
+      bodies.push(JSON.parse(await request.text()));
+      return Response.json({ ...user, trackCycle: false });
+    }
     throw new Error(`Unexpected request: ${path}`);
   }));
-  render(<PaginaPerfil />);
+  renderProfile();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Activar seguimiento' }));
   expect(screen.queryByLabelText('Ciclo (días)')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
   await waitFor(() => expect(bodies).toContainEqual(expect.objectContaining({ trackCycle: false })));
   await waitFor(() => expect(useAutenticacion.getState().usuario?.trackCycle).toBe(false));
+  expect(fetch).toHaveBeenCalledOnce();
 });
 
 it('requests and displays a returned cycle phase for an opted-in male dashboard only', async () => {
