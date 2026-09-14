@@ -2,16 +2,14 @@
 // (en inglés) porque coinciden con la API y Prisma; los aliases en español
 // están definidos arriba para uso en código nuevo.
 
-export type Sexo = 'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_SAY';
+import type { components } from '@evry/api-client';
+
+type EsquemaUsuario = components['schemas']['User'];
+
+export type Sexo = EsquemaUsuario['biologicalSex'];
 export type Sex = Sexo;
 
-export type Meta =
-  | 'STRENGTH'
-  | 'HYPERTROPHY'
-  | 'ENDURANCE'
-  | 'FAT_LOSS'
-  | 'GENERAL_FITNESS'
-  | 'MOBILITY';
+export type Meta = EsquemaUsuario['goals'][number];
 export type Goal = Meta;
 
 export type GrupoMuscular =
@@ -47,18 +45,7 @@ export type CyclePhase = FaseCiclo;
 export type Flujo = 'NONE' | 'SPOTTING' | 'LIGHT' | 'MEDIUM' | 'HEAVY';
 export type Flow = Flujo;
 
-export interface Usuario {
-  id: string;
-  email: string;
-  name: string;
-  biologicalSex: Sexo;
-  birthDate: string | null;
-  goals: Meta[];
-  trackCycle: boolean;
-  avgCycleLen: number;
-  avgPeriodLen: number;
-  createdAt: string;
-}
+export type Usuario = EsquemaUsuario;
 export type User = Usuario;
 
 export type EstadoAutenticacionRemota = 'checking' | 'authenticated' | 'anonymous' | 'error';

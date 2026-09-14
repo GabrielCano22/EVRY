@@ -57,8 +57,10 @@ async function settle(items: Pending[], late = false) {
     await Promise.all(items.map((item) => item.done));
   });
 }
-function renderWithCalendarClient(view: React.ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+function renderWithQueryClient(view: React.ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
   return render(<QueryClientProvider client={client}>{view}</QueryClientProvider>);
 }
 beforeEach(() => {
@@ -67,19 +69,20 @@ beforeEach(() => {
 });
 afterEach(async () => { cleanup(); await settle(pending); setAccessToken(null); vi.unstubAllGlobals(); });
 
-it('hydrates the profile from the real session then saves and reloads disabled consent', async () => {
+it('hydrates the profile from the real session then applies disabled consent without reloading', async () => {
   useAutenticacion.setState({ usuario: null });
   let saved = user;
   const bodies: unknown[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(String(input)).pathname;
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const path = new URL(request.url).pathname;
     if (path !== '/api/v1/users/me') throw new Error(`Unexpected ${path}`);
-    if (init?.method === 'PATCH') {
-      const body = JSON.parse(String(init.body)); bodies.push(body); saved = { ...user, ...body };
+    if (request.method === 'PATCH') {
+      const body = JSON.parse(await request.text()); bodies.push(body); saved = { ...user, ...body };
     }
     return Response.json(saved);
   }));
-  render(<PaginaPerfil />);
+  renderWithQueryClient(<PaginaPerfil />);
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   await act(async () => { await useAutenticacion.getState().inicializar(); });
   expect(screen.getByLabelText('Nombre')).toHaveValue('Alex hidratado');
@@ -90,11 +93,12 @@ it('hydrates the profile from the real session then saves and reloads disabled c
   await waitFor(() => expect(useAutenticacion.getState().usuario?.trackCycle).toBe(false));
   expect(bodies).toContainEqual(expect.objectContaining({ name: 'Alex hidratado', trackCycle: false }));
   expect(useAutenticacion.getState().estado).toBe('authenticated');
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 it('removes opted-in OTHER calendar markers, legend and details and only reloads activity after opt-out', async () => {
   transport(() => false);
-  renderWithCalendarClient(<CalendarioActividad />);
+  renderWithQueryClient(<CalendarioActividad />);
   const day = await screen.findByRole('button', { name: /inicio de período, 1 síntomas/ });
   const expectedDate = new Intl.DateTimeFormat('es-CO', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(entry.date));
   expect(day).toHaveAccessibleName(`Ver actividad del ${expectedDate}, inicio de período, 1 síntomas`);
@@ -118,7 +122,7 @@ it('removes opted-in OTHER calendar markers, legend and details and only reloads
 it('does not infer calendar consent from FEMALE after loading completes', async () => {
   useAutenticacion.setState({ usuario: { ...user, biologicalSex: 'FEMALE', trackCycle: false } });
   transport(() => false);
-  renderWithCalendarClient(<CalendarioActividad />);
+  renderWithQueryClient(<CalendarioActividad />);
   await screen.findByText('Aún no hay actividad registrada.');
   expect(requests).toEqual([{ path: '/api/v1/progress/activity', method: 'GET' }]);
   expect(screen.queryByText('Menstrual')).not.toBeInTheDocument();
@@ -127,7 +131,7 @@ it('does not infer calendar consent from FEMALE after loading completes', async 
 
 it('aborts pending cycle reads on opt-out, ignores late history and re-enables a fresh form', async () => {
   transport((path) => path.includes('/cycle/'));
-  renderWithCalendarClient(<PaginaCiclo />);
+  renderWithQueryClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Privado antes de desactivar' } });
   const old = [...pending];
   expect(old).toHaveLength(3);
@@ -145,7 +149,7 @@ it('aborts pending cycle reads on opt-out, ignores late history and re-enables a
 
 it('clears private form state immediately and performs fresh reads on same-route account switch', async () => {
   transport((path) => path.includes('/cycle/'));
-  renderWithCalendarClient(<PaginaCiclo />);
+  renderWithQueryClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Solo cuenta A' } });
   const old = [...pending];
   act(() => useAutenticacion.setState({ usuario: { ...user, id: 'account-b', name: 'Bea' } }));
@@ -160,7 +164,7 @@ it('clears private form state immediately and performs fresh reads on same-route
 
 it('edits a serialized UTC-midnight cycle entry on its original civil date', async () => {
   transport(() => false);
-  renderWithCalendarClient(<PaginaCiclo />);
+  renderWithQueryClient(<PaginaCiclo />);
   fireEvent.click(await screen.findByRole('button', { name: /Editar registro del/ }));
   expect(screen.getByLabelText('Fecha')).toHaveValue(todayCivil());
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('Nota privada de A');
@@ -168,7 +172,7 @@ it('edits a serialized UTC-midnight cycle entry on its original civil date', asy
 
 it('keeps January 1 in the history label and edit form across the UTC month boundary', async () => {
   transport(() => false, { ...entry, date: '2026-01-01T00:00:00.000Z' });
-  renderWithCalendarClient(<PaginaCiclo />);
+  renderWithQueryClient(<PaginaCiclo />);
   const edit = await screen.findByRole('button', { name: 'Editar registro del 01 de ene de 2026' });
   expect(screen.getByText('01 de ene de 2026')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Editar registro del 31/ })).not.toBeInTheDocument();
@@ -183,7 +187,7 @@ it.each(['opt-out', 'account-switch'])('suppresses reads and global update after
   const onUpdate = (event: Event) => updates.push(event);
   window.addEventListener('evry:cycle-updated', onUpdate);
   try {
-    renderWithCalendarClient(<PaginaCiclo />);
+    renderWithQueryClient(<PaginaCiclo />);
     await screen.findByRole('button', { name: /Editar registro del/ });
     fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'No compartir con B' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' }));

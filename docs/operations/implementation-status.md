@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -18,6 +18,7 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 - El calendario web consulta actividad agregada y registros de ciclo por el mes visible. Ya no descarga sesiones completas ni reconstruye fechas o volumen en el navegador; conserva nombre, series, volumen y fase almacenada, limita actividad hasta hoy y solo solicita proyecciones de ciclo con consentimiento explícito.
 - El móvil ya permite crear, editar y eliminar rutinas con el contrato generado, conservar rutinas cacheadas para iniciar una sesión sin conexión, previsualizar ejercicios sin descargar GIF antes de reproducirlos y editar todos los campos de perfil soportados por la API.
 - Catálogo, rutinas, lista de entrenamientos, creación rápida, sesión activa e historial web consumen tipos y operaciones derivados de OpenAPI mediante TanStack Query. Sus consultas se cancelan, aíslan por cuenta y conservan datos canónicos ante fallos; las mutaciones muestran errores estructurados, evitan navegación prematura y refrescan únicamente las cachés correspondientes.
+- Autenticación y perfil web consumen operaciones y tipos generados desde OpenAPI. El access token permanece sólo en memoria, las transiciones obsoletas no navegan ni restauran sesiones, el logout limpia localmente antes de propagar un fallo remoto y el perfil usa TanStack Query con todos los campos soportados, errores por campo y respuesta canónica sin un segundo GET.
 
 ## Evidencia observada
 
@@ -34,6 +35,12 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 - Las regresiones focales de catálogo/rutinas/medios pasaron 15/15. Las de lista, creación, detalle y medios de entrenamiento pasaron 4 archivos / 19 pruebas e incluyen bloqueo de envíos duplicados, caché tras iniciar, estados terminales, errores de actualización, reintentos e idempotencia de series. El transporte suma 34 pruebas para cancelación, refresh, multipart y un único presupuesto de timeout.
 - La puerta completa local pasó contrato 33/33, comparación exacta contra backend, lint y tipos de todos los workspaces, móvil 23 archivos / 172 pruebas, web 27 archivos / 152 pruebas, accesibilidad 1/1, build web, Expo Doctor 21/21 y exportaciones Android/iOS. La auditoría con umbral alto terminó sin vulnerabilidades altas; conserva 15 avisos conocidos (1 bajo y 14 moderados) que no se corrigieron de forma forzada.
 - Estas pruebas usan componentes, caché y transporte autenticado reales con HTTP simulado. Todavía no demuestran el flujo completo de entrenamiento en Playwright contra PostgreSQL, uso en dispositivo físico ni los presupuestos de rendimiento. No se realizó ningún despliegue.
+
+### Autenticación y perfil web generados, 13 de septiembre
+
+- El límite web de autenticación deriva registro, login, logout, lectura y actualización de usuario del cliente OpenAPI. Las regresiones comprueban errores 422 estructurados, normalización, respuestas tardías, hidratación fallida después de adoptar un token nuevo y propagación de fallos de logout.
+- El perfil edita nombre, sexo registrado, fecha civil de nacimiento, metas, consentimiento y longitudes de ciclo. La respuesta canónica actualiza Zustand conservando `createdAt`; los fallos conservan los valores editados y el opt-out retira inmediatamente los controles privados.
+- El foco de perfil/ciclo pasó 3 archivos / 24 pruebas. La suite web completa pasó 29 archivos / 169 pruebas unitarias y 1/1 de accesibilidad; contrato, comparación con backend, lint, tipos y build Next.js de producción terminaron correctamente. No se realizó ningún despliegue.
 
 ### Backend, 4 de septiembre
 
@@ -106,7 +113,7 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
-- Catálogo, rutinas y entrenamientos web ya usan el cliente generado. Aún deben retirarse los contratos manuales restantes de autenticación, ciclo y algunos adaptadores de progreso donde el alcance lo permita; que TypeScript compile no demuestra esos flujos completos.
+- Catálogo, rutinas, entrenamientos, autenticación y perfil web ya usan el cliente generado. Aún deben retirarse los contratos manuales restantes de ciclo y algunos adaptadores de progreso donde el alcance lo permita; que TypeScript compile no demuestra esos flujos completos.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
 - Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
 
@@ -122,8 +129,8 @@ Actualizado: 11 de septiembre de 2026. Este registro separa implementación, evi
 
 ### Web, rendimiento y operación
 
-- Completar la migración de autenticación, ciclo y los consumidores restantes de progreso al cliente generado y TanStack Query. Los flujos web de catálogo, rutinas y entrenamientos ya están migrados.
-- El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros; falta reducir los tipos manuales de ciclo y autenticación sin duplicar esa infraestructura.
+- Completar la migración de ciclo y los consumidores restantes de progreso al cliente generado y TanStack Query. Los flujos web de catálogo, rutinas, entrenamientos, autenticación y perfil ya están migrados.
+- El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros; falta reducir los tipos manuales de ciclo sin duplicar esa infraestructura.
 - Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.
