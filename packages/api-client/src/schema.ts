@@ -641,6 +641,7 @@ export interface components {
             createdAt: string;
         };
         UserUpdateInput: {
+            /** @description Leading and trailing whitespace is removed before validation. */
             name?: string;
             /** @enum {string} */
             biologicalSex?: "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_SAY";

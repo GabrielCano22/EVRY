@@ -70,6 +70,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('exposes the generated profile name limits in the form', () => {
+  show();
+
+  expect(screen.getByLabelText('Nombre')).toHaveAttribute('minLength', '2');
+  expect(screen.getByLabelText('Nombre')).toHaveAttribute('maxLength', '100');
+});
+
 it('sends one complete pending update and applies the canonical user without a second GET', async () => {
   const pending = deferred<Response>();
   const requests: Array<{ body: unknown; method: string }> = [];
