@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PaginaCiclo from '@/app/(app)/cycle/page';
@@ -23,16 +23,18 @@ const pending: Pending[] = [];
 const requests: { path: string; method: string }[] = [];
 
 function transport(defer: (path: string, method: string) => boolean, responseEntry = entry) {
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const url = new URL(request.url);
     const path = url.pathname;
-    const method = init?.method ?? 'GET';
+    const method = request.method;
     requests.push({ path, method });
     if (!['/api/v1/cycle/today', '/api/v1/cycle/entries', '/api/v1/cycle/calendar', '/api/v1/progress/activity'].includes(path)) throw new Error(`Unexpected ${method} ${path}`);
     if (defer(path, method)) {
       let resolve!: (body: unknown) => void;
       const done = new Promise<Response>((finish) => { resolve = (body) => finish(Response.json(body)); });
-      pending.push({ url, path, method, signal: init?.signal, body: init?.body ? JSON.parse(String(init.body)) : undefined, resolve, done });
+      const bodyText = request.body ? await request.text() : '';
+      pending.push({ url, path, method, signal: request.signal, body: bodyText ? JSON.parse(bodyText) : undefined, resolve, done });
       return done;
     }
     if (path.endsWith('/cycle/today')) return Promise.resolve(Response.json(null));
@@ -113,7 +115,7 @@ it('removes opted-in OTHER calendar markers, legend and details and only reloads
   const cycleCount = requests.filter((r) => r.path.includes('/cycle/')).length;
   transport((path) => path.endsWith('/progress/activity'));
   act(() => { window.dispatchEvent(new CustomEvent('evry:cycle-updated')); });
-  expect(pending).toHaveLength(1);
+  await waitFor(() => expect(pending).toHaveLength(1));
   await settle([...pending]);
   expect(await screen.findByText('Aún no hay actividad registrada.')).toBeInTheDocument();
   expect(requests.filter((r) => r.path.includes('/cycle/'))).toHaveLength(cycleCount);
@@ -133,6 +135,7 @@ it('aborts pending cycle reads on opt-out, ignores late history and re-enables a
   transport((path) => path.includes('/cycle/'));
   renderWithQueryClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Privado antes de desactivar' } });
+  await waitFor(() => expect(pending).toHaveLength(3));
   const old = [...pending];
   expect(old).toHaveLength(3);
   act(() => useAutenticacion.setState({ usuario: { ...user, trackCycle: false } }));
@@ -142,7 +145,7 @@ it('aborts pending cycle reads on opt-out, ignores late history and re-enables a
   expect(screen.queryByRole('button', { name: /Editar registro del/ })).not.toBeInTheDocument();
   act(() => useAutenticacion.setState({ usuario: user }));
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('');
-  expect(pending).toHaveLength(6);
+  await waitFor(() => expect(pending).toHaveLength(6));
   await settle(pending.slice(3));
   await screen.findByText('Sin registros aún.');
 });
@@ -151,11 +154,12 @@ it('clears private form state immediately and performs fresh reads on same-route
   transport((path) => path.includes('/cycle/'));
   renderWithQueryClient(<PaginaCiclo />);
   fireEvent.change(screen.getByPlaceholderText('¿Cómo te sentiste hoy?'), { target: { value: 'Solo cuenta A' } });
+  await waitFor(() => expect(pending).toHaveLength(3));
   const old = [...pending];
   act(() => useAutenticacion.setState({ usuario: { ...user, id: 'account-b', name: 'Bea' } }));
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('');
   expect(old.every((r) => r.signal?.aborted)).toBe(true);
-  expect(pending).toHaveLength(6);
+  await waitFor(() => expect(pending).toHaveLength(6));
   await settle(old, true);
   expect(screen.queryByRole('button', { name: /Editar registro del/ })).not.toBeInTheDocument();
   await settle(pending.slice(3));
@@ -170,6 +174,13 @@ it('edits a serialized UTC-midnight cycle entry on its original civil date', asy
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('Nota privada de A');
 });
 
+it('prevents selecting a cycle date after the current civil day', () => {
+  transport(() => false);
+  renderWithQueryClient(<PaginaCiclo />);
+
+  expect(screen.getByLabelText('Fecha')).toHaveAttribute('max', todayCivil());
+});
+
 it('keeps January 1 in the history label and edit form across the UTC month boundary', async () => {
   transport(() => false, { ...entry, date: '2026-01-01T00:00:00.000Z' });
   renderWithQueryClient(<PaginaCiclo />);
@@ -179,6 +190,96 @@ it('keeps January 1 in the history label and edit form across the UTC month boun
   fireEvent.click(edit);
   expect(screen.getByLabelText('Fecha')).toHaveValue('2026-01-01');
   expect(screen.getByPlaceholderText('¿Cómo te sentiste hoy?')).toHaveValue('Nota privada de A');
+});
+
+it('preserves missing energy and mood when editing and saving a cycle entry', async () => {
+  const nullableEntry = { ...entry, energy: null, mood: null };
+  let savedBody: unknown;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.pathname.endsWith('/cycle/today')) return Response.json(null);
+    if (url.pathname === '/api/v1/cycle/entries' && request.method === 'GET') return Response.json([nullableEntry]);
+    if (url.pathname === '/api/v1/cycle/entries' && request.method === 'POST') {
+      savedBody = JSON.parse(await request.text());
+      return Response.json(nullableEntry);
+    }
+    if (url.pathname.endsWith('/cycle/calendar')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), entries: [nullableEntry], previousPeriodStart: null,
+    });
+    if (url.pathname.endsWith('/progress/activity')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), days: [],
+    });
+    throw new Error(`Unexpected ${request.method} ${url.pathname}`);
+  }));
+
+  renderWithQueryClient(<PaginaCiclo />);
+  fireEvent.click(await screen.findByRole('button', { name: /Editar registro del/ }));
+
+  expect(within(screen.getByRole('group', { name: 'Energía' })).getByRole('button', { name: 'Sin dato' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(screen.getByRole('group', { name: 'Ánimo' })).getByRole('button', { name: 'Sin dato' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' }));
+
+  await screen.findByText('Registro guardado. El calendario se actualizó.');
+  expect(savedBody).toEqual(expect.objectContaining({ energy: null, mood: null }));
+});
+
+it('deletes a confirmed cycle entry and refreshes the private journal', async () => {
+  let deleted = false;
+  const methods: Array<{ method: string; path: string }> = [];
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const url = new URL(request.url);
+    methods.push({ method: request.method, path: url.pathname });
+    if (url.pathname.endsWith('/cycle/today')) return Response.json(null);
+    if (url.pathname === '/api/v1/cycle/entries' && request.method === 'GET') {
+      return Response.json(deleted ? [] : [entry]);
+    }
+    if (url.pathname === '/api/v1/cycle/entries/entry-a' && request.method === 'DELETE') {
+      deleted = true;
+      return Response.json({ ok: true });
+    }
+    if (url.pathname.endsWith('/cycle/calendar')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), entries: deleted ? [] : [entry], previousPeriodStart: null,
+    });
+    if (url.pathname.endsWith('/progress/activity')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), days: [],
+    });
+    throw new Error(`Unexpected ${request.method} ${url.pathname}`);
+  }));
+
+  renderWithQueryClient(<PaginaCiclo />);
+  const deleteButton = await screen.findByRole('button', { name: 'Eliminar registro del ciclo de hoy' });
+  fireEvent.click(deleteButton);
+
+  await screen.findByText('Registro eliminado. El calendario se actualizó.');
+  expect(methods).toContainEqual({ method: 'DELETE', path: '/api/v1/cycle/entries/entry-a' });
+  expect(screen.queryByRole('button', { name: /Editar registro del/ })).not.toBeInTheDocument();
+});
+
+it('keeps a cycle read failure explicit and exposes the safe server message for retry', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.pathname.endsWith('/cycle/today')) return Response.json({
+      code: 'SERVICE_UNAVAILABLE', message: 'El diario no está disponible temporalmente.', retryable: true, requestId: 'cycle-read-503',
+    }, { status: 503 });
+    if (url.pathname.endsWith('/cycle/entries')) return Response.json([]);
+    if (url.pathname.endsWith('/cycle/calendar')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), entries: [], previousPeriodStart: null,
+    });
+    if (url.pathname.endsWith('/progress/activity')) return Response.json({
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'), days: [],
+    });
+    throw new Error(`Unexpected ${request.method} ${url.pathname}`);
+  }));
+
+  renderWithQueryClient(<PaginaCiclo />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('El diario no está disponible temporalmente.');
+  expect(screen.queryByText('Sin registros aún.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
 });
 
 it.each(['opt-out', 'account-switch'])('suppresses reads and global update after a pending save completes following %s', async (transition) => {

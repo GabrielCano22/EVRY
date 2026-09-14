@@ -1,13 +1,9 @@
 'use client';
 
 import { useInfiniteQuery } from '@tanstack/react-query';
-import type { components } from '@evry/api-client';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { requestOrThrow } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
-
-type Progress = components['schemas']['ExerciseProgress'];
-type Period = Progress['period']['key'];
+import { getExerciseProgress, type ProgressPeriod } from '@/lib/progress-api';
 
 const dateLabel = (date: string) => new Date(date).toLocaleDateString('es-CO', {
   timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric',
@@ -18,18 +14,16 @@ const rangeLabel = (from: string, to: string) => {
   return start === end ? end : `${start} – ${end}`;
 };
 
-export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: string; period?: Period }) {
+export function ExerciseChart({ exerciseId, period = '30d' }: { exerciseId: string; period?: ProgressPeriod }) {
   const userId = useAutenticacion((state) => state.usuario?.id);
   const query = useInfiniteQuery({
     queryKey: ['exercise-progress', userId, exerciseId, period],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams({ period, limit: '10' });
-      if (pageParam) params.set('cursor', pageParam);
-      return requestOrThrow<Progress>(
-        `/progress/exercises/${encodeURIComponent(exerciseId)}?${params}`, { signal },
-      );
-    },
+    queryFn: ({ pageParam, signal }) => getExerciseProgress(exerciseId, {
+      period,
+      limit: 10,
+      ...(pageParam ? { cursor: pageParam } : {}),
+    }, signal),
     getNextPageParam: (last) => last.history.nextCursor ?? undefined,
   });
   const data = query.data?.pages[0];
