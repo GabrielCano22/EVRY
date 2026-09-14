@@ -1,11 +1,10 @@
 'use client';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { components } from '@evry/api-client';
 import Link from 'next/link';
 import { useAutenticacion } from '@/lib/auth-store';
-import { requestOrThrow } from '@/lib/api';
-import type { InfoFase } from '@/lib/types';
+import { getCycleToday } from '@/lib/cycle-api';
+import { getProgressOverview } from '@/lib/progress-api';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { ReadinessCheckin, useDailyReadiness } from '@/components/ReadinessCheckin';
@@ -57,12 +56,12 @@ function ResumenInicio() {
   const hoy = todayCivil();
   const progreso = useQuery({
     queryKey: ['progress', usuario?.id, '30d', hoy],
-    queryFn: ({ signal }) => requestOrThrow<components['schemas']['ProgressOverview']>('/progress/overview?period=30d', { signal }),
+    queryFn: ({ signal }) => getProgressOverview('30d', signal),
   });
   const ciclo = useQuery({
     queryKey: ['dashboard-cycle', usuario?.id, hoy, muestraCiclo],
     enabled: muestraCiclo,
-    queryFn: ({ signal }) => requestOrThrow<InfoFase | null>('/cycle/today', { signal }),
+    queryFn: ({ signal }) => getCycleToday(signal),
   });
   const readiness = useDailyReadiness();
   const consultas = [progreso, readiness, ...(muestraCiclo ? [ciclo] : [])];

@@ -19,6 +19,7 @@ Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evi
 - El móvil ya permite crear, editar y eliminar rutinas con el contrato generado, conservar rutinas cacheadas para iniciar una sesión sin conexión, previsualizar ejercicios sin descargar GIF antes de reproducirlos y editar todos los campos de perfil soportados por la API.
 - Catálogo, rutinas, lista de entrenamientos, creación rápida, sesión activa e historial web consumen tipos y operaciones derivados de OpenAPI mediante TanStack Query. Sus consultas se cancelan, aíslan por cuenta y conservan datos canónicos ante fallos; las mutaciones muestran errores estructurados, evitan navegación prematura y refrescan únicamente las cachés correspondientes.
 - Autenticación y perfil web consumen operaciones y tipos generados desde OpenAPI. El access token permanece sólo en memoria, las transiciones obsoletas no navegan ni restauran sesiones, el logout limpia localmente antes de propagar un fallo remoto y el perfil usa TanStack Query con todos los campos soportados, errores por campo y respuesta canónica sin un segundo GET.
+- Ciclo, progreso y readiness web ya cruzan límites de transporte derivados de OpenAPI; ningún componente web llama directamente a `requestOrThrow`, `request` o `api`. El diario usa TanStack Query con cancelación y aislamiento por cuenta/generación, conserva valores nulos, limita fechas futuras y permite eliminar entradas con confirmación. Calendario, dashboard, búsqueda, gráfica paginada y estado diario mantienen errores explícitos en vez de fabricar datos vacíos.
 
 ## Evidencia observada
 
@@ -41,6 +42,12 @@ Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evi
 - El límite web de autenticación deriva registro, login, logout, lectura y actualización de usuario del cliente OpenAPI. Las regresiones comprueban errores 422 estructurados, normalización, respuestas tardías, hidratación fallida después de adoptar un token nuevo y propagación de fallos de logout.
 - El perfil edita nombre, sexo registrado, fecha civil de nacimiento, metas, consentimiento y longitudes de ciclo. La respuesta canónica actualiza Zustand conservando `createdAt`; los fallos conservan los valores editados y el opt-out retira inmediatamente los controles privados.
 - El foco de perfil/ciclo pasó 3 archivos / 24 pruebas. La suite web completa pasó 29 archivos / 169 pruebas unitarias y 1/1 de accesibilidad; contrato, comparación con backend, lint, tipos y build Next.js de producción terminaron correctamente. No se realizó ningún despliegue.
+
+### Ciclo, progreso y readiness web generados, 14 de septiembre
+
+- Tres límites tipados cubren todas las lecturas y mutaciones vigentes de ciclo, progreso y readiness, incluidas rutas parametrizadas, rangos civiles, cursor, borrado y errores estructurados. Una prueba arquitectónica impide reintroducir transporte manual o DTO de respuesta duplicados en estos consumidores.
+- El foco pasó 10 archivos / 58 pruebas. La suite web completa pasó 33 archivos / 190 pruebas unitarias y 1/1 de accesibilidad; `api:check`, comparación contra el checkout backend fijado, lint, tipos y build Next.js de producción terminaron correctamente.
+- El diario conserva la cancelación de lecturas al retirar consentimiento o cambiar de cuenta, descarta finalizaciones tardías, preserva `energy`/`mood` nulos, limita la fecha seleccionable al día civil de Bogotá y actualiza diario/calendario después de crear, mover o eliminar. Esta evidencia sigue siendo de componentes con HTTP simulado; aún falta el recorrido Playwright de CRUD completo contra PostgreSQL. No se realizó ningún despliegue.
 
 ### Backend, 4 de septiembre
 
@@ -113,7 +120,7 @@ Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evi
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
-- Catálogo, rutinas, entrenamientos, autenticación y perfil web ya usan el cliente generado. Aún deben retirarse los contratos manuales restantes de ciclo y algunos adaptadores de progreso donde el alcance lo permita; que TypeScript compile no demuestra esos flujos completos.
+- Todos los consumidores HTTP web vigentes usan límites derivados del cliente generado. Falta ampliar la evidencia E2E real de ciclo, readiness, progreso y perfil; que el contrato y TypeScript compilen no demuestra esos flujos completos.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
 - Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
 
@@ -129,8 +136,7 @@ Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evi
 
 ### Web, rendimiento y operación
 
-- Completar la migración de ciclo y los consumidores restantes de progreso al cliente generado y TanStack Query. Los flujos web de catálogo, rutinas, entrenamientos, autenticación y perfil ya están migrados.
-- El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros; falta reducir los tipos manuales de ciclo sin duplicar esa infraestructura.
+- El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros. Mantener la prueba arquitectónica verde ante nuevos consumidores.
 - Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.

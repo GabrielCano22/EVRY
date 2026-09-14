@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { components } from '@evry/api-client';
-import { requestOrThrow } from '@/lib/api';
 import { currentSessionGeneration } from '@/lib/auth-session';
 import { useAutenticacion } from '@/lib/auth-store';
+import { getCycleCalendar, type CycleEntry } from '@/lib/cycle-api';
+import { getProgressActivity, type ProgressActivitySession as ActivitySession } from '@/lib/progress-api';
 import { cycleCivilDate } from '@/lib/cycle-date';
 import {
   calendarMonthCells, civilDate, compareCivil, formatCivilDate, monthRange, parseCivilDate, todayCivil,
@@ -13,11 +13,6 @@ import {
 } from '@/lib/civil-date';
 import { cn } from '@/lib/utils';
 import { Icon } from './ui/Icon';
-
-type Activity = components['schemas']['ProgressActivity'];
-type ActivitySession = components['schemas']['ProgressActivitySession'];
-type CycleEntry = components['schemas']['CycleEntry'];
-type CycleCalendar = components['schemas']['CycleCalendar'];
 
 const DIAS_ABREV = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -120,12 +115,12 @@ function CalendarioPorCuenta({ usuario }: { usuario: NonNullable<ReturnType<type
   const activity = useQuery({
     queryKey: activityKey,
     enabled: activityEnabled,
-    queryFn: ({ signal }) => requestOrThrow<Activity>(`/progress/activity?from=${rango.from}&to=${activityTo}`, { signal }),
+    queryFn: ({ signal }) => getProgressActivity({ from: rango.from, to: activityTo }, signal),
   });
   const cycle = useQuery({
     queryKey: cycleKey,
     enabled: muestraCiclo,
-    queryFn: ({ signal }) => requestOrThrow<CycleCalendar>(`/cycle/calendar?from=${rango.from}&to=${rango.to}`, { signal }),
+    queryFn: ({ signal }) => getCycleCalendar({ from: rango.from, to: rango.to }, signal),
   });
 
   useEffect(() => {

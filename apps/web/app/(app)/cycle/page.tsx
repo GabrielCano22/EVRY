@@ -1,9 +1,17 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { api, request } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
-import type { RegistroCiclo, Flujo, InfoFase } from '@/lib/types';
+import { currentSessionGeneration } from '@/lib/auth-session';
+import {
+  deleteCycleEntry,
+  getCycleToday,
+  listCycleEntries,
+  upsertCycleEntry,
+  type CycleEntry,
+  type CycleEntryInput,
+} from '@/lib/cycle-api';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { formatearFecha } from '@/lib/utils';
@@ -13,7 +21,18 @@ import { cycleCivilDate } from '@/lib/cycle-date';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { recentRecordsState, type CycleLoadState } from '@/lib/cycle-view-state';
 
-const flujos: { valor: Flujo; etiqueta: string; clase: string }[] = [
+type CycleFlow = CycleEntry['flow'];
+interface CycleEntryDraft {
+  date: string;
+  flow: CycleFlow;
+  symptoms: string[];
+  energy: number | null;
+  mood: number | null;
+  notes: string;
+  isPeriodStart: boolean;
+}
+
+const flujos: { valor: CycleFlow; etiqueta: string; clase: string }[] = [
   { valor: 'NONE', etiqueta: 'Ninguno', clase: 'bg-surface-dim' },
   { valor: 'SPOTTING', etiqueta: 'Manchas', clase: 'bg-tertiary/30' },
   { valor: 'LIGHT', etiqueta: 'Ligero', clase: 'bg-tertiary/50' },
@@ -22,7 +41,7 @@ const flujos: { valor: Flujo; etiqueta: string; clase: string }[] = [
 ];
 
 const ETIQUETAS_FLUJO = Object.fromEntries(flujos.map((flujo) => [flujo.valor, flujo.etiqueta])) as Record<
-  Flujo,
+  CycleFlow,
   string
 >;
 
@@ -67,11 +86,12 @@ export default function PaginaCiclo() {
 }
 
 function ContenidoCiclo() {
-  const [fase, setFase] = useState<InfoFase | null>(null);
-  const [registros, setRegistros] = useState<RegistroCiclo[]>([]);
-  const [hoy, setHoy] = useState({
+  const userId = useAutenticacion((state) => state.usuario?.id);
+  const queryClient = useQueryClient();
+  const queryKey = ['cycle-journal', userId, currentSessionGeneration()] as const;
+  const [hoy, setHoy] = useState<CycleEntryDraft>({
     date: todayCivil() as string,
-    flow: 'NONE' as Flujo,
+    flow: 'NONE' as CycleFlow,
     symptoms: [] as string[],
     energy: 3,
     mood: 3,
@@ -79,22 +99,38 @@ function ContenidoCiclo() {
     isPeriodStart: false,
   });
   const [editandoFecha, setEditandoFecha] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
   const [mensajeAccion, setMensajeAccion] = useState<string | null>(null);
-  const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const [estadoCarga, setEstadoCarga] = useState<CycleLoadState>('loading');
-  const solicitudActual = useRef(0);
-  const controladorActual = useRef<AbortController | null>(null);
   const montado = useRef(true);
+
+  const diario = useQuery({
+    queryKey,
+    enabled: !!userId,
+    queryFn: async ({ signal }) => {
+      const [phase, entries] = await Promise.all([
+        getCycleToday(signal),
+        listCycleEntries({}, signal),
+      ]);
+      return { phase, entries };
+    },
+  });
+  const fase = diario.data?.phase ?? null;
+  const registros = diario.data?.entries ?? [];
+  const estadoCarga: CycleLoadState = diario.isPending
+    ? 'loading'
+    : diario.isError && !diario.data
+      ? 'error'
+      : fase === null && registros.length === 0
+        ? 'empty'
+        : 'success';
 
   function fechaClave(fecha: string): string {
     return cycleCivilDate(fecha);
   }
 
-  function formularioVacio() {
+  function formularioVacio(): CycleEntryDraft {
     return {
       date: todayCivil() as string,
-      flow: 'NONE' as Flujo,
+      flow: 'NONE' as CycleFlow,
       symptoms: [] as string[],
       energy: 3,
       mood: 3,
@@ -103,47 +139,21 @@ function ContenidoCiclo() {
     };
   }
 
-  async function cargar() {
-    controladorActual.current?.abort();
-    const controlador = new AbortController();
-    controladorActual.current = controlador;
-    const solicitud = ++solicitudActual.current;
-    setEstadoCarga('loading');
-    setErrorCarga(null);
-    const [f, r] = await Promise.all([
-      request<InfoFase | null>('/cycle/today', { signal: controlador.signal }),
-      request<RegistroCiclo[]>('/cycle/entries', { signal: controlador.signal }),
-    ]);
-    if (solicitud !== solicitudActual.current) return;
-    if (f.ok) setFase(f.data);
-    if (r.ok) setRegistros(r.data);
-    const error = !f.ok ? f.error : !r.ok ? r.error : null;
-    if (error && error.code !== 'aborted') {
-      setErrorCarga(error.message);
-      setEstadoCarga('error');
-    } else if (f.ok && r.ok) {
-      setEstadoCarga(f.data === null && r.data.length === 0 ? 'empty' : 'success');
-    }
-  }
-
   useEffect(() => {
     montado.current = true;
-    void cargar();
     return () => {
       montado.current = false;
-      solicitudActual.current += 1;
-      controladorActual.current?.abort();
     };
   }, []);
 
-  function editarRegistro(registro: RegistroCiclo) {
+  function editarRegistro(registro: CycleEntry) {
     const date = fechaClave(registro.date);
     setHoy({
       date,
       flow: registro.flow,
       symptoms: [...registro.symptoms],
-      energy: registro.energy ?? 3,
-      mood: registro.mood ?? 3,
+      energy: registro.energy,
+      mood: registro.mood,
       notes: registro.notes ?? '',
       isPeriodStart: registro.isPeriodStart,
     });
@@ -166,29 +176,50 @@ function ContenidoCiclo() {
     }));
   }
 
-  async function guardar() {
-    setGuardando(true);
-    setMensajeAccion(null);
-    try {
-      const payload = editandoFecha
-        ? { ...hoy, previousDate: editandoFecha }
-        : hoy;
-      await api('/cycle/entries', { method: 'POST', json: payload });
+  const guardarRegistro = useMutation({
+    mutationFn: (payload: CycleEntryInput) => upsertCycleEntry(payload),
+    onSuccess: async (_saved, payload) => {
       if (!montado.current) return;
-      await cargar();
+      await queryClient.invalidateQueries({ queryKey });
       if (!montado.current) return;
-      setEditandoFecha(hoy.date);
+      setEditandoFecha(payload.date);
       setMensajeAccion('Registro guardado. El calendario se actualizó.');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('evry:cycle-updated', { detail: { date: hoy.date } }),
-        );
-      }
-    } catch (error) {
-      setMensajeAccion(error instanceof Error ? error.message : 'No se pudo guardar el registro.');
-    } finally {
-      setGuardando(false);
-    }
+      window.dispatchEvent(new CustomEvent('evry:cycle-updated', { detail: { date: payload.date } }));
+    },
+    onError: (error) => {
+      if (!montado.current) return;
+      setMensajeAccion(error instanceof Error ? `No se pudo guardar el registro. ${error.message}` : 'No se pudo guardar el registro.');
+    },
+  });
+
+  function guardar() {
+    if (guardarRegistro.isPending) return;
+    setMensajeAccion(null);
+    guardarRegistro.mutate(editandoFecha ? { ...hoy, previousDate: editandoFecha } : hoy);
+  }
+
+  const eliminarRegistro = useMutation({
+    mutationFn: ({ id }: { id: string; date: string }) => deleteCycleEntry(id),
+    onSuccess: async (_result, deleted) => {
+      if (!montado.current) return;
+      await queryClient.invalidateQueries({ queryKey });
+      if (!montado.current) return;
+      if (editandoFecha === deleted.date) nuevoRegistro();
+      setMensajeAccion('Registro eliminado. El calendario se actualizó.');
+      window.dispatchEvent(new CustomEvent('evry:cycle-updated', { detail: { date: deleted.date } }));
+    },
+    onError: (error) => {
+      if (!montado.current) return;
+      setMensajeAccion(error instanceof Error ? `No se pudo eliminar el registro. ${error.message}` : 'No se pudo eliminar el registro.');
+    },
+  });
+
+  function confirmarEliminacion(registro: CycleEntry) {
+    if (eliminarRegistro.isPending) return;
+    const date = fechaClave(registro.date);
+    if (!window.confirm(`¿Eliminar el registro del ${formatearFecha(date)}?`)) return;
+    setMensajeAccion(null);
+    eliminarRegistro.mutate({ id: registro.id, date });
   }
 
   return (
@@ -208,7 +239,7 @@ function ContenidoCiclo() {
         </div>
       </header>
       {estadoCarga === 'loading' && <p role="status" className="text-on-surface-variant">Cargando datos del ciclo…</p>}
-      {estadoCarga === 'error' && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. {errorCarga} <button type="button" onClick={() => void cargar()} className="underline">Reintentar</button></p>}
+      {diario.isError && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. {diario.error instanceof Error && `${diario.error.message} `}{diario.data && 'Mostramos la última consulta correcta. '}<button type="button" onClick={() => void diario.refetch()} className="underline">Reintentar</button></p>}
 
       {estadoCarga === 'success' && fase ? (
         <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">
@@ -265,6 +296,7 @@ function ContenidoCiclo() {
             <input
               id="ciclo-fecha"
               type="date"
+              max={todayCivil()}
               value={hoy.date}
               onChange={(e) => setHoy({ ...hoy, date: e.target.value })}
               className="rounded-lg border border-white/10 bg-surface-container-low px-sm py-xs text-sm normal-case text-on-surface outline-none focus:border-primary"
@@ -370,9 +402,9 @@ function ContenidoCiclo() {
           />
         </label>
 
-        <Button onClick={guardar} className="w-full" size="lg" loading={guardando} disabled={guardando}>
+        <Button onClick={guardar} className="w-full" size="lg" loading={guardarRegistro.isPending} disabled={guardarRegistro.isPending}>
           <Icon name="save" />
-          {guardando ? 'Guardando…' : 'Guardar registro'}
+          {guardarRegistro.isPending ? 'Guardando…' : 'Guardar registro'}
         </Button>
         {mensajeAccion && (
           <p
@@ -415,6 +447,16 @@ function ContenidoCiclo() {
                     <Icon name="edit" size={13} />
                     Editar
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmarEliminacion(r)}
+                    disabled={eliminarRegistro.isPending}
+                    className="inline-flex items-center gap-1 rounded border border-error/30 px-xs py-1 font-grotesk text-[10px] uppercase tracking-wider text-error hover:bg-error/10 disabled:opacity-50"
+                    aria-label={`Eliminar registro del ciclo ${fechaClave(r.date) === todayCivil() ? 'de hoy' : `del ${formatearFecha(fechaClave(r.date))}`}`}
+                  >
+                    <Icon name="delete" size={13} />
+                    Eliminar
+                  </button>
                   {r.flow !== 'NONE' && (
                     <span className="font-grotesk tracking-wider text-tertiary uppercase">
                       {ETIQUETAS_FLUJO[r.flow] ?? r.flow}
@@ -438,19 +480,33 @@ function SelectorRango({
   onChange,
 }: {
   etiqueta: string;
-  valor: number;
-  onChange: (v: number) => void;
+  valor: number | null;
+  onChange: (v: number | null) => void;
 }) {
   return (
-    <div>
+    <div role="group" aria-label={etiqueta}>
       <span className="font-grotesk text-label-caps tracking-wider text-on-surface-variant mb-sm block uppercase">
-        {etiqueta} · {valor}/5
+        {etiqueta} · {valor === null ? 'Sin dato' : `${valor}/5`}
       </span>
-      <div className="flex gap-xs">
+      <div className="grid grid-cols-3 gap-xs sm:grid-cols-6">
+        <button
+          type="button"
+          aria-pressed={valor === null}
+          onClick={() => onChange(null)}
+          className={cn(
+            'rounded-lg border py-sm font-grotesk text-xs transition-all',
+            valor === null
+              ? 'border-primary bg-primary text-on-primary'
+              : 'border-white/10 bg-surface-container-low text-on-surface-variant',
+          )}
+        >
+          Sin dato
+        </button>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
             type="button"
+            aria-pressed={valor === n}
             onClick={() => onChange(n)}
             className={cn(
               'flex-1 py-sm rounded-lg font-grotesk text-sm border transition-all',

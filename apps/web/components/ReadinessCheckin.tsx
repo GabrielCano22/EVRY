@@ -1,15 +1,12 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { components } from '@evry/api-client';
-import { requestOrThrow } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
 import { currentSessionGeneration } from '@/lib/auth-session';
+import { getLatestReadiness, saveReadiness, type Readiness } from '@/lib/readiness-api';
 import { Button } from './ui/Button';
 import { Icon } from './ui/Icon';
 import { civilDate, timestampToLocalCivil, todayCivil } from '@/lib/civil-date';
-
-type Readiness = components['schemas']['Readiness'];
 
 export function useDailyReadiness() {
   const userId = useAutenticacion(state => state.usuario?.id);
@@ -18,7 +15,7 @@ export function useDailyReadiness() {
   const query = useQuery({
     queryKey,
     enabled: !!userId,
-    queryFn: ({ signal }) => requestOrThrow<Readiness | null>('/readiness/latest', { signal }),
+    queryFn: ({ signal }) => getLatestReadiness(signal),
     select: (value: Readiness | null) => {
       if (!value) return null;
       // civilDate is a calendar label stored at UTC midnight, not a local instant.
@@ -35,7 +32,7 @@ export function ReadinessCheckin() {
   const [abierto, setAbierto] = useState(false);
   const [datos, setDatos] = useState({ sleepHrs: 7, stress: 3, soreness: 2, motivation: 4 });
   const guardar = useMutation({
-    mutationFn: () => requestOrThrow<Readiness>('/readiness/checkin', { method: 'POST', body: datos }),
+    mutationFn: () => saveReadiness(datos),
     onSuccess: (respuesta) => {
       queryClient.setQueryData(ultimo.queryKey, respuesta);
       setAbierto(false);

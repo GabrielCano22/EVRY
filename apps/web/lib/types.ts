@@ -39,10 +39,10 @@ export type Equipo =
   | 'OTHER';
 export type Equipment = Equipo;
 
-export type FaseCiclo = 'MENSTRUAL' | 'FOLLICULAR' | 'OVULATION' | 'LUTEAL';
+export type FaseCiclo = components['schemas']['CyclePhaseInfo']['phase'];
 export type CyclePhase = FaseCiclo;
 
-export type Flujo = 'NONE' | 'SPOTTING' | 'LIGHT' | 'MEDIUM' | 'HEAVY';
+export type Flujo = components['schemas']['CycleEntry']['flow'];
 export type Flow = Flujo;
 
 export type Usuario = EsquemaUsuario;
@@ -51,41 +51,11 @@ export type User = Usuario;
 export type EstadoAutenticacionRemota = 'checking' | 'authenticated' | 'anonymous' | 'error';
 export type AuthStatus = EstadoAutenticacionRemota;
 
-export interface RegistroCiclo {
-  id: string;
-  date: string;
-  flow: Flujo;
-  symptoms: string[];
-  energy: number | null;
-  mood: number | null;
-  notes: string | null;
-  isPeriodStart: boolean;
-}
+export type RegistroCiclo = components['schemas']['CycleEntry'];
 export type CycleEntry = RegistroCiclo;
 
-export interface InfoFase {
-  phase: FaseCiclo;
-  dayOfCycle: number;
-  cycleLength: number;
-  nextPeriodStart: string | null;
-  trainingHint: string;
-  intensityCap: number;
-  volumeCap: number;
-}
+export type InfoFase = components['schemas']['CyclePhaseInfo'];
 export type PhaseInfo = InfoFase;
 
-export interface ResumenProgreso {
-  windowDays: number;
-  workoutsCompleted: number;
-  volumeKg: number;
-  topExercises: Array<{
-    exerciseId: string;
-    name: string;
-    estimated1RM: number;
-    bestWeight: number;
-    bestReps: number;
-    trendSlope: number;
-    sessionsCount: number;
-  }>;
-}
+export type ResumenProgreso = components['schemas']['ProgressOverview'];
 export type ProgressOverview = ResumenProgreso;

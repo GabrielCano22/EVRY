@@ -4,19 +4,18 @@ import { useDeferredValue, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import type { components } from '@evry/api-client';
-import { requestOrThrow } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
+import { listExercises } from '@/lib/training-api';
+import { getProgressOverview, type ProgressPeriod } from '@/lib/progress-api';
 
 const ExerciseChart = dynamic(() => import('@/components/ExerciseChart').then((module) => module.ExerciseChart), {
   ssr: false,
   loading: () => <p role="status">Cargando gráfica…</p>,
 });
-type Overview = components['schemas']['ProgressOverview'];
-type Period = Overview['period']['key'];
 type Exercise = Pick<components['schemas']['ExerciseListItemDto'], 'id' | 'name'>;
-const PERIODS: { value: Period; label: string }[] = [
+const PERIODS: { value: ProgressPeriod; label: string }[] = [
   { value: '30d', label: '30 días' }, { value: '90d', label: '90 días' },
   { value: '6m', label: '6 meses' }, { value: '1y', label: '1 año' }, { value: 'all', label: 'Todo' },
 ];
@@ -24,20 +23,18 @@ const number = (value: number) => value.toLocaleString('es-CO', { maximumFractio
 
 export function ProgressPage() {
   const userId = useAutenticacion((state) => state.usuario?.id);
-  const [period, setPeriod] = useState<Period>('30d');
+  const [period, setPeriod] = useState<ProgressPeriod>('30d');
   const [selected, setSelected] = useState<Exercise | null>(null);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
   const overview = useQuery({
     queryKey: ['progress', userId, period],
-    queryFn: ({ signal }) => requestOrThrow<Overview>(`/progress/overview?period=${period}`, { signal }),
+    queryFn: ({ signal }) => getProgressOverview(period, signal),
   });
   const catalog = useQuery({
     queryKey: ['progress-exercise-search', userId, deferredSearch],
     enabled: deferredSearch.length > 0,
-    queryFn: ({ signal }) => requestOrThrow<components['schemas']['ExercisePageDto']>(
-      `/exercises?q=${encodeURIComponent(deferredSearch)}&limit=30`, { signal },
-    ),
+    queryFn: ({ signal }) => listExercises({ q: deferredSearch, limit: 30 }, signal),
   });
   const data = overview.data;
   const recordExercises = data ? [...new Map(data.records.map((record) => [
@@ -53,7 +50,7 @@ export function ProgressPage() {
           <p className="text-on-surface-variant">Sesiones completadas y cambios reales entre periodos.</p>
         </div>
         <label className="grid gap-xs text-sm">Periodo de progreso
-          <select className="rounded-lg border border-outline bg-surface-container p-sm" value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
+          <select className="rounded-lg border border-outline bg-surface-container p-sm" value={period} onChange={(event) => setPeriod(event.target.value as ProgressPeriod)}>
             {PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>

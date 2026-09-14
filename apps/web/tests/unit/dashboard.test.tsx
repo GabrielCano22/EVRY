@@ -29,8 +29,8 @@ const overview: components['schemas']['ProgressOverview'] = {
     endedAt: '2026-09-03T17:00:00Z', setCount: 4, volumeKg: 850,
   }],
 };
-let answerOverview: (init?: RequestInit) => Promise<Response>;
-let answerReadiness: (init?: RequestInit) => Promise<Response>;
+let answerOverview: (request: Request) => Promise<Response>;
+let answerReadiness: (request: Request) => Promise<Response>;
 const calls: URL[] = [];
 let client: QueryClient;
 
@@ -43,11 +43,12 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   useAutenticacion.setState({ usuario: user, estado: 'authenticated', cargando: false, error: null });
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
+    const request = input instanceof Request ? input.clone() : new Request(input, init);
+    const url = new URL(request.url);
     calls.push(url);
-    if (url.pathname.endsWith('/progress/overview')) return answerOverview(init);
+    if (url.pathname.endsWith('/progress/overview')) return answerOverview(request);
     if (url.pathname.endsWith('/workouts')) throw new Error('Dashboard must not fetch full workouts');
-    if (url.pathname.includes('/readiness/')) return answerReadiness(init);
+    if (url.pathname.includes('/readiness/')) return answerReadiness(request);
     throw new Error(`Unexpected request: ${url}`);
   }));
 });
@@ -82,6 +83,7 @@ it('does not report zero metrics or empty records while progress is loading', as
   show();
   expect(screen.queryByRole('heading', { name: 'Sesiones 30D' })).not.toBeInTheDocument();
   expect(screen.queryByText('Termina algunas sesiones para ver tus mejores marcas.')).not.toBeInTheDocument();
+  await waitFor(() => expect(resolve).toBeTypeOf('function'));
   await act(async () => resolve(Response.json(overview)));
   await waitFor(() => expect(sessions()).toHaveTextContent('4'));
 });
@@ -110,7 +112,7 @@ it('shows a genuine empty period without inventing a comparison', async () => {
 it('cancels the old account request and never shows its late records in a new account', async () => {
   let resolve!: (response: Response) => void;
   let signal: AbortSignal | null | undefined;
-  answerOverview = init => { signal = init?.signal; return new Promise(done => { resolve = done; }); };
+  answerOverview = request => { signal = request.signal; return new Promise(done => { resolve = done; }); };
   show();
   await waitFor(() => expect(signal).toBeDefined());
   answerOverview = async () => Response.json({ ...overview, summary: { ...overview.summary, sessionsCompleted: 7 }, records: [] });
@@ -146,8 +148,8 @@ it('shows a failed check-in without losing the form and lets the user retry', as
   expect(screen.getByRole('slider', { name: 'Estrés' })).toHaveValue('5');
   expect(screen.getByRole('group', { name: 'Estado del día' })).toHaveTextContent('Sin registro de hoy');
   let saved: unknown;
-  answerReadiness = async init => {
-    saved = JSON.parse(String(init?.body));
+  answerReadiness = async request => {
+    saved = JSON.parse(await request.text());
     return Response.json({ id: 'ready-1', userId: user.id, date: '2026-09-04T17:00:00Z', civilDate: '2026-09-04T00:00:00.000Z',
       sleepHrs: 7, stress: 5, soreness: 2, motivation: 4, score: 55 });
   };
