@@ -4273,7 +4273,10 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "description": "Leading and trailing whitespace is removed before validation."
           },
           "biologicalSex": {
             "enum": [
@@ -4291,6 +4294,8 @@
           },
           "goals": {
             "type": "array",
+            "uniqueItems": true,
+            "maxItems": 6,
             "items": {
               "type": "string",
               "enum": [

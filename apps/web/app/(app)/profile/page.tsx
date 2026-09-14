@@ -125,6 +125,8 @@ function FormularioPerfil({ usuario }: { usuario: User }) {
           label="Nombre"
           icon="person"
           required
+          minLength={2}
+          maxLength={100}
           value={datos.name}
           onChange={(evento) => setDatos((actual) => ({ ...actual, name: evento.target.value }))}
           error={erroresCampos?.name?.[0]}
