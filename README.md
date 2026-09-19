@@ -83,6 +83,8 @@ El selector consulta el catálogo del backend. Las miniaturas, GIF e instruccion
 
 Expo almacena catálogo, rutinas, sesión activa, series, cola y mapeo de IDs en SQLite. Sincroniza al abrir, recuperar red, volver al primer plano y finalizar. Los conflictos de revisión o de sesión activa requieren elegir entre la versión del servidor y un borrador local recuperado; nunca se mezclan automáticamente. El access token queda en memoria y el refresh rotativo en SecureStore.
 
+En desarrollo móvil se puede omitir `EXPO_PUBLIC_API_BASE_URL` para usar el emulador Android en `http://10.0.2.2:4000/api/v1`, o definir otro origen HTTP local. Los exports y builds de release exigen una URL HTTPS explícita que termine exactamente en `/api/v1`; la validación se ejecuta antes de generar el artefacto.
+
 ## Automatización y política de despliegue
 
 `.github/workflows/ci.yml` valida contrato generado, tipos, lint, pruebas web/móvil, build Next.js, Expo Doctor, exports Android/iOS y Playwright con PostgreSQL aislado. EVRY no se despliega sin autorización explícita. Render y Cloudflare quedan excluidos; cualquier despliegue futuro se gestionará completamente desde Vercel. La política vigente y la distribución móvil privada están en `docs/operations/staging.md`.
