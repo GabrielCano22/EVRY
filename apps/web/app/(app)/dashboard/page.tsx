@@ -11,6 +11,7 @@ import { ReadinessCheckin, useDailyReadiness } from '@/components/ReadinessCheck
 import { formatearFechaHora, cn } from '@/lib/utils';
 import { formatCivilDate, todayCivil } from '@/lib/civil-date';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
+import { ExerciseDetailButton } from '@/components/ExerciseDetail';
 import { fraseDelDia as obtenerFraseDelDia } from '@/lib/motivacion';
 
 const FASES_ESPANOL: Record<string, string> = {
@@ -228,7 +229,7 @@ function ResumenInicio() {
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-body-md text-on-surface truncate">{traducirNombreEjercicio(ej.exerciseName)}</p>
+                    <ExerciseDetailButton exerciseId={ej.exerciseId} className="font-body-md text-on-surface truncate">{traducirNombreEjercicio(ej.exerciseName)}</ExerciseDetailButton>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
                       {ej.kind === 'WEIGHT' ? 'Peso máximo' : ej.kind === 'REPS' ? 'Repeticiones máximas' : '1RM estimado'}
                     </p>

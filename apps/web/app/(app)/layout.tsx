@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAutenticacion } from '@/lib/auth-store';
 import { AppShell } from '@/components/AppShell';
+import { ExerciseDetailProvider } from '@/components/ExerciseDetail';
 
 export default function LayoutApp({ children }: { children: React.ReactNode }) {
   const { usuario, estado, inicializar } = useAutenticacion();
@@ -36,14 +37,14 @@ export default function LayoutApp({ children }: { children: React.ReactNode }) {
   }
   if (estado === 'error' && usuario) {
     return (
-      <AppShell>
+      <ExerciseDetailProvider><AppShell>
         <div role="alert" className="mx-container-padding mt-md rounded-lg border border-error/30 bg-error/10 p-sm text-sm text-on-surface">
           No pudimos actualizar tu sesión. Mostramos la información conocida; puedes reintentar más tarde.
         </div>
         {children}
-      </AppShell>
+      </AppShell></ExerciseDetailProvider>
     );
   }
   if (!usuario) return null;
-  return <AppShell>{children}</AppShell>;
+  return <ExerciseDetailProvider><AppShell>{children}</AppShell></ExerciseDetailProvider>;
 }

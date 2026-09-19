@@ -12,6 +12,7 @@ import {
 import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExerciseMedia } from './ExerciseMedia';
+import { ExerciseDetailButton } from './ExerciseDetail';
 import {
   etiquetaEquipo,
   etiquetaGrupoMuscular,
@@ -275,11 +276,11 @@ const OpcionEjercicio = memo(function OpcionEjercicio({
   onPick: (ejercicio: ExerciseListItem) => void;
 }) {
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onPick(ejercicio)}
-        className="flex w-full items-center gap-md rounded-lg border border-white/5 bg-surface-container-low p-sm text-left transition-all hover:border-primary/40 hover:bg-surface-container"
+    <li className="flex items-center gap-sm rounded-lg border border-white/5 bg-surface-container-low p-sm">
+      <ExerciseDetailButton
+        exerciseId={ejercicio.id}
+        aria-label={`Ver ${traducirNombreEjercicio(ejercicio.name)}`}
+        className="flex min-w-0 flex-1 items-center gap-md text-left hover:text-primary"
       >
         <ExerciseMedia exercise={ejercicio} />
         <div className="min-w-0 flex-1">
@@ -310,7 +311,9 @@ const OpcionEjercicio = memo(function OpcionEjercicio({
             ))}
           </div>
         )}
-      </button>
+      </ExerciseDetailButton>
+      <button type="button" onClick={() => onPick(ejercicio)} aria-label={`Agregar ${traducirNombreEjercicio(ejercicio.name)}`}
+        className="shrink-0 rounded-lg border border-primary/30 px-sm py-xs text-primary hover:bg-primary/10">Agregar</button>
     </li>
   );
 });

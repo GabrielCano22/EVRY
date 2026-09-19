@@ -17,6 +17,7 @@ import { Input } from './ui/Input';
 import { Icon } from './ui/Icon';
 import { ExercisePicker } from './ExercisePicker';
 import { ExerciseMedia } from './ExerciseMedia';
+import { ExerciseDetailButton } from './ExerciseDetail';
 import { cn } from '@/lib/utils';
 import { MapaMuscular } from './MapaMuscular';
 import {
@@ -317,9 +318,9 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                     {idx + 1}
                   </div>
                   <div>
-                    <p className="font-body-lg text-on-surface">
+                    <ExerciseDetailButton exerciseId={it.exerciseId} className="font-body-lg text-on-surface">
                       {traducirNombreEjercicio(it.exercise.name)}
-                    </p>
+                    </ExerciseDetailButton>
                     <p className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
                       {etiquetaGrupoMuscular(it.exercise.muscleGroup)} · {etiquetaEquipo(it.exercise.equipment)}
                     </p>

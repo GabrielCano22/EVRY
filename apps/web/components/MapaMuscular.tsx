@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { components } from '@evry/api-client';
 import { cn } from '@/lib/utils';
 
@@ -160,6 +160,9 @@ function Region({
 }
 
 export function MapaMuscular({ ejercicios }: { ejercicios: EjercicioMapa[] }) {
+  const accessibleId = useId();
+  const titleId = `${accessibleId}-title`;
+  const descriptionId = `${accessibleId}-description`;
   const [sexo, setSexo] = useState<SexoMapa>('MASCULINO');
   const [vista, setVista] = useState<VistaCuerpo>('FRENTE');
   const activos = useMemo(() => new Set(obtenerMusculos(ejercicios)), [ejercicios]);
@@ -239,9 +242,9 @@ export function MapaMuscular({ ejercicios }: { ejercicios: EjercicioMapa[] }) {
       </div>
 
       <div className="flex justify-center rounded-lg bg-background/60 py-sm">
-        <svg viewBox="0 0 240 360" className="h-auto w-full max-w-[210px]" role="img" aria-labelledby="mapa-muscular-titulo mapa-muscular-descripcion">
-          <title id="mapa-muscular-titulo">Mapa de músculos trabajados</title>
-          <desc id="mapa-muscular-descripcion">Silueta {sexo === 'FEMENINO' ? 'femenina' : 'masculina'} en vista de {vista.toLowerCase()}. El azul indica músculos principales y el morado músculos secundarios.</desc>
+        <svg viewBox="0 0 240 360" className="h-auto w-full max-w-[210px]" role="img" aria-labelledby={`${titleId} ${descriptionId}`}>
+          <title id={titleId}>Mapa de músculos trabajados</title>
+          <desc id={descriptionId}>Silueta {sexo === 'FEMENINO' ? 'femenina' : 'masculina'} en vista de {vista.toLowerCase()}. El azul indica músculos principales y el morado músculos secundarios.</desc>
           <circle cx="120" cy="52" r="25" fill="#263746" stroke="#425364" strokeWidth="1.2" />
           <Region id="cuello" active={activos.has('cuello')} label={ETIQUETAS.cuello} d="M105 73 L135 73 L137 96 L103 96 Z" />
           {vista === 'FRENTE' ? (

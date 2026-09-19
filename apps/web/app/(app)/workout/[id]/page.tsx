@@ -22,6 +22,7 @@ import { Stepper } from '@/components/ui/Stepper';
 import { ExercisePicker } from '@/components/ExercisePicker';
 import { RestTimer } from '@/components/RestTimer';
 import { ExerciseMedia } from '@/components/ExerciseMedia';
+import { ExerciseDetailButton } from '@/components/ExerciseDetail';
 import { formatearFechaHora } from '@/lib/utils';
 import { getExerciseInstruction } from '@/lib/exercise-media';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
@@ -267,7 +268,7 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
                     </div>
                     <div>
                       <h2 className="font-headline-md text-lg text-on-surface">
-                        {ejercicio ? traducirNombreEjercicio(ejercicio.name) : 'Ejercicio'}
+                        <ExerciseDetailButton exerciseId={item.id}>{ejercicio ? traducirNombreEjercicio(ejercicio.name) : 'Ejercicio'}</ExerciseDetailButton>
                       </h2>
                       {item.targetSets && (
                         <p className="font-grotesk text-[10px] tracking-wider text-on-surface-variant">
@@ -383,13 +384,13 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
             <div className="bg-surface-container rounded-xl p-lg border border-white/5">
               <div className="flex items-center justify-between mb-md">
                 <div className="flex items-center gap-md">
-                  <ExerciseMedia exercise={ejercicioActivo} variant="detail" className="hidden h-20 w-20 sm:block" />
+                  <ExerciseMedia exercise={ejercicioActivo} className="hidden h-20 w-20 sm:block" />
                   <div>
                   <span className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-primary block">
                     Registrando
                   </span>
                   <h3 className="font-headline-md text-headline-md text-on-surface">
-                    {traducirNombreEjercicio(ejercicioActivo.name)}
+                    <ExerciseDetailButton exerciseId={ejercicioActivo.id}>{traducirNombreEjercicio(ejercicioActivo.name)}</ExerciseDetailButton>
                   </h3>
                   </div>
                 </div>
@@ -402,6 +403,7 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
                 </button>
               </div>
 
+              <ExerciseDetailButton exerciseId={ejercicioActivo.id} tab="instructions" className="mb-md text-primary underline">Ver indicaciones</ExerciseDetailButton>
               {getExerciseInstruction(ejercicioActivo).length > 0 && (
                 <div className="mb-md rounded-lg border border-white/5 bg-surface-container-low p-md">
                   <div className="mb-sm flex items-center gap-xs">
