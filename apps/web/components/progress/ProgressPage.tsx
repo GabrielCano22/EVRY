@@ -1,20 +1,14 @@
 'use client';
 
 import { useDeferredValue, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
-import type { components } from '@evry/api-client';
+import { ExerciseDetailButton } from '@/components/ExerciseDetail';
 import { useAutenticacion } from '@/lib/auth-store';
 import { CalendarioActividad } from '@/components/CalendarioActividad';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 import { listExercises } from '@/lib/training-api';
 import { getProgressOverview, type ProgressPeriod } from '@/lib/progress-api';
 
-const ExerciseChart = dynamic(() => import('@/components/ExerciseChart').then((module) => module.ExerciseChart), {
-  ssr: false,
-  loading: () => <p role="status">Cargando gráfica…</p>,
-});
-type Exercise = Pick<components['schemas']['ExerciseListItemDto'], 'id' | 'name'>;
 const PERIODS: { value: ProgressPeriod; label: string }[] = [
   { value: '30d', label: '30 días' }, { value: '90d', label: '90 días' },
   { value: '6m', label: '6 meses' }, { value: '1y', label: '1 año' }, { value: 'all', label: 'Todo' },
@@ -24,7 +18,6 @@ const number = (value: number) => value.toLocaleString('es-CO', { maximumFractio
 export function ProgressPage() {
   const userId = useAutenticacion((state) => state.usuario?.id);
   const [period, setPeriod] = useState<ProgressPeriod>('30d');
-  const [selected, setSelected] = useState<Exercise | null>(null);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
   const overview = useQuery({
@@ -40,7 +33,6 @@ export function ProgressPage() {
   const recordExercises = data ? [...new Map(data.records.map((record) => [
     record.exerciseId, { id: record.exerciseId, name: record.exerciseName },
   ])).values()] : [];
-  const exercise = selected ?? recordExercises[0] ?? null;
 
   return (
     <div className="space-y-lg">
@@ -90,21 +82,17 @@ export function ProgressPage() {
           {deferredSearch && catalog.isError && <p role="alert">No se pudo buscar. <button type="button" className="underline" onClick={() => void catalog.refetch()}>Reintentar búsqueda</button></p>}
           {deferredSearch && catalog.data?.items.length === 0 && <p>Sin resultados.</p>}
           <div className="flex flex-wrap gap-sm">
-            {(deferredSearch ? catalog.data?.items ?? [] : recordExercises).map((item) => <button
-              key={item.id} type="button" aria-pressed={exercise?.id === item.id}
-              className="rounded-lg border border-outline px-md py-sm aria-pressed:bg-primary/20"
-              onClick={() => setSelected(item)}>{traducirNombreEjercicio(item.name)}</button>)}
+            {(deferredSearch ? catalog.data?.items ?? [] : recordExercises).map((item) => <ExerciseDetailButton
+              key={item.id} exerciseId={item.id}
+              className="rounded-lg border border-outline px-md py-sm">{traducirNombreEjercicio(item.name)}</ExerciseDetailButton>)}
           </div>
-          {exercise ? <>
-            <h3 className="text-headline-sm">{traducirNombreEjercicio(exercise.name)}</h3>
-            <ExerciseChart exerciseId={exercise.id} period={period} />
-          </> : <p>Busca un ejercicio para consultar su evolución e historial.</p>}
+          <p>Abre un ejercicio para consultar su evolución e historial.</p>
         </section>
         <section className="space-y-sm" aria-label="Récords del periodo">
           <h2 className="text-headline-md">Récords del periodo</h2>
           {data.records.length === 0 ? <p>No se registraron nuevos récords.</p> : <ul className="space-y-sm">
             {data.records.map((record) => <li key={`${record.exerciseId}-${record.kind}`}>
-              {traducirNombreEjercicio(record.exerciseName)}: {number(record.value)} {record.kind === 'REPS' ? 'repeticiones' : 'kg'}
+              <ExerciseDetailButton exerciseId={record.exerciseId}>{traducirNombreEjercicio(record.exerciseName)}</ExerciseDetailButton>: {number(record.value)} {record.kind === 'REPS' ? 'repeticiones' : 'kg'}
               {record.kind === 'ESTIMATED_1RM' ? ' (1RM estimado)' : record.kind === 'WEIGHT' ? ' (carga)' : ''}
             </li>)}
           </ul>}

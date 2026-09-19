@@ -1,4 +1,5 @@
 'use client';
+import { ExerciseDetailButton } from '@/components/ExerciseDetail';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -379,7 +380,7 @@ function TarjetaRutina({
       <ul className="text-xs text-on-surface-variant space-y-px">
         {rutina.exercises.slice(0, 4).map((e) => (
           <li key={e.id}>
-             · {e.exercise ? traducirNombreEjercicio(e.exercise.name) : 'Ejercicio'}{' '}
+             · <ExerciseDetailButton exerciseId={e.exerciseId}>{e.exercise ? traducirNombreEjercicio(e.exercise.name) : 'Ejercicio'}</ExerciseDetailButton>{' '}
              <span className="text-outline">({e.targetSets} × {e.targetReps ?? '—'})</span>
           </li>
         ))}

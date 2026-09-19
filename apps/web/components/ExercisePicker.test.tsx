@@ -70,6 +70,13 @@ afterEach(() => {
 });
 
 describe('ExercisePicker remote catalog states', () => {
+  it('offers independent view and add actions for a catalog exercise', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(page([exercise('a', 'Sentadilla')])));
+    show();
+    await screen.findByText('Sentadilla');
+    expect(screen.getByRole('button', { name: 'Ver Sentadilla' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar Sentadilla' })).toBeInTheDocument();
+  });
   it('aborts the obsolete catalog read when the debounced search changes', async () => {
     const requests: Request[] = [];
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
