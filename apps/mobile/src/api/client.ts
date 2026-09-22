@@ -1,13 +1,14 @@
 import * as SecureStore from 'expo-secure-store';
 import { createEvryApiClient, type components } from '@evry/api-client';
 import type { DatabaseOwner } from '../db/database';
+import { resolveMobileApiBaseUrl } from './api-config';
 
 const REFRESH_TOKEN_KEY = 'evry.mobile.refresh-token';
 const PROFILE_KEY = 'evry.mobile.profile-v1';
 const TOKEN_ORIGIN_KEY = 'evry.mobile.token-origin';
-export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '')
-  || 'http://10.0.2.2:4000/api/v1'
+export const API_BASE_URL = resolveMobileApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL,
+  typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production',
 );
 
 let accessToken: string | null = null;

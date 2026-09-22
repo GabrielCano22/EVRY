@@ -68,6 +68,8 @@ test('prepara el origen público canónico y fixtures JWT de prueba seguros para
   expect(accessSecret).not.toBe(refreshSecret);
   expect(accessSecret?.length).toBeGreaterThanOrEqual(32);
   expect(refreshSecret?.length).toBeGreaterThanOrEqual(32);
+  expect(backendServer?.env?.JWT_ACCESS_TTL).toBe('15m');
+  expect(backendServer?.env?.JWT_REFRESH_TTL).toBe('30d');
 });
 
 test('aísla el origen del frontend E2E aunque el entorno reciba un valor externo', () => {

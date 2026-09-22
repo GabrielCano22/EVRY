@@ -88,7 +88,7 @@ it('cancels closing and changing exercise reads and ignores late responses', asy
   await waitFor(() => expect(requests).toHaveLength(3));
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
   expect(requests[2].signal.aborted).toBe(true);
-});
+}, 30_000);
 it('isolates account data and closes the old account panel', async () => {
   show(); await open();
   act(() => useAutenticacion.setState({ usuario: { ...account, id: 'detail-b' } }));

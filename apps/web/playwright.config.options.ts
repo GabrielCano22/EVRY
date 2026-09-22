@@ -17,6 +17,8 @@ const testTimeZone = 'America/Bogota';
 const testApiBaseUrl = 'http://127.0.0.1:4000/api/v1';
 const testAccessSecret = 'evry-playwright-access-secret-fixture-2026';
 const testRefreshSecret = 'evry-playwright-refresh-secret-fixture-2026';
+const testAccessTtl = '15m';
+const testRefreshTtl = '30d';
 
 function parsePostgresDatabaseUrl(url: string, variableName: string): DatabaseIdentity {
   let parsed: URL;
@@ -98,6 +100,8 @@ export function buildPlaywrightConfig({
     APP_TIME_ZONE: testTimeZone,
     JWT_ACCESS_SECRET: testAccessSecret,
     JWT_REFRESH_SECRET: testRefreshSecret,
+    JWT_ACCESS_TTL: testAccessTtl,
+    JWT_REFRESH_TTL: testRefreshTtl,
     SWAGGER_ENABLED: 'false',
     CORS_ORIGIN: 'http://127.0.0.1:3000',
     DATABASE_URL: testDatabaseUrl,

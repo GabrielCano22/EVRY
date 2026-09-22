@@ -14,13 +14,51 @@ El orden previsto, todavía no autorizado, es: backup restaurable, migración co
 
 ## Android privado e iPhone
 
-La generación local y privada de aplicaciones móviles no constituye un despliegue web. Desde la raíz:
+La generación local y privada de aplicaciones móviles no constituye un despliegue web. Los exports locales y los perfiles EAS `preview` y `production` requieren `EXPO_PUBLIC_API_BASE_URL` con HTTPS y el prefijo exacto `/api/v1`. Para validar un export sin desplegar ni conectarlo a infraestructura se puede usar el dominio reservado `.invalid`.
+
+PowerShell, desde la raíz:
+
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL = 'https://api.example.invalid/api/v1'
+npm.cmd run expo:doctor
+npm.cmd run export:mobile
+Remove-Item Env:EXPO_PUBLIC_API_BASE_URL
+```
+
+Bash, desde la raíz:
 
 ```bash
+export EXPO_PUBLIC_API_BASE_URL='https://api.example.invalid/api/v1'
 npm run expo:doctor
 npm run export:mobile
+unset EXPO_PUBLIC_API_BASE_URL
+```
+
+El perfil EAS `development` puede omitir la variable para usar `http://10.0.2.2:4000/api/v1` en el emulador Android, o definir otro origen HTTP local. Esta excepción no se aplica a exports, `preview` ni `production`.
+
+La creación de un build remoto de EAS o la configuración de variables remotas también requiere autorización explícita. Cuando exista esa autorización, `preview` y `production` deberán recibir la URL HTTPS real de la API alojada en Vercel; `.invalid` solo sirve para comprobar la generación local sin conexión. Estos comandos establecen la variable en ambos entornos EAS antes de solicitar el APK.
+
+PowerShell, únicamente después de la autorización:
+
+```powershell
+$ApiBaseUrl = Read-Host 'URL HTTPS de la API Vercel, terminada en /api/v1'
+Push-Location apps/mobile
+foreach ($EasEnvironment in @('preview', 'production')) {
+  npx.cmd eas-cli env:create --environment $EasEnvironment --name EXPO_PUBLIC_API_BASE_URL --value $ApiBaseUrl --visibility plaintext
+}
+npx.cmd eas-cli build --platform android --profile preview
+Pop-Location
+```
+
+Bash, únicamente después de la autorización:
+
+```bash
+read -r -p 'URL HTTPS de la API Vercel, terminada en /api/v1: ' EVRY_API_BASE_URL
 cd apps/mobile
+for eas_environment in preview production; do
+  npx eas-cli env:create --environment "$eas_environment" --name EXPO_PUBLIC_API_BASE_URL --value "$EVRY_API_BASE_URL" --visibility plaintext
+done
 npx eas-cli build --platform android --profile preview
 ```
 
-La creación de un build remoto de EAS o la configuración de variables remotas también requiere autorización explícita. El perfil `preview` produce un APK de distribución interna. En iPhone se mantiene Expo Go; TestFlight y el binario independiente quedan fuera de alcance hasta disponer de membresía Apple.
+El perfil `preview` produce un APK de distribución interna. En iPhone se mantiene Expo Go; TestFlight y el binario independiente quedan fuera de alcance hasta disponer de membresía Apple.

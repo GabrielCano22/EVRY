@@ -160,6 +160,7 @@ export default function ListaEntrenamientos() {
           return (
             <button
               key={p.id}
+              aria-label={p.etiqueta}
               onClick={() => setPestana(p.id)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-xs py-sm px-md rounded-md font-grotesk text-label-caps tracking-wider uppercase transition-all',
