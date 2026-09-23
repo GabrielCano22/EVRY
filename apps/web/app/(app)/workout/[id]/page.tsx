@@ -6,13 +6,17 @@ import { ApiError } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
 import {
   addWorkoutSet,
+  cancelWorkout,
+  deleteWorkoutSet,
   finishWorkout,
   getExercise,
   getRecommendation,
   getWorkout,
   trainingKeys,
+  updateWorkoutSet,
   type AdaptiveRecommendation,
   type ExerciseListItem,
+  type UpdateWorkoutSetInput,
   type Workout,
   type WorkoutSet,
 } from '@/lib/training-api';
@@ -23,6 +27,7 @@ import { ExercisePicker } from '@/components/ExercisePicker';
 import { RestTimer } from '@/components/RestTimer';
 import { ExerciseMedia } from '@/components/ExerciseMedia';
 import { ExerciseDetailButton } from '@/components/ExerciseDetail';
+import { SetEditDialog } from '@/components/workouts/SetEditDialog';
 import { formatearFechaHora } from '@/lib/utils';
 import { getExerciseInstruction } from '@/lib/exercise-media';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
@@ -87,6 +92,11 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
   const [rpe, setRpe] = useState(7);
   const [resetTimer, setResetTimer] = useState(0);
   const [clientMutationId, setClientMutationId] = useState(() => crypto.randomUUID());
+  const [serieEditada, setSerieEditada] = useState<{
+    ordinal: number;
+    serie: WorkoutSet;
+    trigger: HTMLButtonElement;
+  } | null>(null);
   const workoutKey = trainingKeys.workoutDetail(accountId ?? 'sin-cuenta', id);
   const entrenamientoRemoto = useQuery({
     queryKey: workoutKey,
@@ -155,6 +165,52 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
       await queryClient.invalidateQueries({ queryKey: workoutKey });
     },
   });
+  function actualizarSerieLocal(workoutSet: WorkoutSet) {
+    queryClient.setQueryData<Workout>(workoutKey, (current) => current
+      ? { ...current, sets: current.sets.map((set) => set.id === workoutSet.id ? workoutSet : set) }
+      : current);
+  }
+
+  function cerrarEditor() {
+    const trigger = serieEditada?.trigger;
+    setSerieEditada(null);
+    window.setTimeout(() => {
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    });
+  }
+
+  const edicionSerie = useMutation({
+    mutationFn: ({ setId, input }: { setId: string; input: UpdateWorkoutSetInput }) => (
+      updateWorkoutSet(setId, input)
+    ),
+    onSuccess: async (workoutSet) => {
+      actualizarSerieLocal(workoutSet);
+      cerrarEditor();
+      if (accountId) {
+        await queryClient.invalidateQueries({ queryKey: trainingKeys.workoutLists(accountId) });
+      }
+    },
+  });
+  const eliminacionSerie = useMutation({
+    mutationFn: (setId: string) => deleteWorkoutSet(setId),
+    onSuccess: async (_result, setId) => {
+      queryClient.setQueryData<Workout>(workoutKey, (current) => current
+        ? { ...current, sets: current.sets.filter((set) => set.id !== setId) }
+        : current);
+      if (accountId) {
+        await queryClient.invalidateQueries({ queryKey: trainingKeys.workoutLists(accountId) });
+      }
+    },
+  });
+  const cancelacion = useMutation({
+    mutationFn: () => cancelWorkout(id),
+    onSuccess: async (workout) => {
+      queryClient.setQueryData(workoutKey, workout);
+      if (accountId) {
+        await queryClient.invalidateQueries({ queryKey: trainingKeys.workoutLists(accountId) });
+      }
+    },
+  });
   const finalizacion = useMutation({
     mutationFn: () => finishWorkout(id),
     onSuccess: async (workout) => {
@@ -205,6 +261,7 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
   if (entrenamientoRemoto.isError && !entrenamiento) return <p role="alert" className="text-error">No pudimos cargar el entrenamiento. <button type="button" onClick={() => void entrenamientoRemoto.refetch()} className="underline">Reintentar</button></p>;
   if (!entrenamiento) return <p role="status" className="text-on-surface-variant">Cargando…</p>;
   const finalizada = entrenamiento.status !== 'ACTIVE';
+  const tieneSerieUtil = entrenamiento.sets.some((set) => (set.reps ?? 0) > 0 || (set.durationS ?? 0) > 0);
   const etiquetaEstado = entrenamiento.status === 'CANCELLED' ? 'CANCELADA' : 'FINALIZADA';
   const volumenTotal = entrenamiento.sets
     .filter((s) => !s.isWarmup)
@@ -228,12 +285,35 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
           </p>
         </div>
         {!finalizada && (
-          <Button variant="outline" onClick={() => finalizacion.mutate()} loading={finalizacion.isPending}>
-            <Icon name="check_circle" size={16} />
-            Finalizar
-          </Button>
+          <div className="flex flex-wrap justify-end gap-sm">
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (window.confirm('¿Cancelar esta sesión? No sumará al progreso.')) cancelacion.mutate();
+              }}
+              loading={cancelacion.isPending}
+              disabled={finalizacion.isPending}
+            >
+              Cancelar sesión
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => finalizacion.mutate()}
+              loading={finalizacion.isPending}
+              disabled={!tieneSerieUtil || cancelacion.isPending}
+              aria-describedby={!tieneSerieUtil ? 'finalizacion-requisito' : undefined}
+            >
+              <Icon name="check_circle" size={16} />
+              Finalizar
+            </Button>
+          </div>
         )}
       </header>
+      {!finalizada && !tieneSerieUtil && (
+        <p id="finalizacion-requisito" className="text-sm text-on-surface-variant">
+          Registra al menos una serie útil antes de finalizar.
+        </p>
+      )}
       {entrenamientoRemoto.isError && (
         <p role="alert" className="text-sm text-error">
           Mostramos la última versión guardada; no pudimos comprobar cambios recientes.{' '}
@@ -247,6 +327,32 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
           {mensajeError(finalizacion.error, 'No se pudo finalizar el entrenamiento.')} {' '}
           <button type="button" onClick={() => finalizacion.mutate()} className="underline">Reintentar finalizar</button>
         </p>
+      )}
+      {cancelacion.isError && !finalizada && (
+        <p role="alert" className="text-sm text-error">
+          {mensajeError(cancelacion.error, 'No se pudo cancelar la sesión.')} {' '}
+          <button type="button" onClick={() => cancelacion.mutate()} className="underline">Reintentar cancelación</button>
+        </p>
+      )}
+      {eliminacionSerie.isError && !finalizada && (
+        <p role="alert" className="text-sm text-error">
+          {mensajeError(eliminacionSerie.error, 'No se pudo eliminar la serie.')} {' '}
+          {eliminacionSerie.variables && (
+            <button type="button" onClick={() => eliminacionSerie.mutate(eliminacionSerie.variables)} className="underline">
+              Reintentar eliminación
+            </button>
+          )}
+        </p>
+      )}
+      {!finalizada && serieEditada && (
+        <SetEditDialog
+          ordinal={serieEditada.ordinal}
+          set={serieEditada.serie}
+          pending={edicionSerie.isPending}
+          error={edicionSerie.isError ? mensajeError(edicionSerie.error, 'No se pudo editar la serie.') : null}
+          onClose={cerrarEditor}
+          onSubmit={(input) => edicionSerie.mutate({ setId: serieEditada.serie.id, input })}
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
@@ -315,12 +421,13 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
                     <>
                       <div className="grid grid-cols-12 gap-unit px-sm mb-sm font-grotesk text-label-caps tracking-wider text-on-surface-variant uppercase">
                         <div className="col-span-1 text-center">N°</div>
-                        <div className="col-span-4 text-center">KG</div>
-                        <div className="col-span-3 text-center">Repeticiones</div>
+                        <div className="col-span-3 text-center">KG</div>
+                        <div className="col-span-2 text-center">Repeticiones</div>
                         <div className="col-span-2 text-center">RPE</div>
-                        <div className="col-span-2 text-center">
+                        <div className="col-span-1 text-center">
                           <Icon name="check" size={14} />
                         </div>
+                        <div className="col-span-3 text-center">Acciones</div>
                       </div>
                       {[...series]
                         .sort((a, b) => a.order - b.order)
@@ -332,19 +439,49 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
                             <div className="col-span-1 text-center font-grotesk text-on-surface">
                               {i + 1}
                             </div>
-                            <div className="col-span-4 text-center font-grotesk text-on-surface tabular-nums">
+                            <div className="col-span-3 text-center font-grotesk text-on-surface tabular-nums">
                               {serie.weightKg ?? '—'}
                             </div>
-                            <div className="col-span-3 text-center font-grotesk text-on-surface tabular-nums">
+                            <div className="col-span-2 text-center font-grotesk text-on-surface tabular-nums">
                               {serie.reps ?? '—'}
                             </div>
                             <div className="col-span-2 text-center font-grotesk text-on-surface-variant tabular-nums">
                               {serie.rpe ?? '—'}
                             </div>
-                            <div className="col-span-2 flex justify-center">
+                            <div className="col-span-1 flex justify-center">
                               <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center">
                                 <Icon name="check" fill size={14} />
                               </div>
+                            </div>
+                            <div className="col-span-3 flex justify-center gap-xs">
+                              {!finalizada && (
+                                <>
+                                  <button
+                                    type="button"
+                                    aria-label={`Editar serie ${i + 1}`}
+                                    disabled={eliminacionSerie.isPending}
+                                    onClick={(event) => {
+                                      edicionSerie.reset();
+                                      setSerieEditada({ ordinal: i + 1, serie, trigger: event.currentTarget });
+                                    }}
+                                    className="flex h-10 w-10 items-center justify-center rounded-lg text-primary hover:bg-primary/10 disabled:opacity-50"
+                                  >
+                                    <Icon name="edit" size={16} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={`Eliminar serie ${i + 1}`}
+                                    disabled={eliminacionSerie.isPending || edicionSerie.isPending}
+                                    onClick={() => {
+                                      eliminacionSerie.reset();
+                                      if (window.confirm(`¿Eliminar la serie ${i + 1}?`)) eliminacionSerie.mutate(serie.id);
+                                    }}
+                                    className="flex h-10 w-10 items-center justify-center rounded-lg text-error hover:bg-error/10 disabled:opacity-50"
+                                  >
+                                    <Icon name="delete" size={16} />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         ))}

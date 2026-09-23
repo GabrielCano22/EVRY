@@ -45,9 +45,9 @@ export const trainingKeys = {
     exerciseId,
   ] as const,
   workouts: (accountId: string) => [...trainingKeys.all(accountId), 'workouts'] as const,
+  workoutLists: (accountId: string) => [...trainingKeys.workouts(accountId), 'list'] as const,
   workoutList: (accountId: string, filters: WorkoutListFilters = {}) => [
-    ...trainingKeys.workouts(accountId),
-    'list',
+    ...trainingKeys.workoutLists(accountId),
     filters,
   ] as const,
   workoutDetail: (accountId: string, workoutId: string) => [

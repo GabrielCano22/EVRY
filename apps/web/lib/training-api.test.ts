@@ -105,6 +105,9 @@ it('scopes every private training cache identity by account and all route argume
   expect(trainingKeys.workoutList('account-a', { take: 20, skip: 40 })).toEqual([
     'training', 'account-a', 'workouts', 'list', { take: 20, skip: 40 },
   ]);
+  expect(trainingKeys.workoutLists('account-a')).toEqual([
+    'training', 'account-a', 'workouts', 'list',
+  ]);
   expect(trainingKeys.workoutDetail('account-a', 'workout/1')).toEqual([
     'training', 'account-a', 'workouts', 'detail', 'workout/1',
   ]);
