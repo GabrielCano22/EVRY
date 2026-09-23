@@ -3,9 +3,11 @@ import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { ApiError, setAccessToken } from './api';
 import {
   addWorkoutSet,
+  cancelWorkout,
   createRoutine,
   createWorkout,
   deleteRoutine,
+  deleteWorkoutSet,
   finishWorkout,
   getExercise,
   getRecommendation,
@@ -17,6 +19,7 @@ import {
   startRoutine,
   trainingKeys,
   updateRoutine,
+  updateWorkoutSet,
   type AdaptiveRecommendation,
   type CreateRoutineInput,
   type ExerciseDetail,
@@ -24,6 +27,7 @@ import {
   type ExercisePage,
   type Routine,
   type UpdateRoutineInput,
+  type UpdateWorkoutSetInput,
   type Workout,
   type WorkoutSet,
 } from './training-api';
@@ -62,6 +66,7 @@ it('exports generated schema aliases for the training boundary', () => {
   expectTypeOf<Routine>().toEqualTypeOf<components['schemas']['Routine']>();
   expectTypeOf<CreateRoutineInput>().toEqualTypeOf<components['schemas']['CreateRoutineDto']>();
   expectTypeOf<UpdateRoutineInput>().toEqualTypeOf<components['schemas']['UpdateRoutineDto']>();
+  expectTypeOf<UpdateWorkoutSetInput>().toEqualTypeOf<components['schemas']['UpdateSetInput']>();
   expectTypeOf<AdaptiveRecommendation>().toEqualTypeOf<components['schemas']['AdaptiveRecommendation']>();
 });
 
@@ -166,6 +171,39 @@ describe('generated training reads', () => {
 });
 
 describe('generated training mutations', () => {
+  it('uses generated mutation routes to edit and remove sets and cancel workouts', async () => {
+    const requests = captureJsonRequests({ ok: true });
+
+    await updateWorkoutSet('set/session 1', {
+      weightKg: 40,
+      reps: 8,
+      durationS: null,
+      rpe: 7,
+      isWarmup: false,
+      techniqueStable: true,
+    });
+    await deleteWorkoutSet('set/session 1');
+    await cancelWorkout('workout/session 1');
+
+    expect(requests).toEqual([
+      {
+        body: '{"weightKg":40,"reps":8,"durationS":null,"rpe":7,"isWarmup":false,"techniqueStable":true}',
+        method: 'PATCH',
+        url: 'http://localhost:4000/api/v1/workouts/sets/set%2Fsession%201',
+      },
+      {
+        body: null,
+        method: 'DELETE',
+        url: 'http://localhost:4000/api/v1/workouts/sets/set%2Fsession%201',
+      },
+      {
+        body: null,
+        method: 'POST',
+        url: 'http://localhost:4000/api/v1/workouts/workout%2Fsession%201/cancel',
+      },
+    ]);
+  });
+
   it('sends the exact method, encoded route and body for every mutation operation', async () => {
     const requests = captureJsonRequests({ ok: true });
 

@@ -22,7 +22,9 @@ export type WorkoutListFilters = NonNullable<
 export type CreateWorkoutInput = components['schemas']['CreateWorkoutInput'];
 export type FinishWorkoutInput = components['schemas']['FinishWorkoutInput'];
 export type CreateWorkoutSetInput = components['schemas']['CreateSetInput'];
+export type UpdateWorkoutSetInput = components['schemas']['UpdateSetInput'];
 export type DeleteRoutineResult = components['schemas']['Ok'];
+export type DeleteWorkoutSetResult = components['schemas']['Ok'];
 
 function exerciseFilters(filters: ExerciseListFilters = {}): ExerciseListFilters {
   const { page = 1, limit = 30, ...optionalFilters } = filters;
@@ -122,6 +124,28 @@ export function addWorkoutSet(
   return unwrapApiResponse(evryApi.POST('/workouts/{id}/sets', {
     params: { path: { id: workoutId } },
     body,
+  }));
+}
+
+export function updateWorkoutSet(
+  setId: string,
+  body: UpdateWorkoutSetInput,
+): Promise<WorkoutSet> {
+  return unwrapApiResponse(evryApi.PATCH('/workouts/sets/{setId}', {
+    params: { path: { setId } },
+    body,
+  }));
+}
+
+export function deleteWorkoutSet(setId: string): Promise<DeleteWorkoutSetResult> {
+  return unwrapApiResponse(evryApi.DELETE('/workouts/sets/{setId}', {
+    params: { path: { setId } },
+  }));
+}
+
+export function cancelWorkout(workoutId: string): Promise<Workout> {
+  return unwrapApiResponse(evryApi.POST('/workouts/{id}/cancel', {
+    params: { path: { id: workoutId } },
   }));
 }
 
