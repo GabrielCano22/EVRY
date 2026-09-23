@@ -259,7 +259,7 @@ describe('DetalleEntrenamiento generated remote state', () => {
     const setRequests = requests.filter((request) => new URL(request.url).pathname.endsWith('/sets'));
     const firstBody = await setRequests[0].json();
     const secondBody = await setRequests[1].json();
-    expect(firstBody).toMatchObject({ exerciseId: exercise.id, order: 1, weightKg: 20, reps: 8, rpe: 7 });
+    expect(firstBody).toMatchObject({ exerciseId: exercise.id, order: 0, weightKg: 20, reps: 8, rpe: 7 });
     expect(firstBody.clientMutationId).toMatch(/^[0-9a-f-]{36}$/);
     expect(secondBody.clientMutationId).toBe(firstBody.clientMutationId);
     expect(await screen.findByText(/1 series totales/)).toBeInTheDocument();
