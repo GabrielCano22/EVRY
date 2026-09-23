@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAutenticacion } from '@/lib/auth-store';
 import { trainingKeys } from '@/lib/training-api';
@@ -104,7 +105,7 @@ describe('DetalleEntrenamiento generated remote state', () => {
     await screen.findByText('Sesión cancelled');
 
     expect(screen.queryByRole('button', { name: 'Finalizar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Empezar|Añadir serie|Agregar ejercicio/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Empezar|Añadir serie|Agregar ejercicio|Editar serie|Eliminar serie|Cancelar sesión/ })).not.toBeInTheDocument();
   });
 
   it('never exposes mutation controls for a completed workout', async () => {
@@ -113,7 +114,111 @@ describe('DetalleEntrenamiento generated remote state', () => {
     await screen.findByText('Sesión done');
 
     expect(screen.queryByRole('button', { name: 'Finalizar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Empezar|Añadir serie|Agregar ejercicio/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Empezar|Añadir serie|Agregar ejercicio|Editar serie|Eliminar serie|Cancelar sesión/ })).not.toBeInTheDocument();
+  });
+
+  it('prevents finishing an empty active workout and explains why', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(workout('empty', 'ACTIVE'))));
+    show('empty');
+    await screen.findByText('Sesión empty');
+
+    expect(screen.getByRole('button', { name: 'Finalizar' })).toBeDisabled();
+    expect(screen.getByText('Registra al menos una serie útil antes de finalizar.')).toBeInTheDocument();
+  });
+
+  it('keeps the set editor open and retries the same correction after a recoverable error', async () => {
+    const requests: Request[] = [];
+    let patchAttempts = 0;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? new Request(input, init) : new Request(input, init);
+      requests.push(request);
+      if (request.method === 'PATCH') {
+        patchAttempts += 1;
+        return Promise.resolve(patchAttempts === 1
+          ? Response.json({ code: 'SERVER_ERROR', message: 'No se pudo editar la serie.' }, { status: 503 })
+          : Response.json({ ...workout('w1', 'ACTIVE', true).sets[0], weightKg: 40, reps: 8 }));
+      }
+      return Promise.resolve(Response.json(workout('w1', 'ACTIVE', true)));
+    }));
+    show();
+    await screen.findByText('Sesión w1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar serie 1' }));
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '40' } });
+    fireEvent.change(screen.getByLabelText('Repeticiones'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Duración (segundos)'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo editar la serie.');
+    expect(screen.getByRole('dialog', { name: 'Editar serie 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar guardar cambios' }));
+
+    await waitFor(() => expect(patchAttempts).toBe(2));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Editar serie 1' })).not.toBeInTheDocument());
+    const bodies = await Promise.all(requests.filter((request) => request.method === 'PATCH').map((request) => request.json()));
+    expect(bodies).toEqual([
+      { weightKg: 40, reps: 8, durationS: null, rpe: 7, isWarmup: false, techniqueStable: null },
+      { weightKg: 40, reps: 8, durationS: null, rpe: 7, isWarmup: false, techniqueStable: null },
+    ]);
+    expect(screen.getByText('320')).toBeInTheDocument();
+  });
+
+  it('contains keyboard focus in the set editor and restores its trigger after Escape', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(workout('w1', 'ACTIVE', true))));
+    const view = show();
+    await screen.findByText('Sesión w1');
+    const trigger = screen.getByRole('button', { name: 'Editar serie 1' });
+
+    await user.click(trigger);
+    expect(view.container).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByLabelText('Peso (kg)')).toHaveFocus();
+    const save = screen.getByRole('button', { name: 'Guardar cambios' });
+    save.focus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Editar serie 1' })).not.toBeInTheDocument();
+    expect(view.container).not.toHaveAttribute('aria-hidden');
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('deletes a set only after confirmation and updates the visible workout', async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? new Request(input, init) : new Request(input, init);
+      requests.push(request);
+      return Promise.resolve(request.method === 'DELETE'
+        ? Response.json({ ok: true })
+        : Response.json(workout('w1', 'ACTIVE', true)));
+    }));
+    show();
+    await screen.findByText('Sesión w1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar serie 1' }));
+
+    await waitFor(() => expect(requests.some((request) => request.method === 'DELETE')).toBe(true));
+    expect(screen.getByText('0 series totales · 0 ejercicios')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar serie 1' })).not.toBeInTheDocument();
+  });
+
+  it('cancels only after confirmation and immediately removes all mutation controls', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? new Request(input, init) : new Request(input, init);
+      return Promise.resolve(new URL(request.url).pathname.endsWith('/cancel')
+        ? Response.json(workout('w1', 'CANCELLED', true))
+        : Response.json(workout('w1', 'ACTIVE', true)));
+    }));
+    show();
+    await screen.findByText('Sesión w1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar sesión' }));
+
+    expect(await screen.findByText('CANCELADA')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Finalizar|Editar serie|Eliminar serie|Cancelar sesión/ })).not.toBeInTheDocument();
   });
 
   it('keeps canonical data and offers retry when adding a set fails', async () => {
@@ -154,7 +259,7 @@ describe('DetalleEntrenamiento generated remote state', () => {
     const setRequests = requests.filter((request) => new URL(request.url).pathname.endsWith('/sets'));
     const firstBody = await setRequests[0].json();
     const secondBody = await setRequests[1].json();
-    expect(firstBody).toMatchObject({ exerciseId: exercise.id, order: 1, weightKg: 20, reps: 8, rpe: 7 });
+    expect(firstBody).toMatchObject({ exerciseId: exercise.id, order: 0, weightKg: 20, reps: 8, rpe: 7 });
     expect(firstBody.clientMutationId).toMatch(/^[0-9a-f-]{36}$/);
     expect(secondBody.clientMutationId).toBe(firstBody.clientMutationId);
     expect(await screen.findByText(/1 series totales/)).toBeInTheDocument();
@@ -221,9 +326,9 @@ describe('DetalleEntrenamiento generated remote state', () => {
         finishAttempts += 1;
         return Promise.resolve(finishAttempts === 1
           ? Response.json({ code: 'SERVER_ERROR', message: 'No se pudo finalizar.' }, { status: 503 })
-          : Response.json(workout('w1', 'COMPLETED')));
+          : Response.json(workout('w1', 'COMPLETED', true)));
       }
-      return Promise.resolve(Response.json(workout('w1', 'ACTIVE')));
+      return Promise.resolve(Response.json(workout('w1', 'ACTIVE', true)));
     }));
     show();
     await screen.findByText('Sesión w1');
@@ -246,7 +351,7 @@ describe('DetalleEntrenamiento generated remote state', () => {
         finishCalls += 1;
         return new Promise<Response>((resolve) => { resolveFinish = resolve; });
       }
-      return Promise.resolve(Response.json(workout('w1', 'ACTIVE')));
+      return Promise.resolve(Response.json(workout('w1', 'ACTIVE', true)));
     }));
     const view = show();
     await screen.findByText('Sesión w1');
