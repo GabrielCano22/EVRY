@@ -12,6 +12,7 @@ import {
 import { syncPendingWorkouts } from '../sync/sync-engine';
 import type { SyncQueueState } from '../sync/queue-policy';
 import {
+  cancelLocalWorkout,
   finishLocalWorkout,
   type LocalWorkout,
   type LocalWorkoutSet,
@@ -31,6 +32,7 @@ interface TrainingState {
   addSet: (exerciseId: string) => Promise<void>;
   updateSet: (clientId: string, changes: Partial<LocalWorkoutSet>) => Promise<void>;
   deleteSet: (clientId: string) => Promise<void>;
+  cancelWorkout: () => Promise<void>;
   finishWorkout: () => Promise<void>;
   refreshSyncState: () => Promise<void>;
 }
@@ -172,6 +174,28 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     if (!isCurrentMobileSession(session) || get().session !== session) return;
     set({ syncState });
     scheduleSync(session);
+  },
+  async cancelWorkout() {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
+    const workout = get().activeWorkout;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    try {
+      const cancelled = cancelLocalWorkout(workout);
+      set({ editVersion: get().editVersion + 1, activeWorkout: cancelled, syncState: 'pending', error: null });
+      const syncState = await queueWorkout(session, cancelled);
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
+      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState });
+      scheduleSync(session);
+    } catch (error) {
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
+      set({
+        editVersion: get().editVersion + 1,
+        activeWorkout: workout,
+        error: error instanceof Error ? error.message : 'No se pudo cancelar la sesión.',
+      });
+      throw error;
+    }
   },
   async finishWorkout() {
     const session = get().session;

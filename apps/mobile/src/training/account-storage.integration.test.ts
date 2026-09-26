@@ -102,6 +102,25 @@ it('reopens, edits and completes a persisted workout offline in a fresh process'
   expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'COMPLETED', sets: [{ reps: 9, weightKg: 50 }] });
 });
 
+it('persists a cancelled workout offline and does not reopen it as active', async () => {
+  const owner = await login('cancel-offline@example.com');
+  await training.getState().startWorkout('Sesión cancelada');
+  offline = true;
+  await training.getState().cancelWorkout();
+
+  expect(training.getState().activeWorkout).toBeNull();
+  expect(await db.loadActiveWorkout(owner)).toBeNull();
+  const rows = await db.pendingSyncRows(owner);
+  expect(rows).toHaveLength(1);
+  expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'CANCELLED', cancelledAt: expect.any(String) });
+
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+  expect(training.getState().activeWorkout).toBeNull();
+  expect((await db.pendingSyncRows(owner)).map((row) => row.syncId)).toEqual([rows[0].syncId]);
+});
+
 it('finishes a delayed local write in its original account without replacing the next account UI', async () => {
   const alice = await login('delayed-a@example.com');
   const connection = await db.getDatabase(alice);
