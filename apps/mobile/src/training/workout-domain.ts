@@ -44,3 +44,15 @@ export function finishLocalWorkout(workout: LocalWorkout, now: Date = new Date()
     deletedSetClientIds: [...workout.deletedSetClientIds],
   };
 }
+
+export function cancelLocalWorkout(workout: LocalWorkout, now: Date = new Date()): LocalWorkout {
+  if (workout.status !== 'ACTIVE') throw new Error('La sesión ya no admite cambios.');
+  return {
+    ...workout,
+    status: 'CANCELLED',
+    endedAt: undefined,
+    cancelledAt: now.toISOString(),
+    sets: workout.sets.map((set) => ({ ...set })),
+    deletedSetClientIds: [...workout.deletedSetClientIds],
+  };
+}

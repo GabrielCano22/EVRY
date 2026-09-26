@@ -1,3 +1,4 @@
+import { waitFor } from '@testing-library/react-native';
 import { enqueueWorkout } from '../db/database';
 import { useTrainingStore } from './training-store';
 import type { LocalWorkout } from './workout-domain';
@@ -60,4 +61,29 @@ it('keeps recovered nullable scalar metadata in the next sync payload', async ()
   await useTrainingStore.getState().addSet('exercise-1');
 
   expect(jest.mocked(enqueueWorkout).mock.calls.at(-1)?.[3]).toMatchObject({ notes: '', routineId: null });
+});
+
+it('persists a cancelled snapshot before removing the active workout', async () => {
+  let releaseWrite!: (state: 'pending') => void;
+  jest.mocked(enqueueWorkout).mockImplementationOnce(() => new Promise((resolve) => { releaseWrite = resolve; }));
+  const workout: LocalWorkout = {
+    clientId: 'workout-cancel', name: 'Fuerza', revision: 2, status: 'ACTIVE', notes: null,
+    startedAt: '2026-08-30T10:00:00.000Z', deletedSetClientIds: [], sets: [],
+  };
+  useTrainingStore.setState({ activeWorkout: workout, ready: true, session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
+
+  const cancellation = useTrainingStore.getState().cancelWorkout();
+
+  expect(useTrainingStore.getState().activeWorkout).toMatchObject({ status: 'CANCELLED' });
+  await waitFor(() => {
+    expect(jest.mocked(enqueueWorkout).mock.calls.at(-1)?.[3]).toMatchObject({
+      clientId: 'workout-cancel',
+      baseRevision: 2,
+      status: 'CANCELLED',
+      cancelledAt: expect.any(String),
+    });
+  });
+  releaseWrite('pending');
+  await cancellation;
+  expect(useTrainingStore.getState().activeWorkout).toBeNull();
 });

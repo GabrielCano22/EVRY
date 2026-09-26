@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { API_BASE_URL } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
@@ -42,12 +42,14 @@ export default function TrainScreen() {
   const addSet = useTrainingStore((state) => state.addSet);
   const updateSet = useTrainingStore((state) => state.updateSet);
   const deleteSet = useTrainingStore((state) => state.deleteSet);
+  const cancelWorkout = useTrainingStore((state) => state.cancelWorkout);
   const finishWorkout = useTrainingStore((state) => state.finishWorkout);
 
   if (!workout) {
     return (
       <Screen>
         <Text style={textStyles.title}>Entrenar</Text>
+        <SyncStatus state={syncState} />
         <Text style={textStyles.muted}>No hay una sesión activa.</Text>
         <PrimaryButton onPress={() => void startWorkout()}>Iniciar sesión libre</PrimaryButton>
         {routinesQuery.isLoading ? <Text style={textStyles.muted}>Cargando rutinas…</Text> : null}
@@ -163,14 +165,14 @@ export default function TrainScreen() {
               <Text style={textStyles.body}>{playingGif ? 'Detener demostración' : 'Reproducir GIF'}</Text>
             </Pressable>
           ) : null}
-          <PrimaryButton
+          {workout.status === 'ACTIVE' ? <PrimaryButton
             onPress={() => {
               void Haptics.selectionAsync();
               void addSet(selectedExercise.id);
             }}
           >
             Agregar serie
-          </PrimaryButton>
+          </PrimaryButton> : null}
         </View>
       ) : null}
       {workout.sets.map((set, index) => (
@@ -180,25 +182,50 @@ export default function TrainScreen() {
             <NumberField
               label="Peso kg"
               value={set.weightKg}
+              editable={workout.status === 'ACTIVE'}
               onChange={(weightKg) => void updateSet(set.clientId, { weightKg })}
             />
             <NumberField
               label="Repeticiones"
               value={set.reps}
+              editable={workout.status === 'ACTIVE'}
               onChange={(reps) => void updateSet(set.clientId, { reps })}
             />
           </View>
-          <Pressable
+          {workout.status === 'ACTIVE' ? <Pressable
             accessibilityRole="button"
             onPress={() => void deleteSet(set.clientId)}
           >
             <Text style={textStyles.error}>Eliminar serie</Text>
-          </Pressable>
+          </Pressable> : null}
         </View>
       ))}
       {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
+      <Pressable
+        accessibilityLabel="Cancelar sesión"
+        accessibilityRole="button"
+        disabled={workout.status !== 'ACTIVE'}
+        onPress={() => Alert.alert(
+          'Cancelar sesión',
+          'La sesión se conservará como cancelada y se sincronizará cuando haya conexión.',
+          [
+            { text: 'Seguir entrenando', style: 'cancel' },
+            {
+              text: 'Cancelar sesión',
+              style: 'destructive',
+              onPress: () => {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+                void cancelWorkout().catch(() => undefined);
+              },
+            },
+          ],
+        )}
+        style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+      >
+        <Text style={textStyles.error}>{workout.status === 'CANCELLED' ? 'Cancelando sesión…' : 'Cancelar sesión'}</Text>
+      </Pressable>
       <PrimaryButton
-        disabled={workout.sets.length === 0}
+        disabled={workout.status !== 'ACTIVE' || workout.sets.length === 0}
         onPress={() => {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           void finishWorkout();
@@ -210,9 +237,10 @@ export default function TrainScreen() {
   );
 }
 
-function NumberField({ label, value, onChange }: {
+function NumberField({ label, value, editable, onChange }: {
   label: string;
   value: number | null;
+  editable: boolean;
   onChange: (value: number) => void;
 }) {
   return (
@@ -220,6 +248,7 @@ function NumberField({ label, value, onChange }: {
       <Text style={textStyles.muted}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
+        editable={editable}
         inputMode="decimal"
         onChangeText={(text) => onChange(Math.max(0, Number(text.replace(',', '.')) || 0))}
         style={styles.input}
@@ -254,4 +283,14 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 12,
   },
+  cancelButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.error,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  cancelButtonPressed: { opacity: 0.75 },
 });
