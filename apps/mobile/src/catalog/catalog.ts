@@ -32,10 +32,12 @@ function missingCache(): Error {
   return apiError({ code: 'OFFLINE_CACHE_MISS', message: 'No hay conexión ni una copia local disponible. Conéctate y reintenta.' }, '');
 }
 
-function cachedInfo(updatedAt: string | null): CacheInfo {
+function cachedInfo(updatedAt: string | null, damaged = 0): CacheInfo {
   return {
     source: 'cache', stale: true, updatedAt,
-    notice: 'Mostrando copia local: puede estar desactualizada. Reintenta al recuperar conexión.',
+    notice: damaged > 0
+      ? `Mostrando copia local incompleta: ${damaged} registro${damaged === 1 ? '' : 's'} de la caché dañada no se muestra${damaged === 1 ? '' : 'n'}. Tus entrenamientos se conservan. Conéctate y reintenta para actualizarla.`
+      : 'Mostrando copia local: puede estar desactualizada. Reintenta al recuperar conexión.',
   };
 }
 
@@ -69,7 +71,7 @@ export async function loadExercises(session: MobileSession, options: {
     const cached = await cachedExercisePage(session, q, page);
     assertCurrentMobileSession(session);
     if (!cached.available) throw missingCache();
-    return { items: cached.items, page: cached.page, limit: cached.limit, total: cached.total, hasMore: cached.hasMore, ...cachedInfo(cached.updatedAt) };
+    return { items: cached.items, page: cached.page, limit: cached.limit, total: cached.total, hasMore: cached.hasMore, ...cachedInfo(cached.updatedAt, cached.damaged) };
   }
   const data = response.data;
   if (!data || !Array.isArray(data.items) || !data.items.every(validItem) ||
@@ -94,10 +96,11 @@ export async function loadRoutines(session: MobileSession, signal?: AbortSignal)
   } catch (error) {
     assertCurrentMobileSession(session);
     if (signal?.aborted || !temporaryFailure(error)) throw error;
-    const cached = await cachedCollection<Routine>(session, 'routine_cache');
+    const cached = await cachedCollection<Routine>(session, 'routine_cache',
+      (value): value is Routine => validItem(value) && 'exercises' in value && Array.isArray(value.exercises));
     assertCurrentMobileSession(session);
     if (!cached.available) throw missingCache();
-    return { items: cached.items, ...cachedInfo(cached.updatedAt) };
+    return { items: cached.items, ...cachedInfo(cached.updatedAt, cached.damaged) };
   }
   const items = response.data;
   if (!Array.isArray(items) || !items.every((item) => validItem(item) && Array.isArray(item.exercises))) {

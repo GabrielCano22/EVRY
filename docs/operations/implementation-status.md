@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 26 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -129,7 +129,7 @@ Actualizado: 13 de septiembre de 2026. Este registro separa implementación, evi
 - La paridad funcional principal de registro, rutinas, perfil, ciclo y detalle de progreso está implementada y verificada en pruebas automatizadas. Falta su aceptación en dispositivos físicos y condiciones reales de red.
 - Validar aislamiento y reapertura offline en Android/iOS reales, incluida la vida real de SecureStore/SQLite y sincronización contra PostgreSQL.
 - Si existe un `evry.db` heredado sin propietario, conservarlo intacto: la recuperación exige identificar al propietario e importación explícita; no se asignan automáticamente esos datos a la siguiente cuenta.
-- La migración conserva datos ante caché malformada, pero falta una recuperación de caché dañada orientada a la persona usuaria.
+- La migración ya abre los entrenamientos y la cola aunque una ficha del catálogo tenga JSON inválido. Las lecturas offline omiten fichas o rutinas dañadas, avisan que la copia está incompleta y conservan intactas las filas originales para revisión; al volver la conexión se puede reintentar la consulta. Aún falta probar corrupción fuera de estas cachés y recuperación en dispositivos físicos.
 - Completar feedback visible ante fallo de guardado local, reconexión y arranque frío del servidor gratuito.
 - Definir presupuesto y expulsión LRU de miniaturas; hoy se evita descargar GIF en listas, pero no existe ese límite explícito.
 - Ejecutar cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.

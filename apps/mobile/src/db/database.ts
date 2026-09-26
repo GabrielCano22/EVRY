@@ -143,7 +143,14 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       );
       if (rows.length === 0) break;
       for (const row of rows) {
-        await indexExercise(database, row.id, JSON.parse(row.payload) as object);
+        try {
+          const entity: unknown = JSON.parse(row.payload);
+          if (typeof entity === 'object' && entity !== null && !Array.isArray(entity)) {
+            await indexExercise(database, row.id, entity);
+          }
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+        }
       }
       cursor = rows[rows.length - 1].id;
     }
@@ -541,17 +548,31 @@ async function cacheAvailability(database: SQLite.SQLiteDatabase, table: CacheTa
   return { available: Boolean(snapshot || saved?.savedAt), updatedAt: snapshot?.savedAt ?? saved?.savedAt ?? null };
 }
 
-export async function cachedCollection<T>(owner: DatabaseOwner, table: CacheTable) {
+export async function cachedCollection<T>(owner: DatabaseOwner, table: CacheTable, valid: (value: unknown) => value is T) {
   const database = await getDatabase(owner);
   const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM ${table} ORDER BY updated_at DESC, id`);
-  return { items: rows.map(({ payload }) => JSON.parse(payload) as T), ...await cacheAvailability(database, table) };
+  const items: T[] = [];
+  let damaged = 0;
+  for (const { payload } of rows) {
+    try {
+      const item: unknown = JSON.parse(payload);
+      if (valid(item)) items.push(item);
+      else damaged += 1;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      damaged += 1;
+    }
+  }
+  return { items, damaged, ...await cacheAvailability(database, table) };
 }
 
 export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: number, limit = 30) {
   const database = await getDatabase(owner);
   const search = q.normalize('NFC').toLocaleLowerCase('es');
-  const from = "FROM exercise_cache c LEFT JOIN exercise_search s ON s.exercise_id = c.id WHERE ? = '' OR instr(s.search_text, ?) > 0";
+  const valid = "CASE WHEN json_valid(c.payload) = 1 THEN json_type(c.payload) = 'object' AND json_type(c.payload, '$.id') = 'text' AND json_type(c.payload, '$.name') = 'text' ELSE 0 END";
+  const from = `FROM exercise_cache c LEFT JOIN exercise_search s ON s.exercise_id = c.id WHERE (${valid}) = 1 AND (? = '' OR instr(s.search_text, ?) > 0)`;
   const count = await database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total ${from}`, search, search);
+  const damagedCount = await database.getFirstAsync<{ damaged: number }>(`SELECT COUNT(*) AS damaged FROM exercise_cache c WHERE (${valid}) = 0`);
   const rows = await database.getAllAsync<{ payload: string }>(
     `SELECT c.payload ${from}
      ORDER BY COALESCE(json_extract(c.payload, '$.isCustom'), 0), lower(json_extract(c.payload, '$.name')), c.id
@@ -560,7 +581,7 @@ export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: 
   const total = count?.total ?? 0;
   return {
     items: rows.map(({ payload }) => JSON.parse(payload) as components['schemas']['ExerciseListItemDto']),
-    page, limit, total, hasMore: page * limit < total,
+    page, limit, total, hasMore: page * limit < total, damaged: damagedCount?.damaged ?? 0,
     ...await cacheAvailability(database, 'exercise_cache'),
   };
 }
