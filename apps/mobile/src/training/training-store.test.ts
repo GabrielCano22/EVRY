@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react-native';
-import { enqueueWorkout } from '../db/database';
+import { enqueueWorkout, loadActiveWorkout } from '../db/database';
 import { useTrainingStore } from './training-store';
 import type { LocalWorkout } from './workout-domain';
 
@@ -86,4 +86,49 @@ it('persists a cancelled snapshot before removing the active workout', async () 
   releaseWrite('pending');
   await cancellation;
   expect(useTrainingStore.getState().activeWorkout).toBeNull();
+});
+
+it('restores the persisted workout and reports a local save failure when adding a set', async () => {
+  const workout: LocalWorkout = {
+    clientId: 'workout-local', name: 'Fuerza', revision: 0, status: 'ACTIVE', notes: null,
+    startedAt: '2026-08-30T10:00:00.000Z', deletedSetClientIds: [], sets: [],
+  };
+  jest.mocked(enqueueWorkout).mockRejectedValueOnce(new Error('SQLite sin espacio'));
+  jest.mocked(loadActiveWorkout).mockResolvedValueOnce(workout);
+  useTrainingStore.setState({ activeWorkout: workout, ready: true, error: null, session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
+
+  await useTrainingStore.getState().addSet('exercise-1');
+
+  expect(useTrainingStore.getState().activeWorkout).toEqual(workout);
+  expect(useTrainingStore.getState().error).toContain('SQLite sin espacio');
+});
+
+it.each(['updateSet', 'deleteSet'] as const)('restores the persisted workout after %s fails to save', async (operation) => {
+  const workout: LocalWorkout = {
+    clientId: 'workout-local', name: 'Fuerza', revision: 0, status: 'ACTIVE', notes: null,
+    startedAt: '2026-08-30T10:00:00.000Z', deletedSetClientIds: [],
+    sets: [{ clientId: 'set-local', revision: 0, exerciseId: 'exercise-1', order: 0,
+      reps: 8, weightKg: 50, durationS: null, rpe: null, isWarmup: false,
+      techniqueStable: null, completedAt: '2026-08-30T10:05:00.000Z' }],
+  };
+  jest.mocked(enqueueWorkout).mockRejectedValueOnce(new Error('SQLite sin espacio'));
+  jest.mocked(loadActiveWorkout).mockResolvedValueOnce(workout);
+  useTrainingStore.setState({ activeWorkout: workout, ready: true, error: null, session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
+
+  if (operation === 'updateSet') await useTrainingStore.getState().updateSet('set-local', { reps: 9 });
+  else await useTrainingStore.getState().deleteSet('set-local');
+
+  expect(useTrainingStore.getState().activeWorkout).toEqual(workout);
+  expect(useTrainingStore.getState().error).toContain('SQLite sin espacio');
+});
+
+it('does not display an unpersisted workout after starting it fails locally', async () => {
+  jest.mocked(enqueueWorkout).mockRejectedValueOnce(new Error('SQLite sin espacio'));
+  jest.mocked(loadActiveWorkout).mockResolvedValueOnce(null);
+  useTrainingStore.setState({ activeWorkout: null, ready: true, error: null, session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
+
+  await useTrainingStore.getState().startWorkout();
+
+  expect(useTrainingStore.getState().activeWorkout).toBeNull();
+  expect(useTrainingStore.getState().error).toContain('SQLite sin espacio');
 });
