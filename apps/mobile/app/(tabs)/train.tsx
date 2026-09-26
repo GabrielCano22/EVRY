@@ -50,6 +50,7 @@ export default function TrainScreen() {
       <Screen>
         <Text style={textStyles.title}>Entrenar</Text>
         <SyncStatus state={syncState} />
+        {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
         <Text style={textStyles.muted}>No hay una sesión activa.</Text>
         <PrimaryButton onPress={() => void startWorkout()}>Iniciar sesión libre</PrimaryButton>
         {routinesQuery.isLoading ? <Text style={textStyles.muted}>Cargando rutinas…</Text> : null}

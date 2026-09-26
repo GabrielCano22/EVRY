@@ -77,6 +77,13 @@ it('keeps local sync status visible after the active workout closes', async () =
   expect(await screen.findByText('Guardado localmente')).toBeTruthy();
 });
 
+it('shows a local save failure even when no workout remains active', async () => {
+  useTrainingStore.setState({ activeWorkout: null, error: 'No se pudo guardar en este dispositivo.' });
+  await show();
+  await screen.findByText('No tienes rutinas guardadas.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo guardar en este dispositivo.');
+});
+
 it('uses the server media URL and only switches the detail to GIF after pressing play', async () => {
   jest.mocked(loadExercises).mockResolvedValue({ ...result(), items: [{ ...items[0], imageUrl: 'https://cdn.example/one.jpg', gifUrl: 'https://cdn.example/one.gif' }], total: 1, hasMore: false });
   await show();

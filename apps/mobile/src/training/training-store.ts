@@ -77,11 +77,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: [],
       deletedSetClientIds: [],
     };
-    set({ editVersion: get().editVersion + 1, activeWorkout: workout, syncState: 'pending', error: null });
-    const syncState = await queueWorkout(session, workout);
-    if (!isCurrentMobileSession(session) || get().session !== session) return;
-    set({ syncState });
-    scheduleSync(session);
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', error: null });
+    await persistOptimisticWorkout(session, workout, version);
   },
   async recoverDraft(draft) {
     const session = get().session;
@@ -126,11 +124,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         completedAt: new Date().toISOString(),
       }],
     };
-    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(session, next);
-    if (!isCurrentMobileSession(session) || get().session !== session) return;
-    set({ syncState });
-    scheduleSync(session);
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    await persistOptimisticWorkout(session, next, version);
   },
   async updateSet(clientId, changes) {
     const session = get().session;
@@ -141,11 +137,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       ...workout,
       sets: workout.sets.map((item) => item.clientId === clientId ? { ...item, ...changes } : item),
     };
-    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(session, next);
-    if (!isCurrentMobileSession(session) || get().session !== session) return;
-    set({ syncState });
-    scheduleSync(session);
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    await persistOptimisticWorkout(session, next, version);
   },
   async deleteSet(clientId) {
     const session = get().session;
@@ -169,11 +163,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       // even when its acknowledgement has not reached this device yet.
       deletedSetClientIds: [...new Set([...workout.deletedSetClientIds, removed.clientId])],
     };
-    set({ editVersion: get().editVersion + 1, activeWorkout: next, syncState: 'pending' });
-    const syncState = await queueWorkout(session, next);
-    if (!isCurrentMobileSession(session) || get().session !== session) return;
-    set({ syncState });
-    scheduleSync(session);
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    await persistOptimisticWorkout(session, next, version);
   },
   async cancelWorkout() {
     const session = get().session;
@@ -232,6 +224,30 @@ async function queueWorkout(session: MobileSession, workout: LocalWorkout): Prom
   const write = localWriteQueue.then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId)));
   localWriteQueue = write.then(() => undefined, () => undefined);
   return write;
+}
+
+async function persistOptimisticWorkout(session: MobileSession, workout: LocalWorkout, version: number): Promise<void> {
+  try {
+    const syncState = await queueWorkout(session, workout);
+    if (!isCurrentMobileSession(session) || useTrainingStore.getState().session !== session) return;
+    if (useTrainingStore.getState().editVersion === version) useTrainingStore.setState({ syncState });
+    scheduleSync(session);
+  } catch (reason) {
+    await localWriteQueue;
+    const current = useTrainingStore.getState();
+    if (!isCurrentMobileSession(session) || current.session !== session || current.editVersion !== version) return;
+    const error = reason instanceof Error ? reason.message : 'No se pudo guardar en este dispositivo.';
+    try {
+      const [activeWorkout, syncState] = await Promise.all([loadActiveWorkout(session), currentSyncState(session)]);
+      if (useTrainingStore.getState().session === session && useTrainingStore.getState().editVersion === version) {
+        useTrainingStore.setState({ activeWorkout, syncState, error, editVersion: version + 1 });
+      }
+    } catch {
+      if (useTrainingStore.getState().session === session && useTrainingStore.getState().editVersion === version) {
+        useTrainingStore.setState({ ready: false, activeWorkout: null, error: `${error} No se pudo recuperar el estado local. Reinicia la app para reintentar.`, editVersion: version + 1 });
+      }
+    }
+  }
 }
 
 // Clear visible state synchronously on logout/account change, before React effects.
