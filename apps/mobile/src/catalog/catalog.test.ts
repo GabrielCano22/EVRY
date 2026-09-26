@@ -97,6 +97,38 @@ it('returns an explicitly stale and bounded local page when the network fails', 
   expect(result.notice).toMatch(/copia local/i);
 });
 
+it('shows healthy cached exercises with a damage notice while keeping the bad record intact', async () => {
+  await db.cacheEntities(session, 'exercise_cache', [exercise]);
+  const connection = await db.getDatabase(session);
+  await connection.runAsync('INSERT OR REPLACE INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)',
+    'exercise-damaged', '{invalid', '2026-08-30', '2026-08-30');
+  await connection.runAsync('INSERT OR REPLACE INTO exercise_cache (id, payload, updated_at, last_access_at) VALUES (?, ?, ?, ?)',
+    'exercise-wrong-shape', '{"id":"exercise-wrong-shape","name":null}', '2026-08-30', '2026-08-30');
+  http.mockRejectedValue(new TypeError('Network request failed'));
+
+  const result = await catalog.loadExercises(session);
+
+  expect(result.items).toEqual([exercise]);
+  expect(result.notice).toMatch(/caché dañada/i);
+  expect(await connection.getFirstAsync("SELECT payload FROM exercise_cache WHERE id = 'exercise-damaged'")).toEqual({ payload: '{invalid' });
+});
+
+it('shows healthy cached routines with a damage notice while keeping the bad record intact', async () => {
+  await db.replaceCachedRoutines(session, [routine]);
+  const connection = await db.getDatabase(session);
+  await connection.runAsync('INSERT OR REPLACE INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)',
+    'routine-damaged', '{invalid', '2026-08-30');
+  await connection.runAsync('INSERT OR REPLACE INTO routine_cache (id, payload, updated_at) VALUES (?, ?, ?)',
+    'routine-wrong-shape', '{"id":"routine-wrong-shape","name":"Incompleta"}', '2026-08-30');
+  http.mockRejectedValue(new TypeError('Network request failed'));
+
+  const result = await catalog.loadRoutines(session);
+
+  expect(result.items).toEqual([routine]);
+  expect(result.notice).toMatch(/caché dañada/i);
+  expect(await connection.getFirstAsync("SELECT payload FROM routine_cache WHERE id = 'routine-damaged'")).toEqual({ payload: '{invalid' });
+});
+
 it('replaces a deleted routine cache with the authoritative empty response, including offline', async () => {
   await db.cacheEntities(session, 'routine_cache', [routine]);
   http.mockResolvedValue(json([]));

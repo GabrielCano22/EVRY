@@ -58,18 +58,14 @@ it('indexes every batch from v1 without changing workouts, queue, routines, mapp
   expect(JSON.parse((await pendingSyncRows(owner))[0].payload)).toEqual(syncPayload);
 });
 
-it('rolls back an interrupted index backfill and safely retries without losing queued training', async () => {
-  const { owner, raw } = await seedV1('migration-retry', true);
-  await expect(getDatabase(owner)).rejects.toThrow();
-  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 1 });
-  expect(await raw.getFirstAsync("SELECT name FROM sqlite_master WHERE name = 'exercise_search'")).toBeNull();
-  expect(await raw.getFirstAsync('SELECT payload FROM workouts')).toEqual({ payload: JSON.stringify(workout) });
-  expect(await raw.getFirstAsync('SELECT payload, attempts FROM sync_queue')).toEqual({ payload: JSON.stringify(syncPayload), attempts: 2 });
-  // Simulate repairing the one invalid cache record; no user training data is rewritten.
-  await raw.runAsync('UPDATE exercise_cache SET payload = ? WHERE id = ?', '{"id":"exercise-150","name":"Sentadilla 150","target":"Cuádriceps"}', 'exercise-150');
+it('opens training data despite one malformed cached exercise and preserves its raw payload', async () => {
+  const { owner, raw } = await seedV1('migration-damaged-cache', true);
   await getDatabase(owner);
   expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 2 });
-  expect((await cachedExercisePage(owner, 'cuádriceps', 1)).total).toBe(205);
+  expect(await raw.getFirstAsync('SELECT payload FROM workouts')).toEqual({ payload: JSON.stringify(workout) });
+  expect(await raw.getFirstAsync('SELECT payload, attempts FROM sync_queue')).toEqual({ payload: JSON.stringify(syncPayload), attempts: 2 });
+  expect(await raw.getFirstAsync("SELECT payload FROM exercise_cache WHERE id = 'exercise-150'")).toEqual({ payload: '{invalid' });
+  expect((await cachedExercisePage(owner, 'cuádriceps', 1)).total).toBe(204);
   expect(await loadActiveWorkout(owner)).toEqual(workout);
   expect((await pendingSyncRows(owner))[0]).toMatchObject({ syncId: 'sync-1', attempts: 2 });
 });
