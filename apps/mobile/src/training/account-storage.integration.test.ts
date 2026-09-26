@@ -121,6 +121,42 @@ it('persists a cancelled workout offline and does not reopen it as active', asyn
   expect((await db.pendingSyncRows(owner)).map((row) => row.syncId)).toEqual([rows[0].syncId]);
 });
 
+it('restores a draft as one new offline session and archives the source', async () => {
+  const owner = await login('recover-atomic@example.com');
+  const draft = {
+    clientId: 'source-draft', revision: 0, status: 'DRAFT' as const, name: 'Borrador recuperado',
+    startedAt: '2026-08-30T10:00:00.000Z', notes: null, sets: [], deletedSetClientIds: [],
+  };
+  await db.saveWorkout(owner, draft);
+
+  await training.getState().recoverDraft(draft);
+
+  expect(training.getState().activeWorkout).toMatchObject({ name: 'Borrador recuperado', status: 'ACTIVE' });
+  expect(await db.loadRecoveredDrafts(owner)).toEqual([]);
+  expect(await db.pendingSyncRows(owner)).toHaveLength(1);
+});
+
+it('keeps a draft recoverable without a phantom session if its archival fails', async () => {
+  const owner = await login('recover-failure@example.com');
+  const draft = {
+    clientId: 'source-draft-failure', revision: 0, status: 'DRAFT' as const, name: 'Borrador protegido',
+    startedAt: '2026-08-30T10:00:00.000Z', notes: null, sets: [], deletedSetClientIds: [],
+  };
+  await db.saveWorkout(owner, draft);
+  const connection = await db.getDatabase(owner);
+  await connection.execAsync(`CREATE TRIGGER fail_draft_archive BEFORE UPDATE OF status ON workouts
+    WHEN OLD.client_id = 'source-draft-failure' BEGIN SELECT RAISE(ABORT, 'archive failed'); END;`);
+  try {
+    await expect(training.getState().recoverDraft(draft)).rejects.toThrow('archive failed');
+    expect(training.getState().activeWorkout).toBeNull();
+    expect(training.getState().error).toContain('No se pudo recuperar el borrador.');
+    expect(await db.loadRecoveredDrafts(owner)).toMatchObject([{ clientId: 'source-draft-failure', status: 'DRAFT' }]);
+    expect(await db.pendingSyncRows(owner)).toEqual([]);
+  } finally {
+    await connection.execAsync('DROP TRIGGER fail_draft_archive;');
+  }
+});
+
 it('finishes a delayed local write in its original account without replacing the next account UI', async () => {
   const alice = await login('delayed-a@example.com');
   const connection = await db.getDatabase(alice);

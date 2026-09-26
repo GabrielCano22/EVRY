@@ -8,7 +8,7 @@ jest.mock('../db/database', () => ({
   enqueueWorkout: jest.fn().mockResolvedValue('pending'),
   currentSyncState: jest.fn().mockResolvedValue('pending'),
   loadActiveWorkout: jest.fn().mockResolvedValue(null),
-  archiveRecoveredDraft: jest.fn(), getDatabase: jest.fn(),
+  getDatabase: jest.fn(),
 }));
 jest.mock('../sync/sync-engine', () => ({ syncPendingWorkouts: async () => undefined }));
 jest.mock('../api/client', () => ({ isCurrentMobileSession: () => true, onMobileSessionInvalidated: () => () => undefined }));

@@ -4,7 +4,6 @@ import { isCurrentMobileSession, type MobileSession, type SyncWorkoutInput } fro
 import { useSessionStore } from '../auth/session-store';
 import {
   currentSyncState,
-  archiveRecoveredDraft,
   enqueueWorkout,
   getDatabase,
   loadActiveWorkout,
@@ -95,12 +94,26 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: draft.sets.map((item) => ({ ...item, clientId: Crypto.randomUUID(), revision: 0 })),
       deletedSetClientIds: [],
     };
-    set({ editVersion: get().editVersion + 1, activeWorkout: workout, syncState: 'pending', error: null });
-    const syncState = await queueWorkout(session, workout);
-    await archiveRecoveredDraft(session, draft);
-    if (!isCurrentMobileSession(session) || get().session !== session) return;
-    set({ syncState });
-    scheduleSync(session);
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', error: null });
+    try {
+      const syncState = await queueWorkout(session, workout, draft);
+      if (!isCurrentMobileSession(session) || get().session !== session) return;
+      if (get().editVersion === version) set({ syncState });
+      scheduleSync(session);
+    } catch (reason) {
+      await localWriteQueue;
+      if (isCurrentMobileSession(session) && get().session === session && get().editVersion === version) {
+        const error = reason instanceof Error ? reason.message : 'No se pudo recuperar el borrador.';
+        try {
+          const [activeWorkout, syncState] = await Promise.all([loadActiveWorkout(session), currentSyncState(session)]);
+          if (get().session === session && get().editVersion === version) set({ activeWorkout, syncState, error, editVersion: version + 1 });
+        } catch {
+          if (get().session === session && get().editVersion === version) set({ ready: false, activeWorkout: null, error: `${error} Reinicia la app para reintentar.`, editVersion: version + 1 });
+        }
+      }
+      throw reason;
+    }
   },
   async addSet(exerciseId) {
     const session = get().session;
@@ -219,9 +232,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   },
 }));
 
-async function queueWorkout(session: MobileSession, workout: LocalWorkout): Promise<SyncQueueState> {
+async function queueWorkout(session: MobileSession, workout: LocalWorkout, draftToArchive?: LocalWorkout): Promise<SyncQueueState> {
   const syncId = Crypto.randomUUID();
-  const write = localWriteQueue.then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId)));
+  const write = localWriteQueue.then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId), draftToArchive));
   localWriteQueue = write.then(() => undefined, () => undefined);
   return write;
 }
