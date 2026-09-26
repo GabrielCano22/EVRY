@@ -1,5 +1,5 @@
 import type { components } from '@evry/api-client';
-import { continueServerWorkout, enqueueWorkout, getDatabase, loadActiveWorkout, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows, syncReviews } from './database';
+import { continueServerWorkout, enqueueWorkout, getDatabase, loadActiveWorkout, loadRecoveredDrafts, markSyncAttempt, markSyncFailure, markSyncSuccess, pendingSyncRows, saveWorkout, syncReviews } from './database';
 import type { LocalWorkout } from '../training/workout-domain';
 import type { SyncWorkoutInput } from '../api/client';
 import * as SQLite from 'expo-sqlite';
@@ -51,6 +51,32 @@ it('coalesces never-sent edits into the latest persisted workout', async () => {
   await enqueueWorkout(alice, { ...workout, name: 'Actualizado' }, 'latest', payload('latest', 'Actualizado'));
   expect((await pendingSyncRows(alice)).map((row) => row.syncId)).toEqual(['latest']);
   expect((await loadActiveWorkout(alice))?.name).toBe('Actualizado');
+});
+
+it('archives a recovered draft in the same transaction as its new syncable workout', async () => {
+  const draft: LocalWorkout = { ...workout, clientId: 'draft-atomic', status: 'DRAFT' };
+  await saveWorkout(alice, draft);
+  await enqueueWorkout(alice, workout, 'recovered', payload('recovered'), draft);
+
+  expect(await loadRecoveredDrafts(alice)).toEqual([]);
+  expect(await loadActiveWorkout(alice)).toMatchObject({ clientId: 'local-workout', status: 'ACTIVE' });
+  expect((await pendingSyncRows(alice)).map((row) => row.syncId)).toEqual(['recovered']);
+});
+
+it('retains the draft and creates no active session or sync row if archival fails', async () => {
+  const draft: LocalWorkout = { ...workout, clientId: 'draft-failure', status: 'DRAFT' };
+  await saveWorkout(alice, draft);
+  const database = await getDatabase(alice);
+  await database.execAsync(`CREATE TRIGGER fail_draft_archive BEFORE UPDATE OF status ON workouts
+    WHEN OLD.client_id = 'draft-failure' BEGIN SELECT RAISE(ABORT, 'archive failed'); END;`);
+  try {
+    await expect(enqueueWorkout(alice, workout, 'recovered', payload('recovered'), draft)).rejects.toThrow('archive failed');
+    expect(await loadRecoveredDrafts(alice)).toMatchObject([{ clientId: 'draft-failure', status: 'DRAFT' }]);
+    expect(await loadActiveWorkout(alice)).toBeNull();
+    expect(await pendingSyncRows(alice)).toEqual([]);
+  } finally {
+    await database.execAsync('DROP TRIGGER fail_draft_archive;');
+  }
 });
 
 it('replays an uncertain send unchanged before sending a newer edit with the acknowledged revision', async () => {

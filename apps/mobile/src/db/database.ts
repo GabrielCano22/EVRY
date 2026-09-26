@@ -199,16 +199,16 @@ export async function loadRecoveredDrafts(owner: DatabaseOwner): Promise<LocalWo
   return rows.map((row) => JSON.parse(row.payload) as LocalWorkout);
 }
 
-export async function archiveRecoveredDraft(owner: DatabaseOwner, draft: LocalWorkout): Promise<void> {
-  await saveWorkout(owner, { ...draft, status: 'CANCELLED', cancelledAt: new Date().toISOString() }, 'synced');
-}
-
 export async function enqueueWorkout(
   owner: DatabaseOwner,
   workout: LocalWorkout,
   syncId: string,
   payload: SyncWorkoutInput,
+  draftToArchive?: LocalWorkout,
 ): Promise<SyncQueueState> {
+  if (draftToArchive && (draftToArchive.status !== 'DRAFT' || draftToArchive.clientId === workout.clientId)) {
+    throw new Error('Solo se puede archivar un borrador distinto de la sesión recuperada.');
+  }
   const database = await getDatabase(owner);
   let syncState: SyncQueueState = 'pending';
   await writeTransaction(database, async () => {
@@ -227,25 +227,28 @@ export async function enqueueWorkout(
     if (review) {
       syncState = 'requires_review';
       await persistWorkout(database, rebasedWorkout, syncState);
-      return;
+    } else {
+      await persistWorkout(database, rebasedWorkout, syncState);
+      await database.runAsync(
+        "DELETE FROM sync_queue WHERE workout_client_id = ? AND state = 'pending' AND attempts = 0",
+        workout.clientId,
+      );
+      const now = new Date().toISOString();
+      await database.runAsync(
+        `INSERT INTO sync_queue
+          (sync_id, workout_client_id, payload, state, attempts, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', 0, ?, ?)
+         ON CONFLICT(sync_id) DO NOTHING`,
+        syncId,
+        workout.clientId,
+        JSON.stringify(rebasedPayload),
+        now,
+        now,
+      );
     }
-    await persistWorkout(database, rebasedWorkout, syncState);
-    await database.runAsync(
-      "DELETE FROM sync_queue WHERE workout_client_id = ? AND state = 'pending' AND attempts = 0",
-      workout.clientId,
-    );
-    const now = new Date().toISOString();
-    await database.runAsync(
-      `INSERT INTO sync_queue
-        (sync_id, workout_client_id, payload, state, attempts, created_at, updated_at)
-       VALUES (?, ?, ?, 'pending', 0, ?, ?)
-       ON CONFLICT(sync_id) DO NOTHING`,
-      syncId,
-      workout.clientId,
-      JSON.stringify(rebasedPayload),
-      now,
-      now,
-    );
+    if (draftToArchive) {
+      await persistWorkout(database, { ...draftToArchive, status: 'CANCELLED', cancelledAt: new Date().toISOString() }, 'synced');
+    }
   });
   return syncState;
 }
