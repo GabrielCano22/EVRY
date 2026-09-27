@@ -586,19 +586,19 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
                   <span className="font-grotesk text-label-caps tracking-wider text-on-surface-variant mb-sm block uppercase">
                     Peso
                   </span>
-                  <Stepper value={peso} step={2.5} min={0} onChange={setPeso} suffix="KG" />
+                  <Stepper label="Peso" value={peso} step={2.5} min={0} onChange={setPeso} suffix="KG" />
                 </div>
                 <div>
                   <span className="font-grotesk text-label-caps tracking-wider text-on-surface-variant mb-sm block uppercase">
                     Repeticiones
                   </span>
-                  <Stepper value={reps} step={1} min={0} max={100} onChange={setReps} />
+                  <Stepper label="Repeticiones" value={reps} step={1} min={0} max={100} onChange={setReps} />
                 </div>
                 <div>
                   <span className="font-grotesk text-label-caps tracking-wider text-on-surface-variant mb-sm block uppercase">
                     RPE (esfuerzo percibido)
                   </span>
-                  <Stepper value={rpe} step={1} min={1} max={10} onChange={setRpe} />
+                  <Stepper label="RPE" value={rpe} step={1} min={1} max={10} onChange={setRpe} />
                 </div>
                 <Button onClick={() => registroSerie.mutate()} loading={registroSerie.isPending} size="lg" className="w-full">
                   <Icon name="check" fill />

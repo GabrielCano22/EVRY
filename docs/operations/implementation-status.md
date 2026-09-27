@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 26 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 27 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -20,6 +20,7 @@ Actualizado: 26 de septiembre de 2026. Este registro separa implementación, evi
 - Catálogo, rutinas, lista de entrenamientos, creación rápida, sesión activa e historial web consumen tipos y operaciones derivados de OpenAPI mediante TanStack Query. Sus consultas se cancelan, aíslan por cuenta y conservan datos canónicos ante fallos; las mutaciones muestran errores estructurados, evitan navegación prematura y refrescan únicamente las cachés correspondientes.
 - Autenticación y perfil web consumen operaciones y tipos generados desde OpenAPI. El access token permanece sólo en memoria, las transiciones obsoletas no navegan ni restauran sesiones, el logout limpia localmente antes de propagar un fallo remoto y el perfil usa TanStack Query con todos los campos soportados, errores por campo y respuesta canónica sin un segundo GET.
 - Ciclo, progreso y readiness web ya cruzan límites de transporte derivados de OpenAPI; ningún componente web llama directamente a `requestOrThrow`, `request` o `api`. El diario usa TanStack Query con cancelación y aislamiento por cuenta/generación, conserva valores nulos, limita fechas futuras y permite eliminar entradas con confirmación. Calendario, dashboard, búsqueda, gráfica paginada y estado diario mantienen errores explícitos en vez de fabricar datos vacíos.
+- Los controles de series web nombran por separado las acciones de peso, repeticiones y RPE, y anuncian el valor actual en una región de estado accesible; el recorrido E2E usa esos nombres semánticos.
 
 ## Evidencia observada
 

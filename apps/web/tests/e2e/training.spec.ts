@@ -106,8 +106,8 @@ test('register, train from a routine and preserve edited sets in progress and hi
     await expect(page.getByRole('button', { name: 'Registrar serie' })).toBeVisible();
 
     for (const count of [1, 2]) {
-      // The first stepper controls weight; each new routine set starts at its planned 0 kg / 10 reps.
-      await page.getByRole('button', { name: 'Sumar', exact: true }).first().click();
+      // Each new routine set starts at its planned 0 kg / 10 reps.
+      await page.getByRole('button', { name: 'Aumentar Peso', exact: true }).click();
       await page.getByRole('button', { name: 'Registrar serie' }).click();
       await expect(page.getByText(`${count} series totales · 1 ejercicios`, { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Registrar serie' })).toBeEnabled();
