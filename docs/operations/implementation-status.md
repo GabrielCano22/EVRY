@@ -1,6 +1,6 @@
 # Estado de implementación de la hoja de ruta integral
 
-Actualizado: 27 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
+Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evidencia observada y aceptación final; no declara preparación para producción.
 
 ## Implementado
 
@@ -21,8 +21,16 @@ Actualizado: 27 de septiembre de 2026. Este registro separa implementación, evi
 - Autenticación y perfil web consumen operaciones y tipos generados desde OpenAPI. El access token permanece sólo en memoria, las transiciones obsoletas no navegan ni restauran sesiones, el logout limpia localmente antes de propagar un fallo remoto y el perfil usa TanStack Query con todos los campos soportados, errores por campo y respuesta canónica sin un segundo GET.
 - Ciclo, progreso y readiness web ya cruzan límites de transporte derivados de OpenAPI; ningún componente web llama directamente a `requestOrThrow`, `request` o `api`. El diario usa TanStack Query con cancelación y aislamiento por cuenta/generación, conserva valores nulos, limita fechas futuras y permite eliminar entradas con confirmación. Calendario, dashboard, búsqueda, gráfica paginada y estado diario mantienen errores explícitos en vez de fabricar datos vacíos.
 - Los controles de series web nombran por separado las acciones de peso, repeticiones y RPE, y anuncian el valor actual en una región de estado accesible; el recorrido E2E usa esos nombres semánticos.
+- Las miniaturas móviles visitadas tienen un caché propio de 20 MiB por cuenta/origen con índice SQLite y expulsión LRU física. Al reabrir reconcilia archivos ausentes o parciales sin tocar entrenamientos; un fallo de expulsión conserva el índice recuperable. Las listas y vistas previas no usan el caché de disco automático de Expo Image; los GIF siguen requiriendo reproducción explícita.
 
 ## Evidencia observada
+
+### Miniaturas móviles acotadas, 30 de septiembre
+
+- Las 28 suites / 228 pruebas móviles pasaron con SQLite sintético. Incluyen recencia, expulsión física, tamaño excesivo, aislamiento de cuentas, archivos perdidos, recuperación al reabrir y rollback ante fallo de borrado. Las pruebas del adaptador simulan el límite nativo y los archivos parciales de Android; no equivalen a evidencia en dispositivo.
+- La revisión independiente del cambio no encontró hallazgos bloqueantes. La comprobación física de persistencia, cierre/reapertura y consumo de disco en Android/iPhone sigue pendiente.
+- Expo, Constants y Router se alinearon con los parches exigidos por Expo Doctor, que pasó 21/21. Se actualizaron dentro de sus rangos compatibles `brace-expansion`, `undici` y `postcss-selector-parser`; la auditoría con umbral alto pasó y conserva 14 avisos moderados. No se aplicaron correcciones forzadas ni se desactivaron puertas.
+- Las puertas locales completas pasaron: 217 pruebas web, 3 de accesibilidad, 18 de los paquetes compartidos, 33 del importador de contrato, lint, tipos, contrato y build. Las exportaciones Android/iOS y Playwright 8/8 contra PostgreSQL sintético también terminaron correctamente. El lock fija el backend publicado `e201cacdc0f4b58491661ecd1f246877845d6073`; no cambia el OpenAPI.
 
 ### Cierre de registro, ciclo, progreso, rutinas y perfil móvil, 9–11 de septiembre
 
@@ -132,7 +140,7 @@ Actualizado: 27 de septiembre de 2026. Este registro separa implementación, evi
 - Si existe un `evry.db` heredado sin propietario, conservarlo intacto: la recuperación exige identificar al propietario e importación explícita; no se asignan automáticamente esos datos a la siguiente cuenta.
 - La migración ya abre los entrenamientos y la cola aunque una ficha del catálogo tenga JSON inválido. Las lecturas offline omiten fichas o rutinas dañadas, avisan que la copia está incompleta y conservan intactas las filas originales para revisión; al volver la conexión se puede reintentar la consulta. Aún falta probar corrupción fuera de estas cachés y recuperación en dispositivos físicos.
 - Completar feedback visible ante fallo de guardado local, reconexión y arranque frío del servidor gratuito.
-- Definir presupuesto y expulsión LRU de miniaturas; hoy se evita descargar GIF en listas, pero no existe ese límite explícito.
+- Verificar en dispositivos el presupuesto de 20 MiB por cuenta/origen y la recuperación del caché LRU implementado; el límite corresponde a archivos retenidos, no a descargas transitorias en curso.
 - Ejecutar cierre/reapertura reales, Android release, iPhone/Expo Go y APK privado.
 
 ### Web, rendimiento y operación

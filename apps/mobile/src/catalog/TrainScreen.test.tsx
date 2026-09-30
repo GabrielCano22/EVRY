@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
@@ -8,6 +8,7 @@ import { useTrainingStore } from '../training/training-store';
 import { loadExercises, loadRoutines, type Exercise, type ExerciseResult } from './catalog';
 
 jest.mock('./catalog', () => ({ loadExercises: jest.fn(), loadRoutines: jest.fn() }));
+jest.mock('./thumbnail-files', () => ({ mobileThumbnailCache: { resolve: async (_owner: unknown, url: string) => url } }));
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn().mockResolvedValue(undefined),
   selectionAsync: jest.fn().mockResolvedValue(undefined),
@@ -34,14 +35,19 @@ beforeEach(() => {
   jest.mocked(loadRoutines).mockResolvedValue({ items: [], source: 'server', stale: false, notice: null, updatedAt: null });
 });
 afterEach(() => { queryClient.clear(); });
-const show = () => render(<QueryClientProvider client={queryClient}><TrainScreen /></QueryClientProvider>);
+const show = async () => {
+  const view = await render(<QueryClientProvider client={queryClient}><TrainScreen /></QueryClientProvider>);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  return view;
+};
 
 it('shows all 30 exercises and navigates to the remaining page without auto-loading GIFs', async () => {
   await show();
   expect(await screen.findByText('Ejercicio 30')).toBeTruthy();
   const images = screen.getAllByLabelText(/Miniatura de/);
   expect(images.length).toBeGreaterThanOrEqual(30);
-  expect(images.every((image) => JSON.stringify(image.props.source).includes('.jpg'))).toBe(true);
+  await waitFor(() => expect(images.every((image) => JSON.stringify(image.props.source).includes('.jpg'))).toBe(true));
+  expect(images.every((image) => image.props.cachePolicy === 'none')).toBe(true);
   await fireEvent.press(screen.getByRole('button', { name: 'Página siguiente' }));
   expect(await screen.findAllByText('Ejercicio 31')).not.toHaveLength(0);
   expect(screen.queryByText('Ejercicio 30')).toBeNull();
@@ -92,6 +98,7 @@ it('uses the server media URL and only switches the detail to GIF after pressing
   expect(JSON.stringify(screen.getByLabelText('Demostración de Ejercicio 1').props.source)).toContain('https://cdn.example/one.jpg');
   await fireEvent.press(screen.getByRole('button', { name: 'Reproducir GIF' }));
   expect(JSON.stringify(screen.getByLabelText('Demostración de Ejercicio 1').props.source)).toContain('https://cdn.example/one.gif');
+  expect(screen.getByLabelText('Demostración de Ejercicio 1').props.cachePolicy).toBe('none');
   expect(JSON.stringify(screen.getByLabelText('Miniatura de Ejercicio 1').props.source)).toContain('https://cdn.example/one.jpg');
   await fireEvent.press(screen.getByRole('button', { name: 'Detener demostración' }));
   expect(JSON.stringify(screen.getByLabelText('Demostración de Ejercicio 1').props.source)).toContain('https://cdn.example/one.jpg');

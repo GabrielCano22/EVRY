@@ -6,7 +6,9 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { API_BASE_URL } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
+import { CachedThumbnail } from '@/src/catalog/CachedThumbnail';
 import { mediaUrl } from '@/src/catalog/media-url';
+import { mobileThumbnailCache } from '@/src/catalog/thumbnail-files';
 import { RoutineManager } from '@/src/routines/RoutineManager';
 import { useTrainingStore } from '@/src/training/training-store';
 import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/components';
@@ -126,11 +128,11 @@ export default function TrainScreen() {
               selectedExercise?.id === exercise.id && styles.exerciseOptionSelected,
             ]}
           >
-            {exercise.imageUrl || exercise.imagePath ? <Image
-              accessibilityLabel={`Miniatura de ${exercise.name}`}
-              cachePolicy="disk"
-              contentFit="contain"
-              source={{ uri: mediaUrl(exercise.imageUrl ?? exercise.imagePath, API_BASE_URL)! }}
+            {exercise.imageUrl || exercise.imagePath ? <CachedThumbnail
+              cache={mobileThumbnailCache}
+              label={`Miniatura de ${exercise.name}`}
+              owner={session}
+              url={mediaUrl(exercise.imageUrl ?? exercise.imagePath, API_BASE_URL)!}
               style={styles.thumbnail}
             /> : null}
             <Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text>
@@ -147,15 +149,10 @@ export default function TrainScreen() {
       {selectedExercise ? (
         <View style={styles.exerciseCard}>
           <Text style={textStyles.heading}>{selectedExercise.name}</Text>
-          {previewUrl ? (
-            <Image
-              accessibilityLabel={`Demostración de ${selectedExercise.name}`}
-              cachePolicy="disk"
-              contentFit="contain"
-              source={{ uri: previewUrl }}
-              style={styles.exerciseMedia}
-            />
-          ) : null}
+          {previewUrl ? playingGif
+            ? <Image accessibilityLabel={`Demostración de ${selectedExercise.name}`} cachePolicy="none" contentFit="contain" source={{ uri: previewUrl }} style={styles.exerciseMedia} />
+            : <CachedThumbnail cache={mobileThumbnailCache} label={`Demostración de ${selectedExercise.name}`} owner={session} url={previewUrl} style={styles.exerciseMedia} />
+          : null}
           <Text style={textStyles.muted}>El catálogo muestra miniaturas; los GIF se reproducen solo bajo demanda.</Text>
           {selectedExercise.attribution ? <Text style={textStyles.muted}>{selectedExercise.attribution}</Text> : null}
           {selectedExercise.gifUrl || selectedExercise.gifPath ? (
