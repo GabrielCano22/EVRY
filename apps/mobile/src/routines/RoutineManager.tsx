@@ -5,7 +5,9 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { MobileSession } from '../api/client';
 import type { Exercise } from '../catalog/catalog';
+import { CachedThumbnail } from '../catalog/CachedThumbnail';
 import { mediaUrl } from '../catalog/media-url';
+import { mobileThumbnailCache } from '../catalog/thumbnail-files';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
 import { createRoutine, deleteRoutine, updateRoutine, type CreateRoutineInput, type Routine, type UpdateRoutineInput } from './routines';
@@ -170,28 +172,31 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
       <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
     </View>)}
     {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
-    {draft ? <RoutineEditor serverUrl={session.serverUrl} draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
+    {draft ? <RoutineEditor session={session} draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
   </View>;
 }
 
-function ExercisePreview({ exercise, serverUrl }: { exercise: Exercise; serverUrl: string }) {
+function ExercisePreview({ exercise, session }: { exercise: Exercise; session: MobileSession }) {
   const [playingGif, setPlayingGif] = useState(false);
-  const image = mediaUrl(exercise.imageUrl ?? exercise.imagePath, serverUrl);
-  const gif = mediaUrl(exercise.gifUrl ?? exercise.gifPath, serverUrl);
+  const image = mediaUrl(exercise.imageUrl ?? exercise.imagePath, session.serverUrl);
+  const gif = mediaUrl(exercise.gifUrl ?? exercise.gifPath, session.serverUrl);
   const source = playingGif ? gif : image;
   return <View accessibilityLabel={`Vista previa de ${exercise.name}`} style={styles.preview}>
     <Text style={textStyles.heading}>{exercise.name}</Text>
     <Text style={textStyles.body}>Equipo: {exercise.equipmentLabel ?? exercise.equipment}</Text>
     <Text style={textStyles.body}>Músculo: {exercise.target ?? exercise.muscleGroup}</Text>
     {exercise.description ? <Text style={textStyles.body}>{exercise.description}</Text> : null}
-    {source ? <Image accessibilityLabel={`Demostración de ${exercise.name}`} cachePolicy="disk" contentFit="contain" source={{ uri: source }} style={styles.exerciseMedia} /> : null}
+    {source ? playingGif
+      ? <Image accessibilityLabel={`Demostración de ${exercise.name}`} cachePolicy="none" contentFit="contain" source={{ uri: source }} style={styles.exerciseMedia} />
+      : <CachedThumbnail cache={mobileThumbnailCache} label={`Demostración de ${exercise.name}`} owner={session} url={source} style={styles.exerciseMedia} />
+    : null}
     {exercise.attribution ? <Text style={textStyles.muted}>{exercise.attribution}</Text> : null}
     {gif ? <PrimaryButton onPress={() => setPlayingGif((value) => !value)}>{playingGif ? 'Detener demostración' : 'Reproducir GIF'}</PrimaryButton> : null}
   </View>;
 }
 
-function RoutineEditor({ serverUrl, draft, exercises, pending, disabled, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
-  serverUrl: string;
+function RoutineEditor({ session, draft, exercises, pending, disabled, preview, catalogSearch, catalogPage, catalogHasMore, catalogLoading, catalogError, catalogNotice, catalogSource, catalogSuccess, onSearchChange, onChangePage, onRetryCatalog, onChange, onUpdateExercise, onUpdateTargetSets, onSetPlan, onMove, onRemove, onPreview, onAdd, onCancel, onSave }: {
+  session: MobileSession;
   draft: RoutineDraft; exercises: Exercise[]; pending: boolean; disabled: boolean; preview: Exercise | null; catalogSearch: string; catalogPage: number; catalogHasMore: boolean; catalogLoading: boolean; catalogError: Error | null; catalogNotice: string | null; catalogSource: 'server' | 'cache' | null; catalogSuccess: boolean; onSearchChange: (value: string) => void; onChangePage: (page: number) => void; onRetryCatalog: () => void; onChange: (next: Partial<RoutineDraft>) => void; onUpdateExercise: (index: number, next: Partial<DraftExercise>) => void; onUpdateTargetSets: (index: number, targetSets: string) => void; onSetPlan: (index: number, enabled: boolean) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void; onPreview: (exercise: Exercise) => void; onAdd: (exercise: Exercise) => void; onCancel: () => void; onSave: () => void;
 }) {
   return <View style={styles.editor}>
@@ -206,7 +211,7 @@ function RoutineEditor({ serverUrl, draft, exercises, pending, disabled, preview
     {catalogNotice ? <Text style={textStyles.muted}>{catalogNotice}</Text> : null}
     {catalogSuccess && exercises.length === 0 ? <Text style={textStyles.muted}>{catalogSource === 'cache' ? 'No hay coincidencias en la copia local.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text> : null}
     {catalogSuccess && !catalogError ? exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}><Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text><PrimaryButton disabled={disabled} accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)}>Ver</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)}>Agregar</PrimaryButton></View>) : null}
-    {preview ? <ExercisePreview key={preview.id} exercise={preview} serverUrl={serverUrl} /> : null}
+    {preview ? <ExercisePreview key={preview.id} exercise={preview} session={session} /> : null}
     <View style={styles.row}><PrimaryButton disabled={disabled || catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)}>Anterior</PrimaryButton><PrimaryButton disabled={disabled || catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)}>Siguiente</PrimaryButton></View>
     <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
     {draft.exercises.map((item, index) => <View key={item.exercise.id} style={styles.card}>

@@ -30,6 +30,15 @@ export interface SyncReview {
 
 const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 const writeQueues = new WeakMap<SQLite.SQLiteDatabase, Promise<void>>();
+let lastMediaAccessTime = 0;
+let mediaAccessSequence = 0;
+
+function mediaAccessStamp(): string {
+  const time = Math.max(Date.now(), lastMediaAccessTime);
+  mediaAccessSequence = time === lastMediaAccessTime ? mediaAccessSequence + 1 : 0;
+  lastMediaAccessTime = time;
+  return `${new Date(time).toISOString()}~${String(mediaAccessSequence).padStart(8, '0')}`;
+}
 
 // Expo's async transactions share a connection. Serialize complete write units so
 // a network acknowledgement cannot commit/rollback an unrelated local edit.
@@ -155,6 +164,95 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       cursor = rows[rows.length - 1].id;
     }
     await database.execAsync('PRAGMA user_version = 2;');
+  });
+}
+
+export async function readMediaCache(owner: DatabaseOwner, url: string): Promise<{ uri: string; bytes: number } | null> {
+  const database = await getDatabase(owner);
+  const row = await database.getFirstAsync<{ local_uri: string; bytes: number }>(
+    'SELECT local_uri, bytes FROM media_cache WHERE url = ?', url,
+  );
+  return row ? { uri: row.local_uri, bytes: row.bytes } : null;
+}
+
+export async function listMediaCache(owner: DatabaseOwner): Promise<{ url: string; uri: string; bytes: number }[]> {
+  const database = await getDatabase(owner);
+  const rows = await database.getAllAsync<{ url: string; local_uri: string; bytes: number }>(
+    'SELECT url, local_uri, bytes FROM media_cache ORDER BY last_access_at ASC, url ASC',
+  );
+  return rows.map((row) => ({ url: row.url, uri: row.local_uri, bytes: row.bytes }));
+}
+
+async function pruneMediaCache(
+  database: SQLite.SQLiteDatabase,
+  maxBytes: number,
+  evict?: (entry: { url: string; uri: string }) => Promise<void> | void,
+  protectedUrl?: string,
+): Promise<{ url: string; uri: string }[]> {
+  const rows = await database.getAllAsync<{ url: string; local_uri: string; bytes: number }>(
+    'SELECT url, local_uri, bytes FROM media_cache ORDER BY last_access_at ASC, url ASC',
+  );
+  let total = rows.reduce((sum, row) => sum + row.bytes, 0);
+  const evicted: { url: string; uri: string }[] = [];
+  for (const row of rows) {
+    if (total <= maxBytes) break;
+    if (row.url === protectedUrl) continue;
+    const entry = { url: row.url, uri: row.local_uri };
+    await evict?.(entry);
+    await database.runAsync('DELETE FROM media_cache WHERE url = ?', row.url);
+    evicted.push(entry);
+    total -= row.bytes;
+  }
+  return evicted;
+}
+
+export async function trimMediaCache(
+  owner: DatabaseOwner,
+  maxBytes: number,
+  evict: (entry: { url: string; uri: string }) => Promise<void> | void,
+): Promise<void> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('El presupuesto de medios debe ser positivo.');
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => { await pruneMediaCache(database, maxBytes, evict); });
+}
+
+export async function touchMediaCache(owner: DatabaseOwner, url: string): Promise<void> {
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => {
+    await database.runAsync('UPDATE media_cache SET last_access_at = ? WHERE url = ?', mediaAccessStamp(), url);
+  });
+}
+
+export async function forgetMediaCache(owner: DatabaseOwner, url: string): Promise<void> {
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => {
+    await database.runAsync('DELETE FROM media_cache WHERE url = ?', url);
+  });
+}
+
+export async function rememberMediaCache(
+  owner: DatabaseOwner,
+  url: string,
+  uri: string,
+  bytes: number,
+  maxBytes: number,
+  evict?: (entry: { url: string; uri: string }) => Promise<void> | void,
+): Promise<{ retained: boolean; evicted: { url: string; uri: string }[] }> {
+  if (!Number.isSafeInteger(bytes) || bytes <= 0 || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error('El tamaño y el presupuesto de medios deben ser enteros positivos.');
+  }
+  if (bytes > maxBytes) return { retained: false, evicted: [] };
+
+  const database = await getDatabase(owner);
+  return writeTransaction(database, async () => {
+    await database.runAsync(
+      `INSERT INTO media_cache (url, local_uri, bytes, last_access_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(url) DO UPDATE SET local_uri = excluded.local_uri, bytes = excluded.bytes,
+         last_access_at = excluded.last_access_at`,
+      url, uri, bytes, mediaAccessStamp(),
+    );
+    const evicted = await pruneMediaCache(database, maxBytes, evict, url);
+    return { retained: true, evicted };
   });
 }
 

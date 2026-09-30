@@ -7,6 +7,7 @@ import type { Exercise } from '../catalog/catalog';
 
 jest.mock('expo-haptics', () => ({ notificationAsync: jest.fn(), NotificationFeedbackType: { Success: 'success' } }));
 jest.mock('./routines', () => ({ createRoutine: jest.fn(), updateRoutine: jest.fn(), deleteRoutine: jest.fn() }));
+jest.mock('../catalog/thumbnail-files', () => ({ mobileThumbnailCache: { resolve: async (_owner: unknown, url: string) => url } }));
 
 const session = { userId: 'user-1', serverUrl: 'https://api.example.com/api/v1', version: 1 };
 const exercise = (id: string, name: string): Exercise => ({
@@ -196,15 +197,17 @@ it('previews catalog details, image and attribution and loads GIF only after pla
   expect(screen.getByText('Músculo: Cuádriceps')).toBeTruthy();
   expect(screen.getByText(detailed.description)).toBeTruthy();
   expect(screen.getByText('© Gym visual')).toBeTruthy();
-  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]);
+  await waitFor(() => expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]));
+  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('cachePolicy', 'none');
   expect(screen.queryByText('1. Sentadilla')).toBeNull();
   await fireEvent.press(screen.getByRole('button', { name: 'Reproducir GIF' }));
   expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.gifUrl }]);
+  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('cachePolicy', 'none');
   await fireEvent.press(screen.getByRole('button', { name: 'Detener demostración' }));
-  expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]);
+  await waitFor(() => expect(screen.getByLabelText('Demostración de Sentadilla')).toHaveProp('source', [{ uri: detailed.imageUrl }]));
   await fireEvent.press(screen.getByRole('button', { name: 'Reproducir GIF' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Ver Peso muerto' }));
-  expect(screen.getByLabelText('Demostración de Peso muerto')).toHaveProp('source', [{ uri: 'https://api.example.com/media/exercises/images/deadlift.jpg' }]);
+  await waitFor(() => expect(screen.getByLabelText('Demostración de Peso muerto')).toHaveProp('source', [{ uri: 'https://api.example.com/media/exercises/images/deadlift.jpg' }]));
   expect(screen.getByText('Equipo: BARBELL')).toBeTruthy();
   expect(screen.getByText('Músculo: QUADS')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Reproducir GIF' })).toBeTruthy();
