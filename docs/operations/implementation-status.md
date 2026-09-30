@@ -25,6 +25,12 @@ Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evi
 
 ## Evidencia observada
 
+### Contexto diario y ciclo de extremo a extremo, 30 de septiembre
+
+- Playwright pasó 10/10 contra API NestJS y PostgreSQL sintético, en escritorio y móvil web. El recorrido nuevo guarda readiness con puntuación exacta, edita y rehidrata perfil, activa el ciclo con sexo registrado masculino, crea un registro con energía ausente, conserva su ID al moverlo al mes anterior, verifica el detalle del calendario y lo elimina. El opt-out persiste y la ruta directa no consulta datos del ciclo.
+- La prueba descubrió dos fallos reales: respuestas vacías donde OpenAPI promete JSON `null`, y sobrescritura del `Retry-After` calculado por el limitador. Se corrigieron en el backend sin simular respuestas ni desactivar protección. El ensayo respeta el plazo real y comprueba que un segundo fallo de login no queda oculto.
+- La prueba usa controles de usuario para las escrituras y lecturas HTTP independientes para comprobar persistencia. Una recarga completa de ciclo descarta el estado del navegador; al revisitar Inicio y Perfil se verifican los valores rehidratados. Las cuentas son sintéticas y únicas; esta evidencia no sustituye Android/iPhone ni un ensayo de migración poblada.
+
 ### Miniaturas móviles acotadas, 30 de septiembre
 
 - Las 28 suites / 228 pruebas móviles pasaron con SQLite sintético. Incluyen recencia, expulsión física, tamaño excesivo, aislamiento de cuentas, archivos perdidos, recuperación al reabrir y rollback ante fallo de borrado. Las pruebas del adaptador simulan el límite nativo y los archivos parciales de Android; no equivalen a evidencia en dispositivo.
@@ -129,7 +135,7 @@ Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evi
 ### Contratos e integración
 
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
-- Todos los consumidores HTTP web vigentes usan límites derivados del cliente generado. Falta ampliar la evidencia E2E real de ciclo, readiness, progreso y perfil; que el contrato y TypeScript compilen no demuestra esos flujos completos.
+- Todos los consumidores HTTP web vigentes usan límites derivados del cliente generado. Los recorridos principales de entrenamiento, progreso, ciclo, readiness y perfil tienen evidencia E2E real; falta ampliar escenarios de error de red, cancelación y cambios concurrentes entre dispositivos.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
 - Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
 
@@ -146,7 +152,7 @@ Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evi
 ### Web, rendimiento y operación
 
 - El cliente generado reutiliza deliberadamente el transporte autenticado común para conservar refresh, cancelación y errores seguros. Mantener la prueba arquitectónica verde ante nuevos consumidores.
-- Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real ya cubre login, refresh, una sesión finalizada preparada por API y su calendario en escritorio/móvil; falta completar el entrenamiento íntegramente mediante la interfaz.
+- Ampliar accesibilidad a lector de pantalla y más pantallas. El E2E real cubre login, refresh, entrenamiento mediante interfaz, progreso/historial, calendario y contexto diario en escritorio/móvil web; no sustituye la aceptación con tecnología asistiva o aplicación nativa.
 - Medir LCP/INP/CLS, latencias p95 calientes y memoria/arranque Android release; aún no se han demostrado esos presupuestos.
 - No se autorizan despliegues. Render y Cloudflare quedan fuera de alcance. Si se autoriza expresamente un despliegue futuro, solo se evaluará Vercel después de diseñar/aprobar configuración, credenciales, orígenes y recuperación.
 
