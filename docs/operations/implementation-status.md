@@ -25,6 +25,13 @@ Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evi
 
 ## Evidencia observada
 
+### Migración poblada y restauración sintética, 30 de septiembre
+
+- El backend incorpora una puerta reproducible de ocho casos con Prisma migrate deploy y PostgreSQL 17.11 local. Conserva los 34 registros fuente del baseline histórico, valida estados y readiness en Bogotá, reconstruye estadísticas con valores independientes y comprueba restricciones reales.
+- Los backups anterior y posterior se restauran en bases nuevas, con comparación completa de campos y repetición idempotente de la migración. Tres clases de duplicados heredados detienen la expansión sin perder filas; no se hace limpieza automática.
+- La suite HTTP completa pasó 9 suites / 83 pruebas también contra la copia poblada restaurada; una comparación posterior confirmó los fixtures originales intactos. Las unitarias backend pasaron 56 suites / 392 casos. La guía reproducible está en `EVRY-Backend/docs/operations/migration-runbook.md`.
+- La revisión independiente llevó a aislar también el entorno de los binarios PostgreSQL dentro de Docker. Se conservaron los dumps y bases sintéticas; no se accedió a datos reales ni se desplegaron componentes. La migración futura de una base real aún requiere backup y revisión autorizados propios.
+
 ### Contexto diario y ciclo de extremo a extremo, 30 de septiembre
 
 - Playwright pasó 10/10 contra API NestJS y PostgreSQL sintético, en escritorio y móvil web. El recorrido nuevo guarda readiness con puntuación exacta, edita y rehidrata perfil, activa el ciclo con sexo registrado masculino, crea un registro con energía ausente, conserva su ID al moverlo al mes anterior, verifica el detalle del calendario y lo elimina. El opt-out persiste y la ruta directa no consulta datos del ciclo.
@@ -137,7 +144,7 @@ Actualizado: 30 de septiembre de 2026. Este registro separa implementación, evi
 - Mantener la CI cruzada en GitHub tras cualquier cambio posterior del lock.
 - Todos los consumidores HTTP web vigentes usan límites derivados del cliente generado. Los recorridos principales de entrenamiento, progreso, ciclo, readiness y perfil tienen evidencia E2E real; falta ampliar escenarios de error de red, cancelación y cambios concurrentes entre dispositivos.
 - Comprobar de extremo a extremo el contrato móvil completo contra PostgreSQL. Ampliar la matriz de autenticación/sync a dispositivos y condiciones de red reales.
-- Ensayar migración sobre una base poblada y backup/restauración, con conteos y estadísticas contrastados. No se ha ejecutado ni se reclama una restauración.
+- El ensayo automatizado de migración poblada y backup/restauración sintéticos está verificado con conteos, campos y estadísticas contrastados. Antes de una futura migración real autorizada sigue siendo obligatorio ensayar su copia y revisar sus inconsistencias; no se ha restaurado una base real.
 
 ### Móvil
 
