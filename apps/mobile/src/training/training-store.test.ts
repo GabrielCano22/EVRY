@@ -88,6 +88,42 @@ it('persists a cancelled snapshot before removing the active workout', async () 
   expect(useTrainingStore.getState().activeWorkout).toBeNull();
 });
 
+it('does not allow a second session while completion is waiting for local durability', async () => {
+  jest.mocked(enqueueWorkout).mockClear();
+  let releaseWrite!: (state: 'pending') => void;
+  jest.mocked(enqueueWorkout).mockImplementationOnce(() => new Promise(resolve => { releaseWrite = resolve; }));
+  const workout: LocalWorkout = {
+    clientId: 'workout-finish', name: 'Fuerza', revision: 2, status: 'ACTIVE', notes: null,
+    startedAt: '2026-08-30T10:00:00.000Z', deletedSetClientIds: [],
+    sets: [{ clientId: 'finish-set', revision: 0, exerciseId: 'exercise-1', order: 0,
+      reps: 8, weightKg: 50, durationS: null, rpe: 7, isWarmup: false,
+      techniqueStable: true, completedAt: '2026-08-30T10:05:00.000Z' }],
+  };
+  useTrainingStore.setState({ activeWorkout: workout, ready: true, error: null,
+    session: { userId: 'user-a', serverUrl: 'https://api.example.com', version: 1 } });
+  const finishing = useTrainingStore.getState().finishWorkout();
+  let attemptedStart: Promise<void> | undefined;
+  try {
+    await waitFor(() => expect(releaseWrite).toBeDefined());
+    attemptedStart = useTrainingStore.getState().startWorkout('No debe comenzar');
+    expect(useTrainingStore.getState().activeWorkout?.clientId).toBe('workout-finish');
+    await useTrainingStore.getState().finishWorkout();
+    await useTrainingStore.getState().updateSet('finish-set', { reps: 99 });
+    await useTrainingStore.getState().deleteSet('finish-set');
+    await useTrainingStore.getState().addSet('exercise-2');
+    await useTrainingStore.getState().cancelWorkout();
+    expect(useTrainingStore.getState().activeWorkout).toMatchObject({
+      status: 'COMPLETED', sets: [{ clientId: 'finish-set', reps: 8 }],
+    });
+    expect(jest.mocked(enqueueWorkout)).toHaveBeenCalledTimes(1);
+  } finally {
+    releaseWrite('pending');
+    await Promise.allSettled([finishing, attemptedStart]);
+  }
+  expect(useTrainingStore.getState().activeWorkout).toBeNull();
+  expect(jest.mocked(enqueueWorkout)).toHaveBeenCalledTimes(1);
+});
+
 it('restores the persisted workout and reports a local save failure when adding a set', async () => {
   const workout: LocalWorkout = {
     clientId: 'workout-local', name: 'Fuerza', revision: 0, status: 'ACTIVE', notes: null,

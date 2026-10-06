@@ -9,6 +9,7 @@ import {
   type PressableProps,
 } from 'react-native';
 import type { SyncQueueState } from '../sync/queue-policy';
+import type { LocalSaveState } from '../training/training-store';
 import { theme } from './theme';
 
 export function Screen({ children, scroll = true }: PropsWithChildren<{ scroll?: boolean }>) {
@@ -49,11 +50,15 @@ const syncLabels: Record<SyncQueueState, string> = {
   requires_review: 'Requiere revisión',
 };
 
-export function SyncStatus({ state }: { state: SyncQueueState }) {
+export function SyncStatus({ state, localSaveState = 'saved' }: { state: SyncQueueState; localSaveState?: LocalSaveState }) {
+  const label = localSaveState === 'saving' ? 'Guardando en este dispositivo…'
+    : localSaveState === 'failed' ? 'No se pudo guardar el último cambio' : syncLabels[state];
+  const color = localSaveState === 'failed' || state === 'requires_review' ? theme.colors.error
+    : localSaveState === 'saving' ? theme.colors.textMuted : theme.colors.success;
   return (
-    <View accessibilityRole="text" style={styles.pill}>
-      <View style={[styles.dot, { backgroundColor: state === 'requires_review' ? theme.colors.error : theme.colors.success }]} />
-      <Text style={styles.pillText}>{syncLabels[state]}</Text>
+    <View accessibilityRole="text" accessibilityLiveRegion="polite" style={styles.pill}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={styles.pillText}>{label}</Text>
     </View>
   );
 }

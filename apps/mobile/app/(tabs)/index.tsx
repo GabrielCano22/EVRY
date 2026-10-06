@@ -21,6 +21,8 @@ export default function HomeScreen() {
   const activeWorkout = useTrainingStore((state) => state.activeWorkout);
   const startWorkout = useTrainingStore((state) => state.startWorkout);
   const syncState = useTrainingStore((state) => state.syncState);
+  const localSaveState = useTrainingStore((state) => state.localSaveState);
+  const trainingError = useTrainingStore((state) => state.error);
   const initializeTraining = useTrainingStore((state) => state.initialize);
   const recoverDraft = useTrainingStore((state) => state.recoverDraft);
   const [resolutionError, setResolutionError] = useState<string | null>(null);
@@ -70,7 +72,8 @@ export default function HomeScreen() {
       <Text style={textStyles.title}>Hola, {user?.name ?? 'atleta'}</Text>
       <Text style={textStyles.muted}>Tu entrenamiento y tus series quedan disponibles incluso sin conexión.</Text>
       {offline ? <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Modo local: puedes entrenar sin conexión. Verificaremos la sesión al reconectar.</Text> : null}
-      <SyncStatus state={syncState} />
+      <SyncStatus state={syncState} localSaveState={localSaveState} />
+      {trainingError ? <Text accessibilityRole="alert" style={textStyles.error}>{trainingError}</Text> : null}
       {resolutionError ? <Text accessibilityRole="alert" style={textStyles.error}>{resolutionError}</Text> : null}
       {reviews.map((review) => (
         <View key={review.workoutClientId} style={{ backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 18 }}>
@@ -98,7 +101,7 @@ export default function HomeScreen() {
       <View style={{ backgroundColor: theme.colors.surface, borderRadius: 12, gap: 12, padding: 20 }}>
         <Text style={textStyles.heading}>{activeWorkout ? activeWorkout.name : '¿Lista para entrenar?'}</Text>
         <Text style={textStyles.muted}>
-          {activeWorkout ? `${activeWorkout.sets.length} series guardadas localmente` : 'Inicia una sesión libre y registra tus series.'}
+          {activeWorkout ? `${activeWorkout.sets.length} series${localSaveState === 'saving' ? ' · guardando cambios…' : localSaveState === 'failed' ? ' · último cambio no guardado' : ' guardadas localmente'}` : 'Inicia una sesión libre y registra tus series.'}
         </Text>
         <PrimaryButton onPress={activeWorkout ? () => router.push('/train') : start}>
           {activeWorkout ? 'Continuar sesión' : 'Iniciar sesión'}

@@ -17,6 +17,8 @@ import {
   type LocalWorkoutSet,
 } from './workout-domain';
 
+export type LocalSaveState = 'saved' | 'saving' | 'failed';
+
 interface TrainingState {
   session: MobileSession | null;
   editVersion: number;
@@ -24,6 +26,7 @@ interface TrainingState {
   ready: boolean;
   activeWorkout: LocalWorkout | null;
   syncState: SyncQueueState;
+  localSaveState: LocalSaveState;
   error: string | null;
   initialize: (session: MobileSession) => Promise<void>;
   startWorkout: (name?: string, routineId?: string) => Promise<void>;
@@ -36,28 +39,41 @@ interface TrainingState {
   refreshSyncState: () => Promise<void>;
 }
 
-let localWriteQueue: Promise<void> = Promise.resolve();
+const localWriteQueues = new Map<string, Promise<void>>();
+
+function writeScope(session: MobileSession): string {
+  return JSON.stringify([session.serverUrl.replace(/\/+$/, ''), session.userId]);
+}
+
+function pendingLocalWrites(session: MobileSession): Promise<void> {
+  return localWriteQueues.get(writeScope(session)) ?? Promise.resolve();
+}
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
   session: null,
   editVersion: 0,
-  reset: () => set({ session: null, ready: false, activeWorkout: null, syncState: 'synced', error: null, editVersion: get().editVersion + 1 }),
+  reset: () => set({ session: null, ready: false, activeWorkout: null, syncState: 'synced', localSaveState: 'saved', error: null, editVersion: get().editVersion + 1 }),
   ready: false,
   activeWorkout: null,
   syncState: 'synced',
+  localSaveState: 'saved',
   error: null,
   async initialize(session) {
     if (!isCurrentMobileSession(session)) return;
-    set({ session, ready: false, activeWorkout: null, error: null, editVersion: get().editVersion + 1 });
+    const version = get().editVersion + 1;
+    set({ session, ready: false, activeWorkout: null, localSaveState: 'saving', error: null, editVersion: version });
     try {
+      await pendingLocalWrites(session);
+      if (!isCurrentMobileSession(session) || get().session !== session || get().editVersion !== version) return;
       await getDatabase(session);
       const activeWorkout = await loadActiveWorkout(session);
       const syncState = await currentSyncState(session);
-      if (!isCurrentMobileSession(session) || get().session !== session) return;
-      set({ ready: true, activeWorkout, syncState, error: null });
+      if (!isCurrentMobileSession(session) || get().session !== session || get().editVersion !== version) return;
+      const localFailure = get().localSaveState === 'failed' ? get().error : null;
+      set({ ready: true, activeWorkout, syncState, localSaveState: localFailure ? 'failed' : 'saved', error: localFailure });
     } catch (error) {
-      if (get().session === session && isCurrentMobileSession(session)) {
-        set({ error: error instanceof Error ? error.message : 'No se pudo abrir el almacenamiento local.' });
+      if (get().session === session && isCurrentMobileSession(session) && get().editVersion === version) {
+        set({ localSaveState: 'failed', error: error instanceof Error ? error.message : 'No se pudo abrir el almacenamiento local.' });
       }
     }
   },
@@ -77,7 +93,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       deletedSetClientIds: [],
     };
     const version = get().editVersion + 1;
-    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', error: null });
+    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', localSaveState: 'saving', error: null });
     await persistOptimisticWorkout(session, workout, version);
   },
   async recoverDraft(draft) {
@@ -95,21 +111,21 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       deletedSetClientIds: [],
     };
     const version = get().editVersion + 1;
-    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', error: null });
+    set({ editVersion: version, activeWorkout: workout, syncState: 'pending', localSaveState: 'saving', error: null });
     try {
       const syncState = await queueWorkout(session, workout, draft);
       if (!isCurrentMobileSession(session) || get().session !== session) return;
-      if (get().editVersion === version) set({ syncState });
+      if (get().editVersion === version) set({ syncState, localSaveState: 'saved' });
       scheduleSync(session);
     } catch (reason) {
-      await localWriteQueue;
+      await pendingLocalWrites(session);
       if (isCurrentMobileSession(session) && get().session === session && get().editVersion === version) {
         const error = reason instanceof Error ? reason.message : 'No se pudo recuperar el borrador.';
         try {
           const [activeWorkout, syncState] = await Promise.all([loadActiveWorkout(session), currentSyncState(session)]);
-          if (get().session === session && get().editVersion === version) set({ activeWorkout, syncState, error, editVersion: version + 1 });
+          if (get().session === session && get().editVersion === version) set({ activeWorkout, syncState, localSaveState: 'failed', error, editVersion: version + 1 });
         } catch {
-          if (get().session === session && get().editVersion === version) set({ ready: false, activeWorkout: null, error: `${error} Reinicia la app para reintentar.`, editVersion: version + 1 });
+          if (get().session === session && get().editVersion === version) set({ ready: false, activeWorkout: null, localSaveState: 'failed', error: `${error} Reinicia la app para reintentar.`, editVersion: version + 1 });
         }
       }
       throw reason;
@@ -138,7 +154,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       }],
     };
     const version = get().editVersion + 1;
-    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
     await persistOptimisticWorkout(session, next, version);
   },
   async updateSet(clientId, changes) {
@@ -151,7 +167,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sets: workout.sets.map((item) => item.clientId === clientId ? { ...item, ...changes } : item),
     };
     const version = get().editVersion + 1;
-    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
     await persistOptimisticWorkout(session, next, version);
   },
   async deleteSet(clientId) {
@@ -177,7 +193,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       deletedSetClientIds: [...new Set([...workout.deletedSetClientIds, removed.clientId])],
     };
     const version = get().editVersion + 1;
-    set({ editVersion: version, activeWorkout: next, syncState: 'pending', error: null });
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
     await persistOptimisticWorkout(session, next, version);
   },
   async cancelWorkout() {
@@ -185,20 +201,24 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout || workout.status !== 'ACTIVE') return;
+    let version = get().editVersion;
     try {
       const cancelled = cancelLocalWorkout(workout);
-      set({ editVersion: get().editVersion + 1, activeWorkout: cancelled, syncState: 'pending', error: null });
+      version += 1;
+      set({ editVersion: version, activeWorkout: cancelled, syncState: 'pending', localSaveState: 'saving', error: null });
       const syncState = await queueWorkout(session, cancelled);
-      if (!isCurrentMobileSession(session) || get().session !== session) return;
-      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState });
+      if (!isCurrentMobileSession(session) || get().session !== session || get().editVersion !== version) return;
+      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState, localSaveState: 'saved' });
       scheduleSync(session);
     } catch (error) {
       if (!isCurrentMobileSession(session) || get().session !== session) return;
-      set({
-        editVersion: get().editVersion + 1,
-        activeWorkout: workout,
-        error: error instanceof Error ? error.message : 'No se pudo cancelar la sesión.',
-      });
+      const message = error instanceof Error ? error.message : 'No se pudo cancelar la sesión.';
+      if (get().editVersion === version) {
+        set({ editVersion: version + 1, activeWorkout: workout, localSaveState: 'failed', error: message });
+      } else if (!get().ready) {
+        // Initialization owns the snapshot/version; preserve the failed-write notice.
+        set({ localSaveState: 'failed', error: message });
+      }
       throw error;
     }
   },
@@ -206,17 +226,24 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     const session = get().session;
     if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
-    if (!workout) return;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    let version = get().editVersion;
     try {
       const completed = finishLocalWorkout(workout);
-      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState: 'pending', error: null });
+      version += 1;
+      set({ editVersion: version, activeWorkout: completed, syncState: 'pending', localSaveState: 'saving', error: null });
       const syncState = await queueWorkout(session, completed);
-      if (!isCurrentMobileSession(session) || get().session !== session) return;
-      set({ syncState });
+      if (!isCurrentMobileSession(session) || get().session !== session || get().editVersion !== version) return;
+      set({ editVersion: get().editVersion + 1, activeWorkout: null, syncState, localSaveState: 'saved' });
       scheduleSync(session);
     } catch (error) {
       if (!isCurrentMobileSession(session) || get().session !== session) return;
-      set({ editVersion: get().editVersion + 1, activeWorkout: workout, error: error instanceof Error ? error.message : 'No se pudo finalizar la sesión.' });
+      const message = error instanceof Error ? error.message : 'No se pudo finalizar la sesión.';
+      if (get().editVersion === version) {
+        set({ editVersion: version + 1, activeWorkout: workout, localSaveState: 'failed', error: message });
+      } else if (!get().ready) {
+        set({ localSaveState: 'failed', error: message });
+      }
       throw error;
     }
   },
@@ -224,7 +251,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     const session = get().session;
     const version = get().editVersion;
     if (!session || !isCurrentMobileSession(session)) return;
-    await localWriteQueue;
+    await pendingLocalWrites(session);
     const activeWorkout = await loadActiveWorkout(session);
     const syncState = await currentSyncState(session);
     if (get().session !== session || !isCurrentMobileSession(session) || get().editVersion !== version) return;
@@ -234,8 +261,13 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
 async function queueWorkout(session: MobileSession, workout: LocalWorkout, draftToArchive?: LocalWorkout): Promise<SyncQueueState> {
   const syncId = Crypto.randomUUID();
-  const write = localWriteQueue.then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId), draftToArchive));
-  localWriteQueue = write.then(() => undefined, () => undefined);
+  const scope = writeScope(session);
+  const write = pendingLocalWrites(session).then(() => enqueueWorkout(session, workout, syncId, syncPayload(workout, syncId), draftToArchive));
+  const settled = write.then(() => undefined, () => undefined);
+  localWriteQueues.set(scope, settled);
+  void settled.then(() => {
+    if (localWriteQueues.get(scope) === settled) localWriteQueues.delete(scope);
+  });
   return write;
 }
 
@@ -243,21 +275,21 @@ async function persistOptimisticWorkout(session: MobileSession, workout: LocalWo
   try {
     const syncState = await queueWorkout(session, workout);
     if (!isCurrentMobileSession(session) || useTrainingStore.getState().session !== session) return;
-    if (useTrainingStore.getState().editVersion === version) useTrainingStore.setState({ syncState });
+    if (useTrainingStore.getState().editVersion === version) useTrainingStore.setState({ syncState, localSaveState: 'saved' });
     scheduleSync(session);
   } catch (reason) {
-    await localWriteQueue;
+    await pendingLocalWrites(session);
     const current = useTrainingStore.getState();
     if (!isCurrentMobileSession(session) || current.session !== session || current.editVersion !== version) return;
     const error = reason instanceof Error ? reason.message : 'No se pudo guardar en este dispositivo.';
     try {
       const [activeWorkout, syncState] = await Promise.all([loadActiveWorkout(session), currentSyncState(session)]);
       if (useTrainingStore.getState().session === session && useTrainingStore.getState().editVersion === version) {
-        useTrainingStore.setState({ activeWorkout, syncState, error, editVersion: version + 1 });
+        useTrainingStore.setState({ activeWorkout, syncState, localSaveState: 'failed', error, editVersion: version + 1 });
       }
     } catch {
       if (useTrainingStore.getState().session === session && useTrainingStore.getState().editVersion === version) {
-        useTrainingStore.setState({ ready: false, activeWorkout: null, error: `${error} No se pudo recuperar el estado local. Reinicia la app para reintentar.`, editVersion: version + 1 });
+        useTrainingStore.setState({ ready: false, activeWorkout: null, localSaveState: 'failed', error: `${error} No se pudo recuperar el estado local. Reinicia la app para reintentar.`, editVersion: version + 1 });
       }
     }
   }

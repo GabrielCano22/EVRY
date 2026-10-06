@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { API_BASE_URL } from '@/src/api/client';
+import { API_BASE_URL, isCurrentMobileSession } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
 import { CachedThumbnail } from '@/src/catalog/CachedThumbnail';
@@ -39,6 +39,7 @@ export default function TrainScreen() {
   }
   const workout = useTrainingStore((state) => state.activeWorkout);
   const syncState = useTrainingStore((state) => state.syncState);
+  const localSaveState = useTrainingStore((state) => state.localSaveState);
   const error = useTrainingStore((state) => state.error);
   const startWorkout = useTrainingStore((state) => state.startWorkout);
   const addSet = useTrainingStore((state) => state.addSet);
@@ -51,7 +52,7 @@ export default function TrainScreen() {
     return (
       <Screen>
         <Text style={textStyles.title}>Entrenar</Text>
-        <SyncStatus state={syncState} />
+        <SyncStatus state={syncState} localSaveState={localSaveState} />
         {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
         <Text style={textStyles.muted}>No hay una sesión activa.</Text>
         <PrimaryButton onPress={() => void startWorkout()}>Iniciar sesión libre</PrimaryButton>
@@ -93,7 +94,9 @@ export default function TrainScreen() {
   return (
     <Screen>
       <Text style={textStyles.title}>{workout.name}</Text>
-      <SyncStatus state={syncState} />
+      {workout.status === 'COMPLETED' ? (
+        <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Finalizando sesión…</Text>
+      ) : <SyncStatus state={syncState} localSaveState={localSaveState} />}
       {exercisesQuery.isFetching ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
       {exercisesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{exercisesQuery.error.message}</Text> : null}
       {exercisesQuery.data?.notice ? <Text style={textStyles.muted}>{exercisesQuery.data.notice}</Text> : null}
@@ -224,9 +227,16 @@ export default function TrainScreen() {
       </Pressable>
       <PrimaryButton
         disabled={workout.status !== 'ACTIVE' || workout.sets.length === 0}
-        onPress={() => {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          void finishWorkout();
+        onPress={async () => {
+          if (useTrainingStore.getState().activeWorkout !== workout || workout.status !== 'ACTIVE') return;
+          try {
+            await finishWorkout();
+            if (isCurrentMobileSession(session)) {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+          } catch {
+            // Storage failures are displayed by the training store; haptics are optional.
+          }
         }}
       >
         Finalizar y sincronizar
