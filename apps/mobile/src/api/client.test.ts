@@ -386,12 +386,15 @@ it('removes a partially persisted login when native secure storage reports a wri
   expect(await client.refreshMobileSession()).toBe(false);
 });
 
-it('reopens an already validated account offline after a fresh app process', async () => {
+it.each([
+  ['browser fetch', new TypeError('Network request failed')],
+  ['native Android fetch', new Error('fetch failed: java.net.ConnectException: Failed to connect to localhost/127.0.0.1:4443')],
+])('reopens an already validated account offline after a fresh app process: %s', async (_transport, failure) => {
   http.mockImplementation(async (request) => request.url.endsWith('/login') ? json(tokens('original')) : json({
     id: 'user-original', email: 'original@example.com', name: 'Original', trackCycle: true,
   }));
   await sessionStore.getState().login('original@example.com', 'password-one');
-  http.mockRejectedValue(new TypeError('Network request failed'));
+  http.mockRejectedValue(failure);
   jest.isolateModules(() => {
     client = jest.requireActual('./client');
     sessionStore = jest.requireActual('../auth/session-store').useSessionStore;
@@ -401,6 +404,8 @@ it('reopens an already validated account offline after a fresh app process', asy
     status: 'authenticated', offline: true, user: { id: 'user-original', trackCycle: true },
     session: { userId: 'user-original' },
   });
+  expect(await SecureStore.getItemAsync(refreshKey)).toBe('refresh-original');
+  expect(JSON.parse((await SecureStore.getItemAsync(profileKey))!).user.id).toBe('user-original');
 });
 
 it('does not restore a logged-out account offline after restarting the app', async () => {
@@ -418,6 +423,16 @@ it('does not restore a logged-out account offline after restarting the app', asy
   expect(sessionStore.getState().user).toBeNull();
   expect(sessionStore.getState().status).not.toBe('authenticated');
   expect(await SecureStore.getItemAsync(profileKey)).toBeNull();
+});
+
+it('propagates request cancellation instead of classifying it as network absence', async () => {
+  http.mockResolvedValue(json(tokens('original')));
+  await client.loginMobile('original@example.com', 'password-one');
+  const cancelled = new Error('Synthetic request cancelled');
+  cancelled.name = 'AbortError';
+  http.mockRejectedValue(cancelled);
+  await expect(client.withMobileAuth((api) => api.GET('/progress/overview'))).rejects.toBe(cancelled);
+  expect(await SecureStore.getItemAsync(refreshKey)).toBe('refresh-original');
 });
 
 it('does not use a cached identity to bypass definitive server rejection', async () => {

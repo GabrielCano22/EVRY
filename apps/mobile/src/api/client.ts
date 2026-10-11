@@ -19,8 +19,20 @@ let tokenVersion = 0;
 let refreshAllowed = true; // A fresh process may resume credentials from SecureStore.
 let refreshFlight: { session: number; promise: Promise<boolean> } | null = null;
 let storageQueue: Promise<unknown> = Promise.resolve();
-const authClient = createEvryApiClient(API_BASE_URL, () => null);
+const authClient = createEvryApiClient(API_BASE_URL, () => null, { fetch: fetchMobile });
 const invalidationListeners = new Set<() => void>();
+
+// Android's native fetch can reject with Error, not the browser's TypeError.
+// Normalize only transport rejection; HTTP errors and JSON parsing stay distinct.
+async function fetchMobile(request: Request): Promise<Response> {
+  try {
+    return await globalThis.fetch(request);
+  } catch (error) {
+    if (request.signal.aborted || (error instanceof Error && error.name === 'AbortError')) throw error;
+    if (error instanceof TypeError) throw error;
+    throw new TypeError('No se pudo conectar con el servidor. Tus datos locales se conservan.', { cause: error });
+  }
+}
 
 export type ApiErrorBody = components['schemas']['ApiError'];
 export type CurrentUser = components['schemas']['User'];
@@ -303,7 +315,7 @@ export async function withMobileAuth<T extends { response: Response }>(
     const client = createEvryApiClient(API_BASE_URL, () => {
       assertMobileSession(expected);
       return token;
-    });
+    }, { fetch: fetchMobile });
     const response = await operation(client);
     assertMobileSession(expected);
     return response;
