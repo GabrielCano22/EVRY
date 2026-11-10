@@ -16,9 +16,16 @@ vi.mock('next/link', () => ({
 }));
 vi.mock('@/components/ui/Icon', () => ({ Icon: () => null }));
 
-import { ApiError, setAccessToken } from '@/lib/api';
+import { ApiError, getAccessToken, setAccessToken } from '@/lib/api';
 import { useAutenticacion } from '@/lib/auth-store';
+import type { Usuario } from '@/lib/types';
 import PaginaIngreso from './page';
+
+const usuario: Usuario = {
+  id: 'login-preferences-user', email: 'eva@example.test', name: 'Eva',
+  biologicalSex: 'PREFER_NOT_SAY', birthDate: null, goals: [], trackCycle: false,
+  avgCycleLen: 28, avgPeriodLen: 5, createdAt: '2026-01-01T00:00:00.000Z',
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -34,9 +41,63 @@ beforeEach(() => {
   useAutenticacion.setState({ usuario: null, cargando: false, error: null, estado: 'anonymous' });
   authApiMock.logoutWeb.mockResolvedValue({ ok: true });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('PaginaIngreso', () => {
+  it('keeps the login form available when the browser denies preference storage', () => {
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('Storage denied', 'SecurityError');
+    });
+
+    expect(() => render(<PaginaIngreso />)).not.toThrow();
+    expect(screen.getByLabelText('Correo electrónico')).toHaveValue('');
+    expect(screen.getByLabelText('Recordar usuario en este dispositivo')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Ingresar' })).toBeEnabled();
+  });
+
+  it.each([
+    { method: 'setItem' as const, remember: true, errorName: 'QuotaExceededError' },
+    { method: 'removeItem' as const, remember: false, errorName: 'SecurityError' },
+  ])('completes authenticated navigation when preference $method fails', async ({ method, remember, errorName }) => {
+    authApiMock.loginWeb.mockResolvedValueOnce({ accessToken: 'fresh-login-token' });
+    authApiMock.getCurrentUser.mockResolvedValueOnce(usuario);
+    render(<PaginaIngreso />);
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: usuario.email } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'synthetic-password' } });
+    if (remember) fireEvent.click(screen.getByLabelText('Recordar usuario en este dispositivo'));
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => {
+      throw new DOMException('Preference unavailable', errorName);
+    });
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Ingresar' }).closest('form')!);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
+    expect(useAutenticacion.getState()).toMatchObject({ usuario, estado: 'authenticated', error: null });
+    expect(getAccessToken()).toBe('fresh-login-token');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it.each([true, false])('preserves the optional email preference without persisting credentials (remember=%s)', async (remember) => {
+    localStorage.setItem('evry_email_recordado', 'previous@example.test');
+    authApiMock.loginWeb.mockResolvedValueOnce({ accessToken: 'fresh-login-token' });
+    authApiMock.getCurrentUser.mockResolvedValueOnce(usuario);
+    render(<PaginaIngreso />);
+    expect(screen.getByLabelText('Recordar usuario en este dispositivo')).toBeChecked();
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: usuario.email } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'synthetic-password' } });
+    if (!remember) fireEvent.click(screen.getByLabelText('Recordar usuario en este dispositivo'));
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Ingresar' }).closest('form')!);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
+    expect(localStorage.getItem('evry_email_recordado')).toBe(remember ? usuario.email : null);
+    expect(localStorage.length).toBe(remember ? 1 : 0);
+    expect(getAccessToken()).toBe('fresh-login-token');
+  });
+
   it('distinguishes the registration link without relying on color', () => {
     render(<PaginaIngreso />);
 

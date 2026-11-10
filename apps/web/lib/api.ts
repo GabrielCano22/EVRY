@@ -2,6 +2,7 @@
 
 import { currentSessionGeneration, isCurrentSessionGeneration } from './auth-session';
 import { resolveApiBaseUrl } from './api-origin';
+import { takeDocumentProfile, takeDocumentRefresh } from './document-refresh';
 
 const BASE = resolveApiBaseUrl();
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -65,11 +66,19 @@ async function tryRefresh(generation: number): Promise<ApiResult<string>> {
   if (!shared) {
     shared = (async () => {
       try {
-        const result = await requestInternal<unknown>('/auth/refresh', {
-          method: 'POST',
-          auth: false,
-          timeoutMs: DEFAULT_TIMEOUT_MS,
-        }, false, generation);
+        const documentRefresh = takeDocumentRefresh(BASE, generation);
+        let result: ApiResult<unknown>;
+        if (documentRefresh) {
+          const outcome = await documentRefresh;
+          result = outcome.kind === 'response' ? await parseResponse(outcome.response)
+            : { ok: false, error: outcome.kind === 'network' ? networkFailure() : abortedFailure(outcome.kind === 'timeout') };
+        } else {
+          result = await requestInternal<unknown>('/auth/refresh', {
+            method: 'POST',
+            auth: false,
+            timeoutMs: DEFAULT_TIMEOUT_MS,
+          }, false, generation);
+        }
         if (!result.ok) return result;
         if (!isRecord(result.data) || typeof result.data.accessToken !== 'string' || !result.data.accessToken) {
           return {
@@ -133,6 +142,19 @@ function safeMessage(value: unknown, fallback: string): string {
 
 function safeCode(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,64}$/.test(value) ? value : fallback;
+}
+
+// Cold bootstrap knows the access token was deliberately not persisted. Rotate
+// the HttpOnly-cookie session before requesting protected user data, sharing the
+// existing refresh flight rather than paying for a predictable unauthorized GET.
+export async function restoreAccessToken(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new ApiError(abortedFailure(false));
+  if (getAccessToken()) return;
+  const generation = currentSessionGeneration();
+  const result = await waitForSharedResult(tryRefresh(generation), { signal, timeoutMs: DEFAULT_TIMEOUT_MS });
+  if (!isCurrentSessionGeneration(generation)) throw new ApiError(abortedFailure(false));
+  if (!result.ok) throw new ApiError(result.error);
+  if (!setAccessToken(result.data, generation)) throw new ApiError(abortedFailure(false));
 }
 
 function safeRequestId(value: unknown): string | undefined {
@@ -316,10 +338,10 @@ async function parseResponse(response: Response): Promise<ApiResult<unknown>> {
   return response.ok ? { ok: true, data: body } : { ok: false, error: failureFromResponse(response, body) };
 }
 
-async function waitForRefresh(
-  shared: Promise<ApiResult<string>>,
+async function waitForSharedResult<T>(
+  shared: Promise<ApiResult<T>>,
   options: RequestOptions,
-): Promise<ApiResult<string>> {
+): Promise<ApiResult<T>> {
   if (options.signal?.aborted) return { ok: false, error: abortedFailure(false) };
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (timeoutMs <= 0) return { ok: false, error: abortedFailure(true) };
@@ -331,7 +353,7 @@ async function waitForRefresh(
   try {
     return await Promise.race([
       shared,
-      new Promise<ApiResult<string>>((resolve) => controller.signal.addEventListener('abort', () => resolve({
+      new Promise<ApiResult<T>>((resolve) => controller.signal.addEventListener('abort', () => resolve({
         ok: false,
         error: timedOut ? abortedFailure(true) : abortedFailure(false),
       }), { once: true })),
@@ -401,14 +423,22 @@ export async function fetchWithSession(input: Request, options: SessionFetchOpti
     timeoutMs: Math.max(0, deadline - Date.now()),
     signal: options.signal ?? input.signal,
   });
-  const execute = () => fetchWithControls(input.url, init, controls());
+  const execute = () => {
+    const authorization = headers.get('Authorization');
+    const profile = auth && input.method === 'GET' && input.url === `${BASE}/users/me`
+      ? takeDocumentProfile(BASE, authorization?.startsWith('Bearer ') ? authorization.slice(7) : null, generation) : null;
+    if (!profile) return fetchWithControls(input.url, init, controls());
+    return waitForSharedResult<Response>(profile.then(outcome => outcome.kind === 'response'
+      ? { ok: true, data: outcome.response }
+      : { ok: false, error: outcome.kind === 'network' ? networkFailure() : abortedFailure(outcome.kind === 'timeout') }), controls());
+  };
 
   let fetched = await execute();
   if (!fetched.ok) throw new ApiError(fetched.error);
   if (fetched.data.status !== 401 || !auth || !allowRefresh) return fetched.data;
   await fetched.data.body?.cancel();
 
-  const refreshed = await waitForRefresh(tryRefresh(generation), controls());
+  const refreshed = await waitForSharedResult(tryRefresh(generation), controls());
   if (!refreshed.ok) {
     if ((refreshed.error.status === 401 || refreshed.error.status === 403) && isCurrentSessionGeneration(generation)) {
       setAccessToken(null, generation);

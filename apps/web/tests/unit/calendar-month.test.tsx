@@ -16,6 +16,43 @@ const emptyCycle = (from: string, to: string, previousPeriodStart: string | null
   from, to, entries: [], previousPeriodStart,
 });
 
+it('uses one native formatter per displayed month and reuses day labels during selection', async () => {
+  const NativeFormatter = Intl.DateTimeFormat;
+  let calendarLabelAllocations = 0;
+  Intl.DateTimeFormat = new Proxy(NativeFormatter, {
+    construct(target, args) {
+      const [locale, options] = args;
+      if (locale === 'es-CO' && options?.day === 'numeric' && options?.month === 'long' && options?.year === 'numeric') {
+        calendarLabelAllocations += 1;
+      }
+      return Reflect.construct(target, args);
+    },
+  });
+  respond(url => {
+    const from = url.searchParams.get('from')!;
+    const to = url.searchParams.get('to')!;
+    return url.pathname.includes('/cycle/') ? emptyCycle(from, to) : emptyActivity(from, to);
+  });
+  const client = show();
+  try {
+    await screen.findByText('Aún no hay actividad registrada.');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver actividad del 1 de septiembre de 2026' }));
+    expect(screen.getByRole('region', { name: 'Actividad del 1 de septiembre' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver actividad del 2 de septiembre de 2026' }));
+    expect(screen.queryByRole('region', { name: 'Actividad del 1 de septiembre' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Actividad del 2 de septiembre' })).toBeInTheDocument();
+    expect(calendarLabelAllocations).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Mes siguiente' }));
+    expect(screen.getByRole('button', { name: 'Ver actividad del 1 de octubre de 2026' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ver actividad del 1 de septiembre de 2026' })).not.toBeInTheDocument();
+    expect(calendarLabelAllocations).toBe(2);
+  } finally {
+    cleanup();
+    client.clear();
+    Intl.DateTimeFormat = NativeFormatter;
+  }
+});
+
 type DeferredRequest = {
   url: URL;
   signal?: AbortSignal | null;

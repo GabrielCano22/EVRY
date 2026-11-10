@@ -9,13 +9,20 @@ import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
 import { CachedThumbnail } from '@/src/catalog/CachedThumbnail';
 import { mediaUrl } from '@/src/catalog/media-url';
 import { mobileThumbnailCache } from '@/src/catalog/thumbnail-files';
+import { muscleGroupLabel } from '@/src/catalog/muscle-labels';
 import { RoutineManager } from '@/src/routines/RoutineManager';
 import { useTrainingStore } from '@/src/training/training-store';
+import { TrainingRecommendation } from '@/src/training/TrainingRecommendation';
+import { RestTimer } from '@/src/training/RestTimer';
+import { summarizeRecordedMuscles } from '@/src/training/muscle-summary';
+import { BodyMuscleMap } from '@/src/progress/body-muscle-map';
+import { cachedExerciseGroups } from '@/src/db/database';
 import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 
 export default function TrainScreen() {
   const session = useSessionStore((state) => state.session)!;
+  const sex = useSessionStore((state) => state.user?.biologicalSex);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
@@ -38,6 +45,12 @@ export default function TrainScreen() {
     setPlayingGif(false);
   }
   const workout = useTrainingStore((state) => state.activeWorkout);
+  const workoutExerciseIds = [...new Set(workout?.sets.map((set) => set.exerciseId) ?? [])].sort();
+  const cachedGroups = useQuery({
+    queryKey: ['workout-muscle-groups', session.userId, session.version, workoutExerciseIds, exercisesQuery.data?.updatedAt],
+    queryFn: () => cachedExerciseGroups(session, workoutExerciseIds),
+    enabled: Boolean(workout && workoutExerciseIds.length),
+  });
   const syncState = useTrainingStore((state) => state.syncState);
   const localSaveState = useTrainingStore((state) => state.localSaveState);
   const error = useTrainingStore((state) => state.error);
@@ -87,7 +100,12 @@ export default function TrainScreen() {
     );
   }
 
-  const selectedExercise = exercises.find((exercise) => exercise.id === selectedExerciseId) ?? exercises[0];
+  const routine = routinesQuery.data?.items.find((item) => item.id === workout.routineId);
+  const routineExercises = routine?.exercises.map((item) => ({ ...item.exercise, imageUrl: null, gifUrl: null })) ?? [];
+  const muscleSummary = summarizeRecordedMuscles(workout.sets, [...(cachedGroups.data ?? []), ...routineExercises, ...exercises]);
+  const selectedExercise = exercises.find((exercise) => exercise.id === selectedExerciseId)
+    ?? routineExercises.find((exercise) => exercise.id === selectedExerciseId)
+    ?? exercises[0];
   const previewUrl = selectedExercise
     ? mediaUrl(playingGif ? (selectedExercise.gifUrl ?? selectedExercise.gifPath) : (selectedExercise.imageUrl ?? selectedExercise.imagePath), API_BASE_URL)
     : null;
@@ -97,6 +115,36 @@ export default function TrainScreen() {
       {workout.status === 'COMPLETED' ? (
         <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Finalizando sesión…</Text>
       ) : <SyncStatus state={syncState} localSaveState={localSaveState} />}
+      {workout.sets.length > 0 ? (
+        <View style={styles.exerciseCard}>
+          <Text style={textStyles.heading}>Trabajo muscular</Text>
+          <Text style={textStyles.muted}>Estimación según las series útiles y el grupo principal de cada ejercicio.</Text>
+          {muscleSummary.groups.map((item) => (
+            <Text key={item.muscleGroup} style={textStyles.body}>{muscleGroupLabel(item.muscleGroup)} · {item.workingSets} {item.workingSets === 1 ? 'serie' : 'series'}</Text>
+          ))}
+          {muscleSummary.unclassifiedSets > 0 ? <Text style={textStyles.muted}>Algunas series no se muestran porque su ejercicio no está disponible en el catálogo local.</Text> : null}
+          {muscleSummary.groups.length === 0 && muscleSummary.unclassifiedSets === 0 ? <Text style={textStyles.muted}>Aún no hay series útiles registradas.</Text> : null}
+        </View>
+      ) : null}
+      {muscleSummary.groups.length > 0 ? <><Text style={textStyles.heading}>Mapa de esta sesión</Text><BodyMuscleMap distribution={muscleSummary.groups} sex={sex} /></> : null}
+      {routine && routine.exercises.length > 0 ? (
+        <View style={styles.exerciseCard}>
+          <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
+          <Text style={textStyles.muted}>Selecciona un ejercicio para registrar tus series.</Text>
+          {routine.exercises.map((item) => (
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Seleccionar ${item.exercise.name} de la rutina`}
+              onPress={() => { setSelectedExerciseId(item.exercise.id); setPlayingGif(false); }}
+              style={[styles.exerciseOption, selectedExercise?.id === item.exercise.id && styles.exerciseOptionSelected]}
+            >
+              <Text style={[textStyles.body, { flex: 1 }]}>{item.exercise.name}</Text>
+              <Text style={textStyles.muted}>{item.targetSets} series</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {exercisesQuery.isFetching ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
       {exercisesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{exercisesQuery.error.message}</Text> : null}
       {exercisesQuery.data?.notice ? <Text style={textStyles.muted}>{exercisesQuery.data.notice}</Text> : null}
@@ -158,6 +206,10 @@ export default function TrainScreen() {
           : null}
           <Text style={textStyles.muted}>El catálogo muestra miniaturas; los GIF se reproducen solo bajo demanda.</Text>
           {selectedExercise.attribution ? <Text style={textStyles.muted}>{selectedExercise.attribution}</Text> : null}
+          {workout.status === 'ACTIVE' ? <TrainingRecommendation
+            key={JSON.stringify([session.serverUrl, session.userId, session.version, workout.clientId, selectedExercise.id])}
+            session={session} exerciseId={selectedExercise.id} workoutId={workout.clientId}
+          /> : null}
           {selectedExercise.gifUrl || selectedExercise.gifPath ? (
             <Pressable
               accessibilityRole="button"
@@ -168,7 +220,7 @@ export default function TrainScreen() {
           ) : null}
           {workout.status === 'ACTIVE' ? <PrimaryButton
             onPress={() => {
-              void Haptics.selectionAsync();
+              void Haptics.selectionAsync().catch(() => undefined);
               void addSet(selectedExercise.id);
             }}
           >
@@ -183,15 +235,43 @@ export default function TrainScreen() {
             <NumberField
               label="Peso kg"
               value={set.weightKg}
+              maximum={2000}
               editable={workout.status === 'ACTIVE'}
               onChange={(weightKg) => void updateSet(set.clientId, { weightKg })}
             />
             <NumberField
               label="Repeticiones"
               value={set.reps}
+              maximum={1000}
+              integer
               editable={workout.status === 'ACTIVE'}
               onChange={(reps) => void updateSet(set.clientId, { reps })}
             />
+          </View>
+          <View style={styles.row}>
+            <NumberField label="Duración segundos" value={set.durationS} maximum={86400} integer
+              editable={workout.status === 'ACTIVE'} onChange={durationS => void updateSet(set.clientId, { durationS })} />
+            <NumberField label="RPE" value={set.rpe} minimum={1} maximum={10} integer
+              editable={workout.status === 'ACTIVE'} onChange={rpe => void updateSet(set.clientId, { rpe })} />
+          </View>
+          <Pressable accessibilityRole="checkbox" accessibilityLabel="Serie de calentamiento"
+            style={{ minHeight: 44, justifyContent: 'center' }}
+            accessibilityState={{ checked: set.isWarmup, disabled: workout.status !== 'ACTIVE' }}
+            disabled={workout.status !== 'ACTIVE'} onPress={() => void updateSet(set.clientId, { isWarmup: !set.isWarmup })}>
+            <Text style={textStyles.body}>{set.isWarmup ? '✓ ' : ''}Serie de calentamiento</Text>
+          </Pressable>
+          <Text style={textStyles.muted}>Técnica</Text>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Técnica" style={{ gap: 8 }}>
+            {([{ value: null, label: 'Técnica sin registrar' }, { value: true, label: 'Técnica estable' },
+              { value: false, label: 'Técnica inestable' }] as const).map(option => (
+              <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.label}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+                accessibilityState={{ checked: set.techniqueStable === option.value, disabled: workout.status !== 'ACTIVE' }}
+                disabled={workout.status !== 'ACTIVE'}
+                onPress={() => void updateSet(set.clientId, { techniqueStable: option.value })}>
+                <Text style={textStyles.body}>{set.techniqueStable === option.value ? '✓ ' : ''}{option.label}</Text>
+              </Pressable>
+            ))}
           </View>
           {workout.status === 'ACTIVE' ? <Pressable
             accessibilityRole="button"
@@ -201,6 +281,10 @@ export default function TrainScreen() {
           </Pressable> : null}
         </View>
       ))}
+      {workout.status === 'ACTIVE' && session ? <RestTimer
+        key={JSON.stringify([session.serverUrl, session.userId, session.version, workout.clientId])}
+        session={session} workoutId={workout.clientId}
+      /> : null}
       {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
       <Pressable
         accessibilityLabel="Cancelar sesión"
@@ -232,7 +316,7 @@ export default function TrainScreen() {
           try {
             await finishWorkout();
             if (isCurrentMobileSession(session)) {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
             }
           } catch {
             // Storage failures are displayed by the training store; haptics are optional.
@@ -245,23 +329,51 @@ export default function TrainScreen() {
   );
 }
 
-function NumberField({ label, value, editable, onChange }: {
+function NumberField({ label, value, editable, onChange, minimum = 0, maximum, integer = false }: {
   label: string;
   value: number | null;
   editable: boolean;
-  onChange: (value: number) => void;
+  onChange: (value: number | null) => void;
+  minimum?: number;
+  maximum: number;
+  integer?: boolean;
 }) {
+  const [draft, setDraft] = useState(String(value ?? ''));
+  const [error, setError] = useState<string | null>(null);
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
+    setDraft(String(value ?? ''));
+    setError(null);
+  }
+
+  function change(text: string) {
+    setDraft(text);
+    const normalized = text.trim().replace(',', '.');
+    const parsed = normalized === '' ? null : Number(normalized);
+    if (parsed !== null && (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)
+      || !Number.isFinite(parsed) || parsed < minimum || parsed > maximum
+      || (integer && !Number.isInteger(parsed)))) {
+      setError(`${label}: usa ${integer ? 'un entero' : 'un número'} entre ${minimum} y ${maximum}, o deja el campo vacío.`);
+      return;
+    }
+    setError(null);
+    onChange(parsed);
+  }
   return (
     <View style={{ flex: 1, gap: 6 }}>
       <Text style={textStyles.muted}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
         editable={editable}
-        inputMode="decimal"
-        onChangeText={(text) => onChange(Math.max(0, Number(text.replace(',', '.')) || 0))}
+        inputMode={integer ? 'numeric' : 'decimal'}
+        maxLength={12}
+        accessibilityHint={error ?? undefined}
+        onChangeText={change}
         style={styles.input}
-        value={String(value ?? 0)}
+        value={draft}
       />
+      {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
     </View>
   );
 }

@@ -1,3 +1,5 @@
+import { cancelDocumentRefresh } from './document-refresh';
+
 let generation = 0;
 
 export function currentSessionGeneration(): number {
@@ -5,11 +7,13 @@ export function currentSessionGeneration(): number {
 }
 
 export function beginNewSession(): number {
+  cancelDocumentRefresh();
   generation += 1;
   return generation;
 }
 
 export function invalidateSession(): number {
+  cancelDocumentRefresh();
   generation += 1;
   return generation;
 }

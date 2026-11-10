@@ -15,6 +15,7 @@ vi.mock('./auth-api', () => ({
   registerWeb: apiMock.registerWeb,
   logoutWeb: apiMock.logoutWeb,
   getCurrentUser: apiMock.getCurrentUser,
+  restoreCurrentUser: apiMock.getCurrentUser,
 }));
 
 vi.mock('./api', async (importOriginal) => ({

@@ -7,6 +7,7 @@ import { withMobileAuth, type MobileSession } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
+import { CycleCalendar } from '@/src/cycle/cycle-calendar';
 
 async function loadEntries(session: MobileSession, signal: AbortSignal) {
   const response = await withMobileAuth((client) => client.GET('/cycle/entries', { signal }), session);
@@ -53,7 +54,7 @@ function EnabledCycleScreen({ session }: { session: MobileSession }) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => removeEntry(session, id),
     onSuccess: async () => {
-      await Haptics.selectionAsync();
+      void Haptics.selectionAsync().catch(() => undefined);
       await queryClient.invalidateQueries({ queryKey: ['cycle'] });
     },
   });
@@ -84,6 +85,7 @@ function EnabledCycleScreen({ session }: { session: MobileSession }) {
           <PrimaryButton onPress={() => void query.refetch()}>Reintentar</PrimaryButton>
         </View>
       ) : null}
+      {query.data ? <CycleCalendar entries={query.data} /> : null}
       {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error.message}</Text> : null}
       {query.data?.length === 0 ? <Text style={textStyles.muted}>Aún no hay registros. Puedes empezar con el día de hoy.</Text> : null}
       {query.data?.map((entry) => (

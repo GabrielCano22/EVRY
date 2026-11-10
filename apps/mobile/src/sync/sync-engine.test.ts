@@ -7,10 +7,13 @@ import { syncPendingWorkouts } from './sync-engine';
 jest.mock('@react-native-community/netinfo', () => ({ __esModule: true, default: { fetch: jest.fn() } }));
 jest.mock('../api/client', () => ({ syncWorkoutWithRefresh: jest.fn(), isCurrentMobileSession: jest.fn() }));
 jest.mock('../db/database', () => ({
-  markSyncAttempt: jest.fn(), markSyncFailure: jest.fn(), markSyncSuccess: jest.fn(), pendingSyncRows: jest.fn(),
+  markSyncAttempt: jest.fn(), markInvalidSyncPayload: jest.fn(), markSyncFailure: jest.fn(), markSyncSuccess: jest.fn(), pendingSyncRows: jest.fn(),
 }));
 
-const row = (id: number) => ({ id, syncId: `sync-${id}`, workoutClientId: 'workout-1', payload: JSON.stringify({ syncId: `sync-${id}` }), attempts: 0 });
+const row = (id: number) => ({ id, syncId: `sync-${id}`, workoutClientId: 'workout-1', payload: JSON.stringify({
+  syncId: `sync-${id}`, clientId: 'workout-1', baseRevision: 0, name: 'Fuerza',
+  startedAt: '2026-08-30T10:00:00Z', status: 'ACTIVE', sets: [], deletedSetClientIds: [],
+} satisfies components['schemas']['SyncWorkoutInput']), attempts: 0 });
 const session = { userId: 'user-a', serverUrl: 'https://api.example.com/api/v1', version: 1 };
 const canonicalWorkout = (revision: number): components['schemas']['SyncCanonicalWorkout'] => ({
   id: 'server-1', userId: 'user-a', name: 'Fuerza', startedAt: '2026-08-30T10:00:00.000Z',
@@ -87,5 +90,5 @@ it('honors a sync request arriving while an empty queue read is completing', asy
     },
   });
   await syncPendingWorkouts(session);
-  expect(syncWorkoutWithRefresh).toHaveBeenCalledWith({ syncId: 'sync-3' }, session);
+  expect(syncWorkoutWithRefresh).toHaveBeenCalledWith(JSON.parse(row(3).payload), session);
 });

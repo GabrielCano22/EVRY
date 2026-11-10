@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAutenticacion } from '@/lib/auth-store';
 import { trainingKeys } from '@/lib/training-api';
+import * as dateUtilities from '@/lib/utils';
 import ListaEntrenamientos from './page';
 
 const push = vi.hoisted(() => vi.fn());
@@ -53,9 +55,116 @@ afterEach(() => {
   cleanup();
   useAutenticacion.setState({ usuario: null });
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('ListaEntrenamientos remote sections', () => {
+  it('keeps every routine accessible when multiple routines share a weekday', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      return Promise.resolve(new URL(request.url).pathname.endsWith('/workouts')
+        ? Response.json([]) : Response.json([
+          { ...routine('morning'), name: 'Lunes mañana', dayOfWeek: 0 },
+          { ...routine('evening'), name: 'Lunes tarde', dayOfWeek: 0 },
+          { ...routine('free'), name: 'Libre' },
+        ]));
+    }));
+    const view = show();
+    await screen.findByRole('heading', { name: 'Lunes mañana' });
+    expect(screen.getByRole('heading', { name: 'Lunes tarde' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Editar rutina Lunes tarde' })).toHaveAttribute('href', '/workout/routines/evening');
+    expect(screen.getByRole('button', { name: 'Eliminar rutina Lunes tarde' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Empezar rutina' })).toHaveLength(3);
+    expect(screen.getByRole('heading', { name: 'Libre' })).toBeVisible();
+    expect(view.container.querySelector('a[href="/workout/routines/new?day=1"]')).not.toBeNull();
+    view.client.clear();
+  });
+
+  it('reuses prepared volume labels across tab changes and excludes warmup volume', async () => {
+    const volumeFormatting = vi.spyOn(Number.prototype, 'toLocaleString');
+    const NativeNumberFormat = Intl.NumberFormat;
+    const constructions = vi.spyOn(Intl, 'NumberFormat').mockImplementation(function (locale, options) {
+      return new NativeNumberFormat(locale, options);
+    });
+    const completed = {
+      ...workout('volume', 'COMPLETED'),
+      sets: [false, true].map((isWarmup, index) => ({
+        id: `set-${index}`, workoutId: 'volume', exerciseId: 'exercise-volume', order: index,
+        weightKg: isWarmup ? 100 : 123.46, reps: 10, durationS: null, rpe: 7,
+        isWarmup, completedAt: '2026-09-10T12:30:00.000Z', clientMutationId: null,
+        clientId: null, revision: 1, techniqueStable: null,
+        updatedAt: '2026-09-10T12:30:00.000Z', exercise: null,
+      })),
+    };
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      return Promise.resolve(new URL(request.url).pathname.endsWith('/workouts')
+        ? Response.json([completed, workout('zero', 'COMPLETED')]) : Response.json([]));
+    }));
+    const view = show();
+    await waitFor(() => expect(view.client.getQueryData(trainingKeys.workoutHistory(account.id))).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+    expect(await screen.findByText('1.235 kg')).toBeVisible();
+    expect(screen.queryByText('2.235 kg')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 kg')).not.toBeInTheDocument();
+    const preparedConstructions = constructions.mock.calls.length;
+    expect(preparedConstructions).toBeLessThanOrEqual(1);
+    expect(volumeFormatting).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Mis rutinas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+    expect(screen.getByText('1.235 kg')).toBeVisible();
+    expect(constructions).toHaveBeenCalledTimes(preparedConstructions);
+    expect(volumeFormatting).not.toHaveBeenCalled();
+    view.client.clear();
+  });
+
+  it('prepares completed date labels from remote data without formatting during tab switches', async () => {
+    // Observe the real owned formatter: no fake ICU output or clock timings.
+    const formatter = vi.spyOn(dateUtilities, 'formatearFechaHora');
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      return Promise.resolve(new URL(request.url).pathname.endsWith('/workouts')
+        ? Response.json([workout('active', 'ACTIVE'), workout('one', 'COMPLETED'),
+          workout('two', 'COMPLETED'), workout('cancelled', 'CANCELLED')])
+        : Response.json([]));
+    }));
+    const view = show();
+    await screen.findByRole('heading', { name: 'Sesión active' });
+    const callsBeforeInteraction = formatter.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+    await screen.findByRole('heading', { name: 'Sesión one' });
+    expect(screen.getAllByText('10 de sept, 07:00 a. m.')).toHaveLength(2);
+    expect(screen.queryByRole('heading', { name: 'Sesión cancelled' })).not.toBeInTheDocument();
+    expect(callsBeforeInteraction).toBe(2);
+    expect(formatter).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Mis rutinas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+    expect(screen.getAllByText('10 de sept, 07:00 a. m.')).toHaveLength(2);
+    expect(formatter).toHaveBeenCalledTimes(2);
+    view.client.clear();
+  });
+
+  it('offers routine editing as one named keyboard stop before deletion', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      return Promise.resolve(new URL(request.url).pathname.endsWith('/workouts')
+        ? Response.json([]) : Response.json([routine()]));
+    }));
+    const view = show();
+    const user = userEvent.setup();
+    await screen.findByText('Pierna');
+    const edit = view.container.querySelector<HTMLAnchorElement>('a[href="/workout/routines/routine-a"]');
+
+    expect(edit).not.toBeNull();
+    expect(edit?.querySelector('button')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Editar rutina Pierna' })).toBe(edit);
+    edit!.focus();
+    expect(edit).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Eliminar rutina Pierna' })).toHaveFocus();
+    view.client.clear();
+  });
+
   it('keeps successful workouts visible and retries only the failed routine section', async () => {
     const paths: string[] = [];
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -149,9 +258,11 @@ describe('ListaEntrenamientos remote sections', () => {
     expect(postCalls).toBe(1);
     resolvePost(Response.json(workout('quick', 'ACTIVE')));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/workout/quick'));
-    expect(view.client.getQueryData(trainingKeys.workoutList(account.id))).toEqual([
-      expect.objectContaining({ id: 'quick', status: 'ACTIVE' }),
-    ]);
+    expect(view.client.getQueryData(trainingKeys.workoutHistory(account.id))).toEqual({
+      pages: [[expect.objectContaining({ id: 'quick', status: 'ACTIVE' })]],
+      pageParams: [0],
+    });
+    expect(view.client.getQueryState(trainingKeys.workoutHistory(account.id))?.isInvalidated).toBe(true);
   });
 
   it('submits a routine start only once while the request is pending', async () => {

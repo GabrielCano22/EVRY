@@ -1,6 +1,11 @@
 # Fundamentos verificables de EVRY
 
-Este documento reúne el contrato que ya implementan el frontend y el backend de la rama de release candidate. No sustituye las pruebas automatizadas.
+Este documento reúne fundamentos del frontend y el backend. El frontend actual
+es un monorepo: ejecuta los comandos de workspace desde su raíz, no desde
+`apps/web`. La matriz de tareas de agosto se conserva como historial; consulta
+el [estado de implementación](../operations/implementation-status.md) para
+conocer los resultados y límites vigentes. Este documento no acredita una
+puerta verde ni sustituye las pruebas automatizadas.
 
 ## Matriz de datos remotos
 
@@ -28,18 +33,18 @@ El frontend usa una frontera HTTP que no degrada errores a datos vacíos. La ses
 
 La migración de invariantes primero añade columnas nullable para compatibilidad. Luego reporta y normaliza sesiones activas duplicadas conservando la más reciente y cancelando las anteriores. Finalmente verifica la ausencia de duplicados y crea los índices y unicidades. La prueba de integración inspecciona columnas e índices y comprueba que PostgreSQL rechaza una segunda sesión activa. No hay borrado de sesiones ni series en ese flujo.
 
-## Evidencia de las tareas 1 a 6
+## Evidencia histórica de las tareas 1 a 6
 
 | Tarea | Evidencia presente |
 | --- | --- |
 | 1 | Configuraciones Vitest, accesibilidad y Playwright; guard de base de prueba y runners de Jest. |
-| 2 | `lib/civil-date.ts` y sus pruebas unitarias de fronteras de calendario. |
+| 2 | `apps/web/lib/civil-date.ts`, `packages/domain/src/civil-date.ts` y sus pruebas de fronteras de calendario. |
 | 3 | `src/common/dates/civil-date.ts`, tipo `CycleEstimate` y pruebas de rango/zona. |
-| 4 | `lib/api.ts`, `lib/remote-data.ts`, pruebas de API y estados remotos. |
+| 4 | `apps/web/lib/api.ts`, `apps/web/lib/remote-data.ts`, pruebas de API y estados remotos. |
 | 5 | Validación de entorno, cookies de refresh, DTOs acotados, filtros y pruebas de autenticación/configuración. |
 | 6 | Filtros Prisma, migración `20260819090000_release_invariants`, esquema e integración contra PostgreSQL aislado. |
 
-## Puerta reproducible
+## Comprobación básica local
 
 Con las variables de prueba aisladas configuradas en la sesión de PowerShell, ejecute primero el backend:
 
@@ -50,17 +55,50 @@ npm.cmd run test:integration -- --runInBand
 npm.cmd run build
 ```
 
-Después, desde el frontend:
+Después, desde la raíz del monorepo frontend:
 
 ```powershell
+npm.cmd run api:test
+npm.cmd run api:check
+npm.cmd run test:mobile:backend:safety
 npm.cmd run lint
-npm.cmd run test:unit
 npm.cmd run type-check
+npm.cmd run test
 npm.cmd run build
 ```
 
 `type-check` y `build` del frontend deben ejecutarse secuencialmente. Los directorios `.env`, `dist`, `.next`, `.next-dev`, `coverage` y los artefactos de Playwright no se incluyen en commits.
 
-## Límite de esta puerta
+`test` ejecuta primero los controles de seguridad del ejecutor E2E y después
+los workspaces, incluidos los casos móviles, controles nativos,
+controles de seguridad del YAML de Maestro, pruebas web, accesibilidad y
+paquetes compartidos. `test:unit` no existe en la raíz; para ejecutar únicamente
+las unitarias web selecciona el workspace `@evry/web`. No interpretes una
+comprobación separada como resultado del comando raíz.
 
-Esta puerta no ejecuta Playwright/Chromium. La infraestructura de Playwright está preparada, pero aún no existen especificaciones E2E; por ello no se considera ejecutable ni verificada hasta los planes posteriores que las agreguen.
+## Límites y verificaciones adicionales
+
+La comprobación básica anterior no es toda CI: faltan auditoría de dependencias,
+compatibilidad con el backend fijado, integración PostgreSQL, migraciones,
+Playwright, rendimiento, Expo Doctor y exports móviles. Revisa los pasos
+actuales en [CI frontend](../../.github/workflows/ci.yml) y la configuración
+equivalente del repositorio backend. Un fallo en esas puertas impide declarar
+el checkpoint verificado aunque los comandos básicos pasen.
+
+Sí existen especificaciones E2E en `apps/web/tests/e2e/`, entre ellas login,
+entrenamiento, calendario, contexto de usuario e historial paginado. No se
+ejecutan mediante `npm run test`: la entrada raíz es `npm run test:e2e`.
+Playwright requiere Chromium, ambos proyectos compilados y una base local de
+pruebas explícita y separada mediante `TEST_DATABASE_URL`; la configuración
+resuelve el backend con `EVRY_BACKEND_ROOT`. La entrada raíz descubre los casos
+con el propio Playwright y crea una base nueva y migrada por archivo; ejecuta
+ambos proyectos y comprueba que todos los casos descubiertos pasan, sin saltos
+ni reintentos. El rol de la conexión de aprovisionamiento requiere `CREATEDB`.
+No se borran ni reinician bases o cuotas: las bases e informes quedan conservados
+en `.worktrees/web-e2e-isolated-*` para diagnosticar fallos. La entrada directa
+del workspace sigue disponible para diagnósticos explícitos, sin este aislamiento
+automático; no sustituye la puerta raíz completa. No apuntes estos ejecutores a datos
+reales ni reinicies una base para facilitar una prueba. Consulta los requisitos
+de aislamiento y el [registro de rendimiento](../operations/web-performance.md)
+antes de iniciar los servicios. La existencia de las especificaciones no
+certifica su ejecución actual ni los presupuestos de rendimiento.

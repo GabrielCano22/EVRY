@@ -8,6 +8,9 @@ import { buildOverviewCards, signedMetric } from '@/src/progress/progress-view';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 import { ExerciseProgressPanel } from '@/src/progress/ExerciseProgressPanel';
+import { muscleGroupLabel } from '@/src/catalog/muscle-labels';
+import { WeeklyMuscleMap } from '@/src/progress/WeeklyMuscleMap';
+import { ActivityCalendar } from '@/src/progress/ActivityCalendar';
 
 type Period = '30d' | '90d' | '6m' | '1y' | 'all';
 type ProgressOverview = components['schemas']['ProgressOverview'];
@@ -28,6 +31,8 @@ async function loadOverview(session: MobileSession, period: Period, signal: Abor
 
 export default function ProgressScreen() {
   const session = useSessionStore((state) => state.session)!;
+  const sex = useSessionStore((state) => state.user?.biologicalSex);
+  const trackCycle = useSessionStore((state) => state.user?.trackCycle ?? false);
   const [period, setPeriod] = useState<Period>('30d');
   const query = useQuery({ queryKey: ['progress', period], queryFn: ({ signal }) => loadOverview(session, period, signal) });
   const overview = query.data;
@@ -36,6 +41,7 @@ export default function ProgressScreen() {
     <Screen>
       <Text style={textStyles.title}>Progreso</Text>
       <Text style={textStyles.muted}>Métricas del periodo seleccionado contra el periodo anterior equivalente.</Text>
+      <ActivityCalendar key={`${session.userId}:${session.version}`} session={session} trackCycle={trackCycle} />
       <View accessibilityRole="tablist" style={styles.periods}>
         {periods.map((option) => (
           <Pressable
@@ -57,6 +63,8 @@ export default function ProgressScreen() {
           <PrimaryButton onPress={() => void query.refetch()}>Reintentar</PrimaryButton>
         </View>
       ) : null}
+
+      <WeeklyMuscleMap session={session} sex={sex} />
 
       {overview ? (
         <>
@@ -82,11 +90,17 @@ export default function ProgressScreen() {
 
           <View style={styles.card}>
             <Text style={textStyles.heading}>Distribución muscular</Text>
+            <Text style={textStyles.muted}>Series útiles por grupo muscular principal durante el periodo seleccionado.</Text>
             {overview.muscleDistribution.length === 0 ? <Text style={textStyles.muted}>Aún no hay series útiles en este periodo.</Text> : null}
             {overview.muscleDistribution.map((item) => (
               <View key={item.muscleGroup} style={styles.row}>
-                <Text style={textStyles.body}>{item.muscleGroup}</Text>
-                <Text style={textStyles.muted}>{item.workingSets} series · {item.percentage}%</Text>
+                <View style={styles.distributionHeader}>
+                  <Text style={textStyles.body}>{muscleGroupLabel(item.muscleGroup)}</Text>
+                  <Text style={textStyles.muted}>{item.workingSets} series · {item.percentage}%</Text>
+                </View>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, { width: `${Math.max(0, Math.min(100, item.percentage))}%` }]} />
+                </View>
               </View>
             ))}
           </View>
@@ -111,6 +125,9 @@ export default function ProgressScreen() {
 
 const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 18 },
+  barFill: { backgroundColor: theme.colors.primary, borderRadius: 99, height: 6 },
+  barTrack: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 99, height: 6, overflow: 'hidden' },
+  distributionHeader: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   metricCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 4, minWidth: '46%', padding: 16 },
   period: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },

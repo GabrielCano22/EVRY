@@ -1,13 +1,15 @@
 import { SymbolView } from 'expo-symbols';
 import { Redirect, Tabs } from 'expo-router';
-import type { ColorValue } from 'react-native';
+import { Platform, Text, useWindowDimensions, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionStore } from '@/src/auth/session-store';
 import { useTrainingStore } from '@/src/training/training-store';
 import { LoadingScreen, PrimaryButton, Screen, textStyles } from '@/src/ui/components';
-import { Text } from 'react-native';
 import { theme } from '@/src/ui/theme';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const status = useSessionStore((state) => state.status);
   const trackCycle = useSessionStore((state) => state.user?.trackCycle ?? false);
   const session = useSessionStore((state) => state.session);
@@ -15,6 +17,13 @@ export default function TabLayout() {
   const trainingSession = useTrainingStore((state) => state.session);
   const error = useTrainingStore((state) => state.error);
   const initialize = useTrainingStore((state) => state.initialize);
+  // Some Android gesture hosts report zero navigation-bar inset (observed on
+  // ColorOS). Reserve an app-owned gutter, not a claimed OS inset measurement.
+  const bottomGutter = Platform.OS === 'android'
+    ? Math.max(insets.bottom, theme.spacing.lg)
+    : insets.bottom;
+  // Icon slot (28), button padding (10), gap (8), plus a scaling label line.
+  const tabContentHeight = Math.max(theme.spacing.xxl, Math.ceil(46 + 18 * Math.max(1, fontScale)));
   if (status === 'checking') return <LoadingScreen />;
   if (status !== 'authenticated') return <Redirect href="/login" />;
   if (!ready || session !== trainingSession) {
@@ -29,7 +38,13 @@ export default function TabLayout() {
         tabBarInactiveTintColor: theme.colors.textMuted,
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.text,
-        tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.surfaceHigh },
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.surfaceHigh,
+          height: tabContentHeight + bottomGutter,
+          paddingBottom: bottomGutter,
+        },
+        tabBarLabelStyle: { fontSize: theme.spacing.gutter, lineHeight: 18 },
       }}>
       <Tabs.Screen
         name="index"

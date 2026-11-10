@@ -1,10 +1,11 @@
 'use client';
 
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { getExerciseProgress, type ProgressPeriod } from '@/lib/progress-api';
+import { ModuleContent } from './ModuleContent';
 
-const ProgressPlot = lazy(() => import('./ProgressPlot'));
+const loadPlot = () => import('./ProgressPlot');
 type Props = { accountId: string; exerciseId: string };
 const periods: { value: ProgressPeriod; label: string }[] = [
   { value: '30d', label: '30 días' }, { value: '90d', label: '90 días' },
@@ -12,7 +13,7 @@ const periods: { value: ProgressPeriod; label: string }[] = [
 ];
 const number = (value: number) => value.toLocaleString('es-CO', { maximumFractionDigits: 2 });
 
-export function ExerciseDetailProgress({ accountId, exerciseId }: Props) {
+export function ExerciseDetailProgress({ accountId, exerciseId, onContentRetry }: Props & { onContentRetry: () => void }) {
   const [period, setPeriod] = useState<ProgressPeriod>('30d');
   const query = useQuery({ queryKey: ['exercise-detail-progress', accountId, exerciseId, period],
     queryFn: ({ signal }) => getExerciseProgress(exerciseId, { period, limit: 10 }, signal) });
@@ -31,7 +32,9 @@ export function ExerciseDetailProgress({ accountId, exerciseId }: Props) {
       <p>Mejor carga: {data.summary.bestWeight ? `${number(data.summary.bestWeight.weightKg)} kg` : 'Sin registro'}</p>
       <p>1RM estimado: {data.summary.estimated1RM ? `${number(data.summary.estimated1RM.valueKg)} kg (Epley)` : 'Datos insuficientes'}</p>
       {data.comparison ? <p>{data.comparison.delta.volumeKg > 0 ? '+' : ''}{number(data.comparison.delta.volumeKg)} kg frente al periodo anterior ({data.comparison.period.from} – {data.comparison.period.to})</p> : <p>Sin periodo anterior comparable.</p>}
-      <Suspense fallback={<p role="status">Cargando gráfica…</p>}><ProgressPlot points={data.points} /></Suspense>
+      {data.points.some(point => point.estimated1RMKg !== null) ? <ModuleContent load={loadPlot} loading="Cargando gráfica…" failure="No pudimos cargar la gráfica." beforeRetry={onContentRetry}>
+        {module => <module.default points={data.points} />}
+      </ModuleContent> : <p>Sin datos de carga para graficar.</p>}
     </>}
   </>;
 }

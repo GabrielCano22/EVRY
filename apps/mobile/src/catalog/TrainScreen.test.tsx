@@ -41,6 +41,11 @@ const show = async () => {
   return view;
 };
 
+// The first native renderer initialization can include cold Windows host work.
+// This is a functional-test allowance, not the Android release startup budget.
+// Keep CI, other hosts and every later case on their existing deadlines.
+const firstNativeRenderTimeout = process.platform === 'win32' && !process.env.CI ? 60_000 : 20_000;
+
 it('shows all 30 exercises and navigates to the remaining page without auto-loading GIFs', async () => {
   await show();
   expect(await screen.findByText('Ejercicio 30')).toBeTruthy();
@@ -51,7 +56,7 @@ it('shows all 30 exercises and navigates to the remaining page without auto-load
   await fireEvent.press(screen.getByRole('button', { name: 'Página siguiente' }));
   expect(await screen.findAllByText('Ejercicio 31')).not.toHaveLength(0);
   expect(screen.queryByText('Ejercicio 30')).toBeNull();
-}, 20_000);
+}, firstNativeRenderTimeout);
 
 it('shows cached catalog limitations separately from a successful empty server result', async () => {
   jest.mocked(loadExercises).mockResolvedValue({ ...result(), items: [], total: 0, hasMore: false, source: 'cache', stale: true, notice: 'Mostrando copia local desactualizada.' });

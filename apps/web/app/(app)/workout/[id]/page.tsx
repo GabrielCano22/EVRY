@@ -141,7 +141,9 @@ function ContenidoEntrenamiento({ id }: { id: string }) {
   const registroSerie = useMutation({
     mutationFn: () => {
       if (!ejercicioActivo || !entrenamiento) throw new Error('No hay un ejercicio activo.');
-      const order = entrenamiento.sets.filter((set) => set.exerciseId === ejercicioActivo.id).length;
+      const order = entrenamiento.sets.reduce((next, set) => (
+        set.exerciseId === ejercicioActivo.id ? Math.max(next, set.order + 1) : next
+      ), 0);
       return addWorkoutSet(id, {
         exerciseId: ejercicioActivo.id,
         order,

@@ -91,7 +91,7 @@ function ResumenInicio() {
   );
 
   return (
-    <div className="animate-fade-in space-y-lg">
+    <div className="space-y-lg">
       {/* Encabezado */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-md">
         <div>
@@ -108,7 +108,7 @@ function ResumenInicio() {
       </div>
 
       {cargando && (
-        <div role="status" className="flex items-center gap-sm rounded-xl border border-white/5 bg-surface-container-low p-md text-sm text-on-surface-variant">
+        <div role="status" className="pointer-events-none fixed bottom-24 right-md z-40 flex max-w-[calc(100vw-2rem)] items-center gap-sm rounded-xl border border-white/5 bg-surface-container-low p-md text-sm text-on-surface-variant shadow-lg">
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
           Preparando tu resumen…
         </div>
@@ -136,6 +136,7 @@ function ResumenInicio() {
 
       {/* Métricas principales */}
       <div className={cn('grid gap-md', muestraCiclo ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')}>
+        {!resumen && <MetricaPendiente />}
         {resumen && <TarjetaMetrica
           icono="local_fire_department"
           fillIcono
@@ -145,6 +146,7 @@ function ResumenInicio() {
           sufijo={racha === 1 ? 'día' : 'días'}
           extra={racha === 0 ? '¡Empieza hoy!' : 'Mantén el ritmo'}
         />}
+        {!resumen && <MetricaPendiente />}
         {resumen && <TarjetaMetrica
           icono="event"
           color="primary"
@@ -152,6 +154,7 @@ function ResumenInicio() {
           valor={resumen.summary.sessionsCompleted.toString()}
           extra={`${Math.round(resumen.summary.volumeKg).toLocaleString('es-CO')} kg en total · ${resumen.comparison ? `${resumen.comparison.delta.sessionsCompleted > 0 ? '+' : ''}${resumen.comparison.delta.sessionsCompleted} frente al periodo anterior` : 'Sin periodo anterior comparable.'}`}
         />}
+        {readiness.data === undefined && <MetricaPendiente />}
         {readiness.data !== undefined && <TarjetaMetrica
           icono="battery_charging_full"
           color="secondary"
@@ -160,6 +163,7 @@ function ResumenInicio() {
           sufijo="/100"
           extra={puntajeReadiness === null ? 'Sin registro de hoy' : puntajeReadiness >= 75 ? 'Empuja' : puntajeReadiness >= 50 ? 'Mantén' : 'Descansa'}
         />}
+        {muestraCiclo && ciclo.data === undefined && <MetricaPendiente />}
         {muestraCiclo && ciclo.data !== undefined && (
           <TarjetaMetrica
             icono="cyclone"
@@ -333,6 +337,14 @@ function ResumenInicio() {
   );
 }
 
+function MetricaPendiente() {
+  return <div aria-hidden="true" className="min-h-[150px] rounded-xl border border-white/5 bg-surface-container-low p-md">
+    <div className="h-3 w-24 rounded bg-white/5" />
+    <div className="mt-sm h-12 w-20 rounded bg-white/5" />
+    <div className="mt-xs h-3 w-full rounded bg-white/5" />
+  </div>;
+}
+
 function TarjetaMetrica({
   icono,
   fillIcono,
@@ -359,7 +371,7 @@ function TarjetaMetrica({
       ? 'text-secondary bg-secondary/10'
       : 'text-tertiary bg-tertiary/10';
   return (
-    <div role="group" aria-label={etiqueta} className="bg-surface-container-low rounded-xl p-md border border-white/5 relative overflow-hidden">
+    <div role="group" aria-label={etiqueta} className="min-h-[150px] bg-surface-container-low rounded-xl p-md border border-white/5 relative overflow-hidden">
       <div className={cn('absolute -right-4 -top-4 w-32 h-32 rounded-full blur-2xl', cls)}></div>
       <div className="relative">
         <div className="flex items-center gap-xs mb-sm">

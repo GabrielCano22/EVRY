@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { ApiError, setAccessToken } from './api';
-import { getCurrentUser, loginWeb, logoutWeb, registerWeb } from './auth-api';
+import { getCurrentUser, loginWeb, logoutWeb, registerWeb, restoreCurrentUser } from './auth-api';
 import { beginNewSession, currentSessionGeneration, invalidateSession, isCurrentSessionGeneration } from './auth-session';
 import type { RegisterInput, UpdatedUser } from './auth-api';
 import type { AuthStatus, Usuario } from './types';
@@ -12,7 +12,7 @@ interface EstadoAutenticacion {
   cargando: boolean;
   error: string | null;
   estado: AuthStatus;
-  inicializar: () => Promise<void>;
+  inicializar: (options?: { reuseForDocument?: boolean }) => Promise<void>;
   ingresar: (email: string, password: string) => Promise<boolean>;
   registrar: (datos: RegisterInput) => Promise<boolean>;
   cerrarSesion: () => Promise<void>;
@@ -29,28 +29,52 @@ function mensajeSeguro(error: unknown, fallback: string): string {
 }
 
 let epochOperacion = 0;
+type Inicializacion = { generation: number; epoch: number; promise: Promise<void> };
+let inicializacionPendiente: Inicializacion | null = null;
+let inicializacionDocumento: Inicializacion | null = null;
 
 export const useAutenticacion = create<EstadoAutenticacion>((set, get) => ({
   usuario: null,
   cargando: false,
   error: null,
   estado: 'checking',
-  async inicializar() {
-    const epoch = ++epochOperacion;
+  async inicializar(options) {
     const generation = currentSessionGeneration();
-    set({ cargando: true, estado: 'checking', error: null });
+    if (options?.reuseForDocument && inicializacionDocumento?.generation === generation && inicializacionDocumento.epoch === epochOperacion) {
+      return inicializacionDocumento.promise;
+    }
+    if (inicializacionPendiente?.generation === generation && inicializacionPendiente.epoch === epochOperacion) {
+      if (options?.reuseForDocument) inicializacionDocumento = inicializacionPendiente;
+      return inicializacionPendiente.promise;
+    }
+    const epoch = ++epochOperacion;
+    const pending = {
+      generation,
+      epoch,
+      promise: (async () => {
+        if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+        set({ cargando: true, estado: 'checking', error: null });
+        try {
+          const usuario = await restoreCurrentUser();
+          if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+          set({ usuario, cargando: false, estado: 'authenticated', error: null });
+        } catch (error) {
+          if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
+          if (esSesionInvalida(error)) {
+            setAccessToken(null, generation);
+            set({ usuario: null, cargando: false, estado: 'anonymous', error: null });
+            return;
+          }
+          set({ usuario: get().usuario, cargando: false, estado: 'error', error: mensajeSeguro(error, 'No se pudo cargar la sesión') });
+        }
+      })(),
+    };
+    inicializacionPendiente = pending;
+    if (options?.reuseForDocument) inicializacionDocumento = pending;
     try {
-      const usuario = await getCurrentUser();
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
-      set({ usuario, cargando: false, estado: 'authenticated', error: null });
-    } catch (error) {
-      if (epoch !== epochOperacion || !isCurrentSessionGeneration(generation)) return;
-      if (esSesionInvalida(error)) {
-        setAccessToken(null, generation);
-        set({ usuario: null, cargando: false, estado: 'anonymous', error: null });
-        return;
-      }
-      set({ usuario: get().usuario, cargando: false, estado: 'error', error: mensajeSeguro(error, 'No se pudo cargar la sesión') });
+      await pending.promise;
+    } finally {
+      if (inicializacionPendiente === pending) inicializacionPendiente = null;
     }
   },
   async ingresar(email, password) {

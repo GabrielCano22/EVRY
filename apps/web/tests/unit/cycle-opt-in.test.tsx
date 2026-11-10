@@ -110,6 +110,10 @@ it('links API field errors to inputs and blocks a duplicate pending registration
   const passwordError = await screen.findByText('Contraseña inválida.');
   expect(screen.getByRole('textbox', { name: /Correo electrónico/ }).closest('label')).toContainElement(emailError);
   expect(screen.getByLabelText(/Contraseña/).closest('label')).toContainElement(passwordError);
+  expect(screen.getByRole('textbox', { name: /Correo electrónico/ })).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByRole('textbox', { name: /Correo electrónico/ })).toHaveAccessibleDescription('Correo inválido.');
+  expect(screen.getByLabelText(/Contraseña/)).toHaveAccessibleDescription(/Contraseña inválida\./);
+  expect(screen.getByLabelText(/Contraseña/)).toHaveAccessibleDescription(/72 bytes UTF-8/);
   expect(push).not.toHaveBeenCalled();
 });
 
@@ -187,6 +191,7 @@ it('shows the cycle form and loaded non-female history only with explicit consen
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><PaginaCiclo /></QueryClientProvider>);
   expect(await screen.findByRole('button', { name: 'Guardar registro' })).toBeInTheDocument();
   expect(await screen.findByText(/1 síntomas/)).toBeInTheDocument();
+  expect(screen.getByText('Datos insuficientes. Marca abajo el inicio de tu próximo período para empezar.')).toBeInTheDocument();
 });
 
 it.each(['MALE', 'OTHER', 'PREFER_NOT_SAY'] as const)('lets %s save both consent values without reloading the session', async (biologicalSex) => {

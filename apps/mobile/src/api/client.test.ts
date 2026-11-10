@@ -491,6 +491,39 @@ const syncBody: MobileClient.SyncWorkoutInput = {
   name: 'Fuerza', startedAt: '2026-08-30T10:00:00.000Z', sets: [], deletedSetClientIds: [],
 };
 
+const adoptedServerWorkout: MobileClient.SyncCanonicalWorkoutForRecovery = {
+  id: 'server-workout', clientId: '4ef7ca0b-d56a-4dd3-81a8-0121a26f0748', revision: 3,
+  name: 'Web original', startedAt: '2026-10-19T12:00:00.000Z', endedAt: null,
+  cancelledAt: null, status: 'ACTIVE', notes: null, routineId: null, sets: [],
+};
+
+it('adopts a web session through the generated route with the captured account credential', async () => {
+  const adoptedRequests: { method: string; url: string; authorization: string | null }[] = [];
+  http.mockImplementation(async (request) => {
+    if (request.url.endsWith('/login')) return json(tokens('sync'));
+    if (request.url.endsWith('/users/me')) return json({ id: 'user-sync', email: 'sync@example.com', name: 'Sync', trackCycle: false });
+    adoptedRequests.push({ method: request.method, url: request.url, authorization: request.headers.get('authorization') });
+    return json(adoptedServerWorkout, 201);
+  });
+  const owner = await authenticatedSessionForSync();
+  await expect(client.adoptWorkoutWithRefresh('server-workout', owner)).resolves.toEqual(adoptedServerWorkout);
+  expect(adoptedRequests).toEqual([{
+    method: 'POST', url: `${client.API_BASE_URL}/workouts/server-workout/adopt`, authorization: 'Bearer access-sync',
+  }]);
+});
+
+it.each([{}, { ...adoptedServerWorkout, id: 'different-server-workout' }])(
+  'refuses an invalid or unrelated server adoption response %#', async (body) => {
+    http.mockImplementation(async (request) => {
+      if (request.url.endsWith('/login')) return json(tokens('sync'));
+      if (request.url.endsWith('/users/me')) return json({ id: 'user-sync', email: 'sync@example.com', name: 'Sync', trackCycle: false });
+      return json(body, 201);
+    });
+    const owner = await authenticatedSessionForSync();
+    await expect(client.adoptWorkoutWithRefresh('server-workout', owner)).rejects.toThrow(/sesión/);
+  },
+);
+
 it('rejects a malformed conflict server version while preserving the conflict error', async () => {
   http.mockImplementation(async (request) => {
     if (request.url.endsWith('/login')) return json(tokens('sync'));

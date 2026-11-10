@@ -83,6 +83,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -174,6 +184,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -249,6 +269,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -342,6 +372,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -403,6 +443,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -487,6 +537,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -553,6 +613,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -633,6 +703,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -706,6 +786,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -772,6 +862,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -857,6 +957,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1031,6 +1141,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1098,6 +1218,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1180,6 +1310,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1246,6 +1386,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1332,6 +1482,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1429,6 +1589,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1517,6 +1687,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1627,6 +1807,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1724,6 +1914,121 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
+    "/api/v1/workouts/{id}/adopt": {
+      "post": {
+        "operationId": "WorkoutsController_adopt",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Identidades UUID persistentes para continuar la sesión activa desde otro cliente. Repetir no cambia las identidades ni las revisiones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de solicitudes alcanzado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1836,6 +2141,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1924,6 +2239,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2036,6 +2361,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2134,6 +2469,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2245,6 +2590,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2341,6 +2696,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2429,6 +2794,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2494,6 +2869,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2588,6 +2973,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2667,6 +3062,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2757,6 +3162,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2837,6 +3252,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2977,6 +3402,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3110,6 +3545,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3179,6 +3624,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3262,6 +3717,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3334,6 +3799,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3396,6 +3871,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3477,6 +3962,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3545,6 +4040,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3635,6 +4140,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3701,6 +4216,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3776,6 +4301,16 @@
           },
           "500": {
             "description": "Error interno normalizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4013,6 +4548,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Protección compartida o servicio de datos temporalmente no disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4061,8 +4606,9 @@
           "password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 128,
-            "writeOnly": true
+            "maxLength": 72,
+            "writeOnly": true,
+            "description": "New passwords must be valid Unicode and fit within 72 UTF-8 bytes; no truncation or normalization is applied."
           },
           "name": {
             "type": "string",
@@ -6483,27 +7029,27 @@
         "properties": {
           "sleepHrs": {
             "type": "number",
+            "nullable": true,
             "minimum": 0,
-            "maximum": 16,
-            "nullable": true
+            "maximum": 16
           },
           "stress": {
             "type": "integer",
+            "nullable": true,
             "minimum": 1,
-            "maximum": 5,
-            "nullable": true
+            "maximum": 5
           },
           "soreness": {
             "type": "integer",
+            "nullable": true,
             "minimum": 1,
-            "maximum": 5,
-            "nullable": true
+            "maximum": 5
           },
           "motivation": {
             "type": "integer",
+            "nullable": true,
             "minimum": 1,
-            "maximum": 5,
-            "nullable": true
+            "maximum": 5
           }
         }
       },

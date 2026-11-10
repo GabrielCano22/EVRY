@@ -50,6 +50,25 @@ function fakeStorage(bytes = 10) {
   return { storage, files, downloads, removed };
 }
 
+it('downloads a shared thumbnail only once for equivalent account server URLs', async () => {
+  const files = fakeStorage();
+  const cache = new ThumbnailCache(files.storage, 20);
+  const url = 'https://example.test/shared.jpg';
+
+  const results = await Promise.all([
+    cache.resolve(owner, url),
+    cache.resolve({ ...owner, serverUrl: `${owner.serverUrl}/` }, url),
+  ]);
+
+  expect(files.downloads).toEqual([url]);
+  expect(results).toEqual([
+    'file://media-user/https%3A%2F%2Fexample.test%2Fshared.jpg',
+    'file://media-user/https%3A%2F%2Fexample.test%2Fshared.jpg',
+  ]);
+  expect(await readMediaCache(owner, url)).toEqual({ uri: results[0], bytes: 10 });
+  expect(files.files.size).toBe(1);
+});
+
 it('serves a visited thumbnail offline and removes the LRU file after reaching the limit', async () => {
   const files = fakeStorage();
   const cache = new ThumbnailCache(files.storage, 20);

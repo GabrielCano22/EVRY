@@ -1,18 +1,41 @@
 # Política de despliegue y distribución privada
 
-## Autorización obligatoria
+## Autorización vigente y prioridades
 
-EVRY no se despliega ni crea recursos externos como parte de la implementación ordinaria. Un push a la rama de trabajo no autoriza previews, producción, dominios, bases remotas ni migraciones sobre datos conservados. Cualquier despliegue requiere una autorización explícita posterior del propietario.
+La prioridad actual es mantener una sola APK Android, EVRY Local. El trabajo
+de interfaz web y la validación en iOS quedan diferidos por decisión del
+propietario.
+El historial registra una autorización para Vercel el 12 de octubre de 2026,
+pero la instrucción posterior del checkpoint del 15 de octubre prohíbe
+despliegues y cambios de recursos, dominios, bases remotas o entornos externos
+sin una nueva autorización explícita posterior. Por tanto, el estado operativo
+actual permite preparar y verificar la configuración **localmente**, no ejecutar
+un despliegue ni crear su base remota. Los commits, pushes y la autorización
+general de continuar el desarrollo no levantan esa restricción.
 
 Render y Cloudflare quedan excluidos. No se configurarán servicios de activación periódica, keep-alive ni infraestructura paralela para evitar suspensiones.
 
-## Plataforma aprobada si se autoriza
+## Plataforma aprobada
 
-Si el propietario autoriza un despliegue futuro, web, API, variables, dominios y servicios administrados se configurarán desde Vercel. Antes de crear recursos se debe presentar y aprobar el diseño concreto, incluido el alojamiento PostgreSQL accesible desde Vercel, límites gratuitos, estrategia de medios, migraciones y rollback.
+Si se autoriza posteriormente el despliegue, web y API usarán Vercel. Antes de
+crear recursos se comprobarán el equipo Hobby, el alojamiento PostgreSQL
+accesible desde Vercel, los límites gratuitos, la estrategia de medios y el
+rollback. No se comprarán dominios ni suscripciones. El entorno de prueba usará
+una base nueva y separada: no se importarán ni migrarán automáticamente los
+datos reales.
 
-El orden previsto, todavía no autorizado, es: backup restaurable, migración compatible ensayada, API dual, web, APK Android, QA y retiro posterior del alias `/api`. Nunca se ejecutará un reset ni una migración destructiva sobre datos conservados.
+El orden es: comprobaciones y seguridad web/API, base de prueba separada, API dual, web, QA HTTPS y APK Android. Las migraciones sobre datos conservados requieren backup restaurable y ensayo compatible; no forman parte de la creación de esta base nueva. Nunca se ejecutará un reset ni una migración destructiva sobre datos conservados.
 
 ## Android privado e iPhone
+
+Para actualizar el OPPO se usa el paquete existente
+`com.gabrielcano.evry.local`. La APK de actualización conserva la firma y
+aumenta el código de versión. Con la depuración USB autorizada y EVRY Local en
+Inicio, se verifica la firma, el paquete y el hash antes de aplicar
+`adb install -r`. Después se comprueba que la app abre con la sesión guardada y
+que la base conserva sus registros. La API privada de este perfil usa HTTPS en
+`localhost:4447` mediante el enlace USB. Este flujo se verificó con la versión
+`1.0.2-local` (código 3) en el OPPO A54 el 8 de noviembre de 2026.
 
 La generación local y privada de aplicaciones móviles no constituye un despliegue web. Los exports locales y los perfiles EAS `preview` y `production` requieren `EXPO_PUBLIC_API_BASE_URL` con HTTPS y el prefijo exacto `/api/v1`. Para validar un export sin desplegar ni conectarlo a infraestructura se puede usar el dominio reservado `.invalid`.
 
@@ -61,4 +84,4 @@ done
 npx eas-cli build --platform android --profile preview
 ```
 
-El perfil `preview` produce un APK de distribución interna. En iPhone se mantiene Expo Go; TestFlight y el binario independiente quedan fuera de alcance hasta disponer de membresía Apple.
+El perfil `preview` produce un APK de distribución interna. La validación iPhone/Expo Go queda diferida por prioridad explícita del propietario; TestFlight y el binario independiente siguen fuera de alcance hasta disponer de membresía Apple. Esta priorización no declara terminada la versión iOS.

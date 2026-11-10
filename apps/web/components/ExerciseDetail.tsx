@@ -1,23 +1,14 @@
 'use client';
 
-import { createContext, useCallback, useContext, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAutenticacion } from '@/lib/auth-store';
-import { getExercise, trainingKeys, type ExerciseDetail } from '@/lib/training-api';
-import { exerciseGifUrl, getExerciseInstruction } from '@/lib/exercise-media';
-import { etiquetaEquipo, etiquetaGrupoMuscular, traducirCategoria, traducirNombreEjercicio, traducirValorEjercicio } from '@/lib/exercise-i18n';
-import { ExerciseMedia } from './ExerciseMedia';
-import { MapaMuscular } from './MapaMuscular';
-import { ExerciseDetailProgress, ExerciseDetailHistory } from './exercise-detail/Activity';
+import { getExercise, trainingKeys } from '@/lib/training-api';
+import type { DetailContentProps, Tab } from './exercise-detail/DetailContent';
 
-type Tab = 'summary' | 'progress' | 'history' | 'instructions';
 type Selection = { exerciseId: string; tab: Tab; trigger: HTMLElement };
 const DetailContext = createContext<((selection: Selection) => void) | null>(null);
-const tabs: { key: Tab; label: string }[] = [
-  { key: 'summary', label: 'Resumen' }, { key: 'progress', label: 'Progreso' },
-  { key: 'history', label: 'Historial' }, { key: 'instructions', label: 'Indicaciones' },
-];
 
 export function ExerciseDetailProvider({ children }: { children: ReactNode }) {
   const accountId = useAutenticacion(state => state.usuario?.id);
@@ -40,15 +31,27 @@ export function ExerciseDetailButton({ exerciseId, tab = 'summary', children, cl
 }
 
 function DetailDialog({ selection, accountId, close }: { selection: Selection; accountId: string; close: () => void }) {
-  const [tab, setTab] = useState<Tab>(selection.tab);
-  const panel = useRef<HTMLDivElement>(null);
-  const overlay = useRef<HTMLDivElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const id = useId();
+  // Fetch metadata concurrently with the content chunk, not after it downloads.
+  // This observer exists only while the drawer is open and consumes its signal.
   const metadata = useQuery({
     queryKey: trainingKeys.exerciseDetail(accountId, selection.exerciseId),
     queryFn: ({ signal }) => getExercise(selection.exerciseId, signal),
   });
+  const [title, setTitle] = useState('Ficha de ejercicio');
+  const [Content, setContent] = useState<ComponentType<DetailContentProps> | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let mounted = true;
+    import('./exercise-detail/DetailContent').then(exports => {
+      if (mounted) setContent(() => exports.default);
+    }).catch(() => { if (mounted) setLoadFailed(true); });
+    return () => { mounted = false; };
+  }, [attempt]);
+  const panel = useRef<HTMLDivElement>(null);
+  const overlay = useRef<HTMLDivElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const id = useId();
   useLayoutEffect(() => {
     const originalOverflow = document.body.style.overflow;
     const siblings = [...document.body.children].filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay.current);
@@ -77,63 +80,17 @@ function DetailDialog({ selection, accountId, close }: { selection: Selection; a
       if (selection.trigger.isConnected) selection.trigger.focus({ preventScroll: true });
     };
   }, [close, selection.trigger]);
-  const exercise = metadata.data;
   return createPortal(<div ref={overlay} className="fixed inset-0 z-[80] flex justify-end bg-black/60" onMouseDown={event => { event.stopPropagation(); if (event.target === event.currentTarget) close(); }}>
     <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}
       className="flex h-[100dvh] w-full flex-col overflow-hidden bg-background text-on-surface shadow-2xl md:max-w-xl md:border-l md:border-outline/30 motion-reduce:transition-none">
       <header className="flex items-center justify-between gap-md border-b border-outline/30 p-lg">
-        <h2 id={`${id}-title`} className="text-headline-md">{exercise ? traducirNombreEjercicio(exercise.name) : 'Ficha de ejercicio'}</h2>
+        <h2 id={`${id}-title`} className="text-headline-md">{title}</h2>
         <button ref={closeButton} type="button" aria-label="Cerrar ficha" onClick={close} className="rounded-lg border border-outline px-md py-sm">Cerrar</button>
       </header>
-      <div role="tablist" aria-label="Información del ejercicio" className="grid grid-cols-4 border-b border-outline/30">
-        {tabs.map((item, index) => <button key={item.key} id={`${id}-${item.key}`} role="tab" type="button"
-          aria-selected={tab === item.key} aria-controls={`${id}-panel-${item.key}`} tabIndex={tab === item.key ? 0 : -1}
-          className="min-w-0 px-1 py-md text-sm aria-selected:bg-primary/10 aria-selected:text-primary"
-          onClick={() => setTab(item.key)} onKeyDown={event => {
-            const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : null;
-            if (next !== null) { event.preventDefault(); setTab(tabs[next].key); document.getElementById(`${id}-${tabs[next].key}`)?.focus(); }
-          }}>{item.label}</button>)}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-lg">
-        {tabs.map(item => <section key={item.key} role="tabpanel" hidden={tab !== item.key} id={`${id}-panel-${item.key}`} aria-labelledby={`${id}-${item.key}`} tabIndex={0} className="space-y-md">
-          {tab === item.key && <>
-            {(tab === 'summary' || tab === 'instructions') && <>
-              {metadata.isPending && <p role="status">Cargando ejercicio…</p>}
-              {metadata.isError && <p role="alert">No pudimos cargar el ejercicio. <button type="button" className="underline" onClick={() => void metadata.refetch()}>Reintentar ejercicio</button></p>}
-              {exercise && (tab === 'summary' ? <Summary exercise={exercise} /> : <Instructions exercise={exercise} />)}
-            </>}
-            {tab === 'progress' && <ExerciseDetailProgress accountId={accountId} exerciseId={selection.exerciseId} />}
-            {tab === 'history' && <ExerciseDetailHistory accountId={accountId} exerciseId={selection.exerciseId} />}
-          </>}
-        </section>)}
-      </div>
+      {Content ? <Content exerciseId={selection.exerciseId} accountId={accountId} initialTab={selection.tab} id={id} onTitle={setTitle} onContentRetry={() => closeButton.current?.focus({ preventScroll: true })} metadata={metadata} />
+        : <div className="p-lg">{loadFailed
+          ? <p role="alert">No pudimos cargar la ficha. <button type="button" className="underline" onClick={() => { closeButton.current?.focus({ preventScroll: true }); setLoadFailed(false); setAttempt(value => value + 1); }}>Reintentar ficha</button></p>
+          : <p role="status">Cargando ejercicio…</p>}</div>}
     </div>
   </div>, document.body);
-}
-
-function Summary({ exercise }: { exercise: ExerciseDetail }) {
-  const [playing, setPlaying] = useState(false);
-  return <>
-    <ExerciseMedia exercise={playing ? exercise : { ...exercise, gifPath: null, gifUrl: null }} variant="detail" />
-    {exerciseGifUrl(exercise) && <button type="button" aria-pressed={playing} className="rounded-lg border border-primary px-md py-sm text-primary" onClick={() => setPlaying(value => !value)}>{playing ? 'Detener GIF' : 'Reproducir GIF'}</button>}
-    {exercise.attribution && <p className="text-xs text-on-surface-variant">{exercise.attribution}</p>}
-    {exercise.description && <p>{exercise.description}</p>}
-    <dl className="grid grid-cols-2 gap-sm text-sm">
-      <dt>Grupo muscular</dt><dd>{etiquetaGrupoMuscular(exercise.muscleGroup)}</dd>
-      <dt>Equipo</dt><dd>{etiquetaEquipo(exercise.equipment)}</dd>
-      {exercise.target && <><dt>Músculo objetivo</dt><dd>{traducirValorEjercicio(exercise.target)}</dd></>}
-      {exercise.category && <><dt>Categoría</dt><dd>{traducirCategoria(exercise.category)}</dd></>}
-      <dt>Tipo</dt><dd>{exercise.isCustom ? 'Personalizado' : 'Catálogo'} · {exercise.isCompound ? 'Compuesto' : 'Aislado'}</dd>
-    </dl>
-    <MapaMuscular ejercicios={[exercise]} />
-  </>;
-}
-
-function Instructions({ exercise }: { exercise: ExerciseDetail }) {
-  const steps = getExerciseInstruction(exercise);
-  return <>
-    {steps.length ? <ol className="list-decimal space-y-sm pl-lg">{steps.map((step, index) => <li key={index}>{step}</li>)}</ol> : <p>Sin indicaciones disponibles.</p>}
-    <p className="rounded-lg border border-outline/30 p-md text-sm">Realiza el movimiento con control y detente si sientes dolor. Si tienes dudas sobre la técnica, consulta a un profesional.</p>
-    {exercise.attribution && <p className="text-xs text-on-surface-variant">{exercise.attribution}</p>}
-  </>;
 }

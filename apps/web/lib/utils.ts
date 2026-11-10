@@ -23,15 +23,20 @@ export function formatearFecha(valor: string | Date) {
   }).format(fecha);
 }
 
+// Native ICU construction is expensive when rendering a history page. Keep one
+// fixed-locale formatter, not an unbounded cache of user dates or formatted values.
+let dateTimeFormatter: Intl.DateTimeFormat | undefined;
+
 export function formatearFechaHora(valor: string | Date) {
   const fecha = typeof valor === 'string' ? new Date(valor) : valor;
-  return new Intl.DateTimeFormat('es-CO', {
+  dateTimeFormatter ??= new Intl.DateTimeFormat('es-CO', {
     timeZone: 'America/Bogota',
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(fecha);
+  });
+  return dateTimeFormatter.format(fecha);
 }
 
 // Aliases en inglés para compatibilidad con código antiguo

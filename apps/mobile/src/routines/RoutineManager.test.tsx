@@ -209,7 +209,7 @@ it('previews catalog details, image and attribution and loads GIF only after pla
   await fireEvent.press(screen.getByRole('button', { name: 'Ver Peso muerto' }));
   await waitFor(() => expect(screen.getByLabelText('Demostración de Peso muerto')).toHaveProp('source', [{ uri: 'https://api.example.com/media/exercises/images/deadlift.jpg' }]));
   expect(screen.getByText('Equipo: BARBELL')).toBeTruthy();
-  expect(screen.getByText('Músculo: QUADS')).toBeTruthy();
+  expect(screen.getByText('Músculo: Cuádriceps')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Reproducir GIF' })).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Agregar Sentadilla' }));
   expect(screen.getByLabelText('Vista previa de Peso muerto')).toBeTruthy();

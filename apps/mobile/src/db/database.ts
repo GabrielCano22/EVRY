@@ -1,9 +1,11 @@
 import * as SQLite from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
 import type { components } from '@evry/api-client';
+import { decodeRestTimer, type RestTimerState } from '@evry/domain';
 import type { LocalWorkout } from '../training/workout-domain';
+import { decodeStoredWorkout, workoutSnapshotsEqual, type StoredWorkoutRow } from './stored-workout';
 import { aggregateSyncState, type SyncQueueState } from '../sync/queue-policy';
-import { canonicalWorkoutFromServer } from '../sync/conflict-resolution';
+import { canonicalWorkoutFromServer, hasSyncIdentities } from '../sync/conflict-resolution';
 import { rebaseSyncPayload, rebaseWorkoutRevisions } from '../sync/revisions';
 import { recoveryWorkoutFromUnknown, type SyncCanonicalWorkoutForRecovery, type SyncWorkoutInput } from '../api/client';
 
@@ -11,7 +13,7 @@ export interface DatabaseOwner {
   readonly userId: string;
   readonly serverUrl: string;
 }
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export interface PendingSyncRow {
   id: number;
@@ -65,12 +67,20 @@ export function getDatabase(owner: DatabaseOwner): Promise<SQLite.SQLiteDatabase
   const connection = Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, key)
     .then((digest) => SQLite.openDatabaseAsync(`evry-account-${digest}.db`))
     .then(async (database) => {
-      await migrate(database);
-      await database.execAsync(`
-        UPDATE sync_queue SET state = 'pending' WHERE state = 'syncing';
-        UPDATE workouts SET sync_state = 'pending' WHERE sync_state = 'syncing';
-      `);
-      return database;
+      try {
+        await migrate(database);
+        await database.execAsync(`
+          UPDATE sync_queue SET state = 'pending' WHERE state = 'syncing';
+          UPDATE workouts SET sync_state = 'pending' WHERE sync_state = 'syncing';
+        `);
+        return database;
+      } catch (error) {
+        // No consumer receives this connection until preparation succeeds.
+        // Release its native handle before allowing another attempt, never
+        // delete the account file or replace the original preparation error.
+        try { await database.closeAsync(); } catch { /* Preserve the original failure. */ }
+        throw error;
+      }
     }).catch((error: unknown) => {
       connections.delete(key);
       throw error;
@@ -83,6 +93,10 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
   const version = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   if ((version?.user_version ?? 0) >= DATABASE_VERSION) return;
+  if ((version?.user_version ?? 0) >= 2) {
+    await migrateRestTimers(database);
+    return;
+  }
 
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS exercise_cache (
@@ -164,6 +178,55 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       cursor = rows[rows.length - 1].id;
     }
     await database.execAsync('PRAGMA user_version = 2;');
+  });
+  await migrateRestTimers(database);
+}
+
+async function migrateRestTimers(database: SQLite.SQLiteDatabase): Promise<void> {
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS rest_timers (
+        workout_client_id TEXT PRIMARY KEY NOT NULL,
+        payload TEXT NOT NULL,
+        FOREIGN KEY(workout_client_id) REFERENCES workouts(client_id) ON DELETE CASCADE
+      );
+      PRAGMA user_version = 3;
+    `);
+  });
+}
+
+function storedRestTimer(payload: string): RestTimerState {
+  try { return decodeRestTimer(JSON.parse(payload)); }
+  catch { throw new Error('El descanso guardado contiene datos inválidos. Los datos locales se conservan.'); }
+}
+
+export async function loadRestTimer(owner: DatabaseOwner, workoutClientId: string): Promise<RestTimerState | null> {
+  const database = await getDatabase(owner);
+  // Reads also wait for queued writes: reopening a screen must not hydrate an
+  // older timer while its previous screen's native write is still finishing.
+  return writeTransaction(database, async () => {
+    const row = await database.getFirstAsync<{ payload: string }>(
+      'SELECT payload FROM rest_timers WHERE workout_client_id = ?', workoutClientId,
+    );
+    return row ? storedRestTimer(row.payload) : null;
+  });
+}
+
+export async function saveRestTimer(owner: DatabaseOwner, workoutClientId: string, state: RestTimerState): Promise<void> {
+  const valid = decodeRestTimer(state);
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => {
+    const workout = await database.getFirstAsync<StoredWorkoutRow>(
+      'SELECT client_id, revision, status, payload FROM workouts WHERE client_id = ?', workoutClientId,
+    );
+    if (!workout || workout.status !== 'ACTIVE') throw new Error('El descanso requiere una sesión activa guardada.');
+    decodeStoredWorkout(workout);
+    const previous = await database.getFirstAsync<{ payload: string }>(
+      'SELECT payload FROM rest_timers WHERE workout_client_id = ?', workoutClientId,
+    );
+    if (previous) storedRestTimer(previous.payload);
+    await database.runAsync(`INSERT INTO rest_timers (workout_client_id, payload) VALUES (?, ?)
+      ON CONFLICT(workout_client_id) DO UPDATE SET payload = excluded.payload`, workoutClientId, JSON.stringify(valid));
   });
 }
 
@@ -290,18 +353,27 @@ async function persistWorkout(
 
 export async function loadActiveWorkout(owner: DatabaseOwner): Promise<LocalWorkout | null> {
   const database = await getDatabase(owner);
-  const row = await database.getFirstAsync<{ payload: string }>(
-    "SELECT payload FROM workouts WHERE status = 'ACTIVE' LIMIT 1",
+  const row = await database.getFirstAsync<StoredWorkoutRow>(
+    "SELECT client_id, revision, status, payload FROM workouts WHERE status = 'ACTIVE' LIMIT 1",
   );
-  return row ? JSON.parse(row.payload) as LocalWorkout : null;
+  return row ? decodeStoredWorkout(row) : null;
 }
 
 export async function loadRecoveredDrafts(owner: DatabaseOwner): Promise<LocalWorkout[]> {
   const database = await getDatabase(owner);
-  const rows = await database.getAllAsync<{ payload: string }>(
-    "SELECT payload FROM workouts WHERE status = 'DRAFT' ORDER BY updated_at DESC LIMIT 20",
+  const rows = await database.getAllAsync<StoredWorkoutRow>(
+    "SELECT client_id, revision, status, payload FROM workouts WHERE status = 'DRAFT' ORDER BY updated_at DESC LIMIT 20",
   );
-  return rows.map((row) => JSON.parse(row.payload) as LocalWorkout);
+  return rows.map(decodeStoredWorkout);
+}
+
+/** Local completed sessions not yet confirmed by the server, scoped to the owner database. */
+export async function loadPendingCompletedWorkouts(owner: DatabaseOwner): Promise<LocalWorkout[]> {
+  const database = await getDatabase(owner);
+  const rows = await database.getAllAsync<StoredWorkoutRow>(
+    "SELECT client_id, revision, status, payload FROM workouts WHERE status = 'COMPLETED' AND sync_state IN ('pending', 'syncing') ORDER BY updated_at DESC",
+  );
+  return rows.map(decodeStoredWorkout);
 }
 
 export async function enqueueWorkout(
@@ -317,11 +389,23 @@ export async function enqueueWorkout(
   const database = await getDatabase(owner);
   let syncState: SyncQueueState = 'pending';
   await writeTransaction(database, async () => {
-    const stored = await database.getFirstAsync<{ revision: number; payload: string }>(
-      'SELECT revision, payload FROM workouts WHERE client_id = ?',
+    let archiveSource: LocalWorkout | undefined;
+    if (draftToArchive) {
+      const source = await database.getFirstAsync<StoredWorkoutRow>(
+        'SELECT client_id, revision, status, payload FROM workouts WHERE client_id = ?',
+        draftToArchive.clientId,
+      );
+      if (source) archiveSource = decodeStoredWorkout(source);
+      if (!archiveSource || archiveSource.status !== 'DRAFT'
+        || !workoutSnapshotsEqual(archiveSource, draftToArchive)) {
+        throw new Error('El borrador cambió. Actualiza los borradores y revisa la versión guardada antes de recuperarlo.');
+      }
+    }
+    const stored = await database.getFirstAsync<StoredWorkoutRow>(
+      'SELECT client_id, revision, status, payload FROM workouts WHERE client_id = ?',
       workout.clientId,
     );
-    const canonicalSets = stored ? (JSON.parse(stored.payload) as LocalWorkout).sets : [];
+    const canonicalSets = stored ? decodeStoredWorkout(stored).sets : [];
     const revision = Math.max(workout.revision, stored?.revision ?? 0);
     const rebasedWorkout = rebaseWorkoutRevisions(workout, revision, canonicalSets);
     const rebasedPayload = rebaseSyncPayload(payload, revision, canonicalSets);
@@ -351,8 +435,13 @@ export async function enqueueWorkout(
         now,
       );
     }
-    if (draftToArchive) {
-      await persistWorkout(database, { ...draftToArchive, status: 'CANCELLED', cancelledAt: new Date().toISOString() }, 'synced');
+    if (archiveSource) {
+      // This freshly decoded object belongs only to this transaction, not the
+      // caller. Retain literal JSON extension keys that loose spread transforms
+      // can lose through Object.assign's inherited setters.
+      archiveSource.status = 'CANCELLED';
+      archiveSource.cancelledAt = new Date().toISOString();
+      await persistWorkout(database, archiveSource, 'synced');
     }
   });
   return syncState;
@@ -378,6 +467,23 @@ export async function currentSyncState(owner: DatabaseOwner): Promise<SyncQueueS
      WHERE sync_state <> 'synced'`,
   );
   return aggregateSyncState(rows.map((row) => row.syncState));
+}
+
+export async function markInvalidSyncPayload(owner: DatabaseOwner, row: PendingSyncRow): Promise<boolean> {
+  const database = await getDatabase(owner);
+  return writeTransaction(database, async () => {
+    // Compare the observed snapshot before flagging it. Preserve every queued
+    // payload, including later edits; this is not a server revision conflict.
+    const result = await database.runAsync(
+      `UPDATE sync_queue SET state = 'requires_review', last_error = ?, updated_at = ?
+       WHERE id = ? AND sync_id = ? AND workout_client_id = ? AND state = 'pending' AND payload = ?`,
+      JSON.stringify({ code: 'LOCAL_SYNC_PAYLOAD_INVALID', serverVersion: null }),
+      new Date().toISOString(), row.id, row.syncId, row.workoutClientId, row.payload,
+    );
+    if (result.changes === 0) return false;
+    await database.runAsync("UPDATE workouts SET sync_state = 'requires_review' WHERE client_id = ?", row.workoutClientId);
+    return true;
+  });
 }
 
 export async function markSyncAttempt(owner: DatabaseOwner, id: number): Promise<boolean> {
@@ -433,17 +539,17 @@ export async function markSyncFailure(
 
 export async function syncReviews(owner: DatabaseOwner): Promise<SyncReview[]> {
   const database = await getDatabase(owner);
-  const rows = await database.getAllAsync<{
+  const rows = await database.getAllAsync<StoredWorkoutRow & {
     workoutClientId: string;
     payload: string;
     lastError: string | null;
   }>(
-    `SELECT q.workout_client_id AS workoutClientId, w.payload, q.last_error AS lastError
+    `SELECT q.workout_client_id AS workoutClientId, w.client_id, w.revision, w.status, w.payload, q.last_error AS lastError
      FROM sync_queue q JOIN workouts w ON w.client_id = q.workout_client_id
      WHERE q.state = 'requires_review' ORDER BY q.updated_at DESC`,
   );
   return rows.map((row) => {
-    const workout = JSON.parse(row.payload) as LocalWorkout;
+    const workout = decodeStoredWorkout(row);
     let code: string | undefined;
     let serverVersion: SyncCanonicalWorkoutForRecovery | null = null;
     try {
@@ -464,12 +570,12 @@ export async function syncReviews(owner: DatabaseOwner): Promise<SyncReview[]> {
 export async function keepReviewAsDraft(owner: DatabaseOwner, workoutClientId: string): Promise<void> {
   const database = await getDatabase(owner);
   await writeTransaction(database, async () => {
-    const row = await database.getFirstAsync<{ payload: string }>(
-      'SELECT payload FROM workouts WHERE client_id = ?',
+    const row = await database.getFirstAsync<StoredWorkoutRow>(
+      'SELECT client_id, revision, status, payload FROM workouts WHERE client_id = ?',
       workoutClientId,
     );
     if (!row) return;
-    const workout = JSON.parse(row.payload) as LocalWorkout;
+    const workout = decodeStoredWorkout(row);
     const draft: LocalWorkout = {
       ...workout,
       name: workout.name.endsWith('(recuperado)') ? workout.name : `${workout.name} (recuperado)`,
@@ -486,12 +592,35 @@ export async function keepReviewAsDraft(owner: DatabaseOwner, workoutClientId: s
   });
 }
 
-export async function continueServerWorkout(owner: DatabaseOwner, review: SyncReview): Promise<void> {
+export async function continueServerWorkout(
+  owner: DatabaseOwner,
+  review: SyncReview,
+  prepareServerVersion?: (server: SyncCanonicalWorkoutForRecovery) => Promise<SyncCanonicalWorkoutForRecovery>,
+): Promise<void> {
   if (!review.serverVersion) throw new Error('El servidor no devolvió una sesión recuperable.');
   const database = await getDatabase(owner);
-  const server = review.serverVersion;
-  const canonical = canonicalWorkoutFromServer(review.workoutClientId, server);
+  const readSnapshot = () => database.getFirstAsync<{
+    payload: string; revision: number; status: string; queueId: number; lastError: string | null;
+  }>(
+    `SELECT w.payload, w.revision, w.status, q.id AS queueId, q.last_error AS lastError
+     FROM workouts w JOIN sync_queue q ON q.workout_client_id = w.client_id
+     WHERE w.client_id = ? AND q.state = 'requires_review' ORDER BY q.id LIMIT 1`,
+    review.workoutClientId,
+  );
+  const changedMessage = 'La sesión local cambió. Revisa los datos guardados antes de continuar la del servidor.';
+  // Never hold a SQLite transaction across a network request. Capture the
+  // disputed rows, then compare under the same write lock as the replacement.
+  const snapshot = await writeTransaction(database, readSnapshot);
+  if (!snapshot) throw new Error(changedMessage);
+  const server = !hasSyncIdentities(review.serverVersion) && prepareServerVersion
+    ? await prepareServerVersion(review.serverVersion)
+    : review.serverVersion;
+  const canonical = canonicalWorkoutFromServer(server);
   await writeTransaction(database, async () => {
+    const current = await readSnapshot();
+    if (!current || JSON.stringify(current) !== JSON.stringify(snapshot)) {
+      throw new Error(changedMessage);
+    }
     if (canonical.status === 'ACTIVE') {
       const otherActive = await database.getFirstAsync<{ clientId: string }>(
         "SELECT client_id AS clientId FROM workouts WHERE status = 'ACTIVE' AND client_id <> ? LIMIT 1",
@@ -499,11 +628,34 @@ export async function continueServerWorkout(owner: DatabaseOwner, review: SyncRe
       );
       if (otherActive) throw new Error('Finaliza la sesión local activa antes de continuar la del servidor.');
     }
+    if (canonical.clientId !== review.workoutClientId) {
+      const cached = await database.getFirstAsync<{
+        serverId: string | null; revision: number; status: string; syncState: string; queued: number;
+      }>(
+        `SELECT w.server_id AS serverId, w.revision, w.status, w.sync_state AS syncState,
+          EXISTS(SELECT 1 FROM sync_queue q WHERE q.workout_client_id = w.client_id) AS queued
+         FROM workouts w WHERE w.client_id = ?`,
+        canonical.clientId,
+      );
+      // A recovered draft leaves its former synced identity archived locally.
+      // Reuse only that known server copy; preserve other drafts and outboxes.
+      if (cached && (cached.status !== 'CANCELLED' || cached.syncState !== 'synced'
+        || cached.serverId !== server.id || cached.revision > canonical.revision || cached.queued !== 0)) {
+        throw new Error(changedMessage);
+      }
+    }
     await database.runAsync('DELETE FROM sync_queue WHERE workout_client_id = ?', review.workoutClientId);
     await database.runAsync('DELETE FROM workouts WHERE client_id = ?', review.workoutClientId);
     await database.runAsync(
       `INSERT INTO workouts (client_id, server_id, revision, status, sync_state, payload, updated_at)
-       VALUES (?, ?, ?, ?, 'synced', ?, ?)`,
+       VALUES (?, ?, ?, ?, 'synced', ?, ?)
+       ON CONFLICT(client_id) DO UPDATE SET
+         server_id = excluded.server_id,
+         revision = excluded.revision,
+         status = excluded.status,
+         sync_state = excluded.sync_state,
+         payload = excluded.payload,
+         updated_at = excluded.updated_at`,
       canonical.clientId,
       server.id,
       canonical.revision,
@@ -529,12 +681,12 @@ export async function markSyncSuccess(
   await writeTransaction(database, async () => {
     const now = new Date().toISOString();
     await database.runAsync('DELETE FROM sync_queue WHERE id = ?', row.id);
-    const stored = await database.getFirstAsync<{ payload: string }>(
-      'SELECT payload FROM workouts WHERE client_id = ?',
+    const stored = await database.getFirstAsync<StoredWorkoutRow>(
+      'SELECT client_id, revision, status, payload FROM workouts WHERE client_id = ?',
       row.workoutClientId,
     );
     const rebased = stored
-      ? rebaseWorkoutRevisions(JSON.parse(stored.payload) as LocalWorkout, result.revision, result.mapping.sets ?? [])
+      ? rebaseWorkoutRevisions(decodeStoredWorkout(stored), result.revision, result.mapping.sets ?? [])
       : null;
     const newerRows = await database.getAllAsync<{ id: number; payload: string }>(
       "SELECT id, payload FROM sync_queue WHERE workout_client_id = ? AND state = 'pending'",
@@ -662,6 +814,34 @@ export async function cachedCollection<T>(owner: DatabaseOwner, table: CacheTabl
     }
   }
   return { items, damaged, ...await cacheAvailability(database, table) };
+}
+
+/** Read only the groups of exercises used by this workout, from its owner's cache. */
+export async function cachedExerciseGroups(owner: DatabaseOwner, exerciseIds: readonly string[]) {
+  type MuscleGroup = components['schemas']['ExerciseListItemDto']['muscleGroup'];
+  const validGroups = new Set<MuscleGroup>(['CHEST', 'BACK', 'SHOULDERS', 'BICEPS', 'TRICEPS', 'FOREARMS',
+    'CORE', 'QUADS', 'HAMSTRINGS', 'GLUTES', 'CALVES', 'FULL_BODY', 'CARDIO']);
+  const ids = [...new Set(exerciseIds)];
+  if (!ids.length) return [];
+  const database = await getDatabase(owner);
+  const result: { id: string; muscleGroup: MuscleGroup }[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const rows = await database.getAllAsync<{ id: string; payload: string }>(
+      `SELECT id, payload FROM exercise_cache WHERE id IN (${batch.map(() => '?').join(',')})`, ...batch,
+    );
+    for (const row of rows) {
+      try {
+        const value: unknown = JSON.parse(row.payload);
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+        const record = value as Record<string, unknown>;
+        if (record.id === row.id && typeof record.muscleGroup === 'string' && validGroups.has(record.muscleGroup as MuscleGroup)) {
+          result.push({ id: row.id, muscleGroup: record.muscleGroup as MuscleGroup });
+        }
+      } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+    }
+  }
+  return result;
 }
 
 export async function cachedExercisePage(owner: DatabaseOwner, q: string, page: number, limit = 30) {

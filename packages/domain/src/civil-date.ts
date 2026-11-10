@@ -4,6 +4,18 @@ export type PeriodKey = '30d' | '90d' | '6m' | '1y' | 'all';
 const BOGOTA_TIME_ZONE = 'America/Bogota';
 const CIVIL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+// The zone and fields are fixed; retain one formatter, never a computed day.
+// Initialize lazily so importing shared rules does not allocate native ICU state.
+let bogotaFormatter: Intl.DateTimeFormat | undefined;
+function getBogotaFormatter(): Intl.DateTimeFormat {
+  return bogotaFormatter ??= new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOGOTA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
 type CivilDateParts = { year: number; month: number; day: number };
 
 function daysInMonth(year: number, month: number): number {
@@ -81,17 +93,7 @@ export function civilDate(value: string): CivilDate {
 }
 
 export function todayCivil(now: Date = new Date()): CivilDate {
-  return civilDateFromParts(
-    partsFromFormatter(
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: BOGOTA_TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }),
-      now,
-    ),
-  );
+  return civilDateFromParts(partsFromFormatter(getBogotaFormatter(), now));
 }
 
 export function parseCivilDate(value: CivilDate): CivilDateParts {
@@ -106,20 +108,17 @@ export function formatCivilDate(value: CivilDate, options: Intl.DateTimeFormatOp
   return new Intl.DateTimeFormat('es-CO', options).format(localPresentationDate(value));
 }
 
+export function createCivilDateFormatter(options: Intl.DateTimeFormatOptions = {}): (value: CivilDate) => string {
+  // Reuse native ICU state within the caller's calendar, not across accounts or
+  // application lifetimes. Dates are still validated and formatted on each call.
+  const formatter = new Intl.DateTimeFormat('es-CO', options);
+  return value => formatter.format(localPresentationDate(value));
+}
+
 export function timestampToLocalCivil(iso: string): CivilDate {
   const timestamp = new Date(iso);
   if (Number.isNaN(timestamp.getTime())) throw new RangeError('El timestamp no es válido.');
-  return civilDateFromParts(
-    partsFromFormatter(
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: BOGOTA_TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }),
-      timestamp,
-    ),
-  );
+  return civilDateFromParts(partsFromFormatter(getBogotaFormatter(), timestamp));
 }
 
 export function monthRange(year: number, month: number): { from: CivilDate; to: CivilDate } {

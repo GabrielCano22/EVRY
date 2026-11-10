@@ -1,7 +1,7 @@
 'use client';
 import { ExerciseDetailButton } from '@/components/ExerciseDetail';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ApiError } from '@/lib/api';
@@ -23,6 +23,7 @@ import { formatearFechaHora, cn } from '@/lib/utils';
 import { traducirNombreEjercicio } from '@/lib/exercise-i18n';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+let formatoVolumen: Intl.NumberFormat | undefined;
 
 type Pestana = 'rutinas' | 'rapida' | 'historial';
 
@@ -32,10 +33,13 @@ export default function ListaEntrenamientos() {
   const accountId = useAutenticacion((state) => state.usuario?.id);
   const [pestana, setPestana] = useState<Pestana>('rutinas');
   const [nombre, setNombre] = useState('Sesión rápida');
-  const entrenamientos = useQuery({
-    queryKey: trainingKeys.workoutList(accountId ?? 'sin-cuenta'),
+  const entrenamientos = useInfiniteQuery({
+    queryKey: trainingKeys.workoutHistory(accountId ?? 'sin-cuenta'),
     enabled: Boolean(accountId),
-    queryFn: ({ signal }) => listWorkouts({}, signal),
+    initialPageParam: 0,
+    queryFn: ({ signal, pageParam }) => listWorkouts({ take: 20, skip: pageParam }, signal),
+    getNextPageParam: (lastPage, _pages, lastSkip) => lastPage.length < 20 || lastSkip >= 10000
+      ? undefined : lastSkip + 20,
   });
   const rutinasRemotas = useQuery({
     queryKey: trainingKeys.routineList(accountId ?? 'sin-cuenta'),
@@ -44,6 +48,12 @@ export default function ListaEntrenamientos() {
   });
   function conservarSesionIniciada(workout: Workout) {
     if (accountId) {
+      queryClient.setQueryData<InfiniteData<Workout[], number>>(trainingKeys.workoutHistory(accountId), (current) => current && ({
+        ...current,
+        pages: current.pages.map((page, index) => index === 0
+          ? [workout, ...page.filter((item) => item.id !== workout.id)]
+          : page.filter((item) => item.id !== workout.id)),
+      }));
       queryClient.setQueryData<Workout[]>(trainingKeys.workoutList(accountId), (current = []) => [
         workout,
         ...current.filter((item) => item.id !== workout.id),
@@ -91,10 +101,21 @@ export default function ListaEntrenamientos() {
     if (!borradoRutina.isPending) borradoRutina.mutate(rutina);
   }
 
-  const listaEntrenamientos = entrenamientos.data ?? [];
+  const listaEntrenamientos = useMemo(() => [...new Map(entrenamientos.data?.pages.flatMap(page => page)
+    .map(workout => [workout.id, workout]) ?? []).values()], [entrenamientos.data]);
   const rutinas = rutinasRemotas.data ?? [];
   const activo = listaEntrenamientos.find((workout) => workout.status === 'ACTIVE');
-  const finalizados = listaEntrenamientos.filter((workout) => workout.status === 'COMPLETED');
+  // Prepare loaded-page labels only when source data changes, not on tab clicks.
+  // Keep one fixed-locale formatter, without retaining session values globally.
+  const finalizados = useMemo(() => listaEntrenamientos
+    .filter((workout) => workout.status === 'COMPLETED')
+    .map((workout) => {
+      const volumen = workout.sets.reduce((total, set) => set.isWarmup
+        ? total : total + (set.weightKg ?? 0) * (set.reps ?? 0), 0);
+      const volumenTexto = volumen > 0
+        ? (formatoVolumen ??= new Intl.NumberFormat('es-CO')).format(Math.round(volumen)) : null;
+      return { workout, fechaInicio: formatearFechaHora(workout.startedAt), volumenTexto };
+    }), [listaEntrenamientos]);
   const iniciandoRutinaId = inicioRutina.isPending ? inicioRutina.variables.id : null;
   const errorMutacion = inicioRapido.error ?? inicioRutina.error ?? borradoRutina.error;
   const errorInicio = errorMutacion
@@ -102,9 +123,7 @@ export default function ListaEntrenamientos() {
       ? errorMutacion.message
       : 'No se pudo completar la acción. Inténtalo de nuevo.'
     : null;
-  const rutinasPorDia: (Routine | null)[] = Array.from({ length: 7 }, (_, i) => {
-    return rutinas.find((r) => r.dayOfWeek === i) ?? null;
-  });
+  const rutinasPorDia = Array.from({ length: 7 }, (_, i) => rutinas.filter((r) => r.dayOfWeek === i));
   const rutinasSinDia = rutinas.filter((r) => r.dayOfWeek === null);
 
   return (
@@ -197,16 +216,16 @@ export default function ListaEntrenamientos() {
           </div>
 
           {rutinasRemotas.data && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
-            {rutinasPorDia.map((rutina, dia) => (
+            {rutinasPorDia.flatMap((rutinasDelDia, dia) => (rutinasDelDia.length ? rutinasDelDia : [null]).map((rutina) => (
               <TarjetaDia
-                key={dia}
+                key={rutina?.id ?? `dia-${dia}`}
                 dia={DIAS_SEMANA[dia]}
                 rutina={rutina}
                 onIniciar={iniciarRutina}
                 onEliminar={eliminarRutina}
                 iniciando={rutina ? iniciandoRutinaId === rutina.id : false}
               />
-            ))}
+            )))}
           </div>}
 
           {rutinasSinDia.length > 0 && (
@@ -259,17 +278,17 @@ export default function ListaEntrenamientos() {
             <div className="rounded-xl border border-error/20 bg-error/5 p-lg text-center text-sm text-error">
               El historial no está disponible hasta recuperar la conexión.
             </div>
+          ) : entrenamientos.isPending ? (
+            <p role="status">Cargando historial…</p>
           ) : finalizados.length === 0 ? (
             <div className="bg-surface-container-low rounded-xl border border-white/5 p-lg text-center">
               <Icon name="history" size={32} className="text-on-surface-variant mb-sm" />
-              <p className="font-body-md text-on-surface-variant">Sin historial aún.</p>
+              <p className="font-body-md text-on-surface-variant">{entrenamientos.hasNextPage
+                ? 'No hay sesiones completadas entre las cargadas. Puedes consultar más.' : 'Sin historial aún.'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-              {finalizados.map((entrenamiento) => {
-                const volumen = entrenamiento.sets
-                  .filter((s) => !s.isWarmup)
-                  .reduce((acc, s) => acc + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
+              {finalizados.map(({ workout: entrenamiento, fechaInicio, volumenTexto }) => {
                 return (
                   <Link
                     key={entrenamiento.id}
@@ -281,16 +300,16 @@ export default function ListaEntrenamientos() {
                         {entrenamiento.name}
                       </h3>
                       <span className="font-grotesk text-[10px] text-on-surface-variant tracking-wider">
-                        {formatearFechaHora(entrenamiento.startedAt)}
+                        {fechaInicio}
                       </span>
                     </div>
                     <div className="flex items-center gap-md">
                       <span className="text-xs text-on-surface-variant flex items-center gap-1">
                         <Icon name="format_list_numbered" size={14} /> {entrenamiento.sets.length} series
                       </span>
-                      {volumen > 0 && (
+                      {volumenTexto !== null && (
                         <span className="text-xs text-on-surface-variant flex items-center gap-1">
-                          <Icon name="weight" size={14} /> {Math.round(volumen).toLocaleString('es-CO')} kg
+                          <Icon name="weight" size={14} /> {volumenTexto} kg
                         </span>
                       )}
                     </div>
@@ -298,6 +317,21 @@ export default function ListaEntrenamientos() {
                 );
               })}
             </div>
+          )}
+          {entrenamientos.isFetchNextPageError && (
+            <p role="alert" className="text-sm text-error">
+              No pudimos cargar más sesiones. Conservamos las anteriores.{' '}
+              <button type="button" className="underline" onClick={() => void entrenamientos.fetchNextPage()}>Reintentar página</button>
+            </p>
+          )}
+          {entrenamientos.hasNextPage && !entrenamientos.isFetchNextPageError && (
+            <Button onClick={() => void entrenamientos.fetchNextPage()} disabled={entrenamientos.isFetching}
+              loading={entrenamientos.isFetchingNextPage}>
+              {entrenamientos.isFetchingNextPage ? 'Cargando más sesiones…' : 'Cargar más sesiones'}
+            </Button>
+          )}
+          {entrenamientos.data?.pageParams.at(-1) === 10000 && entrenamientos.data.pages.at(-1)?.length === 20 && (
+            <p role="alert">La API actual alcanzó su límite de paginación. Puede haber sesiones más antiguas sin mostrar.</p>
           )}
         </div>
       )}
@@ -364,10 +398,12 @@ function TarjetaRutina({
           </p>
         </div>
         <div className="flex gap-xs">
-          <Link href={`/workout/routines/${rutina.id}`}>
-            <button aria-label={`Editar rutina ${rutina.name}`} className="w-8 h-8 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface-variant flex items-center justify-center">
-              <Icon name="edit" size={16} />
-            </button>
+          <Link
+            href={`/workout/routines/${rutina.id}`}
+            aria-label={`Editar rutina ${rutina.name}`}
+            className="w-8 h-8 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface-variant flex items-center justify-center"
+          >
+            <Icon name="edit" size={16} />
           </Link>
           <button
             onClick={() => onEliminar(rutina)}

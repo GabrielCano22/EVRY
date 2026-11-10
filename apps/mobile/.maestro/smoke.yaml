@@ -1,8 +1,10 @@
-appId: com.gabrielcano.evry
+# Dedicated synthetic APK only. Never reset the owner's installed application.
+appId: com.gabrielcano.evry.contractqa
 ---
 - launchApp:
-    clearState: true
+    stopApp: false
 - assertVisible: "EVRY"
+- assertVisible: "Accede a tu entrenamiento privado."
 - tapOn: "Correo electrónico"
 - inputText: ${MAESTRO_EMAIL}
 - tapOn: "Contraseña"

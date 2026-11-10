@@ -8,7 +8,7 @@ import { getCycleCalendar, type CycleEntry } from '@/lib/cycle-api';
 import { getProgressActivity, type ProgressActivitySession as ActivitySession } from '@/lib/progress-api';
 import { cycleCivilDate } from '@/lib/cycle-date';
 import {
-  calendarMonthCells, civilDate, compareCivil, formatCivilDate, monthRange, parseCivilDate, todayCivil,
+  calendarMonthCells, civilDate, compareCivil, createCivilDateFormatter, formatCivilDate, monthRange, parseCivilDate, todayCivil,
   type CivilDate,
 } from '@/lib/civil-date';
 import { cn } from '@/lib/utils';
@@ -21,13 +21,14 @@ const COLOR_FASE: Record<string, string> = {
 };
 const ETIQUETAS_FLUJO: Record<string, string> = { NONE: 'Ninguno', SPOTTING: 'Manchado', LIGHT: 'Ligero', MEDIUM: 'Medio', HEAVY: 'Abundante' };
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
-const BOGOTA_CLOCK = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-});
+let bogotaClock: Intl.DateTimeFormat | undefined;
 
 function millisecondsUntilNextBogotaDay(now = new Date()): number {
+  const formatter = bogotaClock ??= new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
   const clock = Object.fromEntries(
-    BOGOTA_CLOCK.formatToParts(now)
+    formatter.formatToParts(now)
       .filter((part) => part.type === 'hour' || part.type === 'minute' || part.type === 'second')
       .map((part) => [part.type, Number(part.value)]),
   );
@@ -149,6 +150,16 @@ function CalendarioPorCuenta({ usuario }: { usuario: NonNullable<ReturnType<type
     return starts;
   }, [cycle.data, muestraCiclo]);
   const celdas = useMemo(() => calendarMonthCells(anio, mes + 1), [anio, mes]);
+  // Only public civil-day text is memoized; account/activity annotations stay
+  // live. Month selection bounds this cache to one displayed calendar.
+  const etiquetasFecha = useMemo(() => {
+    const etiquetas = new Map<CivilDate, string>();
+    const formatDay = createCivilDateFormatter({ day: 'numeric', month: 'long', year: 'numeric' });
+    for (const fecha of celdas) {
+      if (fecha) etiquetas.set(fecha, formatDay(fecha));
+    }
+    return etiquetas;
+  }, [celdas]);
 
   function cambiarMes(delta: number) {
     const next = anio * 12 + mes + delta;
@@ -197,7 +208,7 @@ function CalendarioPorCuenta({ usuario }: { usuario: NonNullable<ReturnType<type
           const { day } = parseCivilDate(fecha);
           return <button
             key={fecha} type="button" aria-pressed={selected} onClick={() => setDiaSeleccionado(selected ? null : fecha)}
-            aria-label={`Ver actividad del ${formatCivilDate(fecha, { day: 'numeric', month: 'long', year: 'numeric' })}${sessions.length ? ', con sesión de entrenamiento' : ''}${cycleEntry?.isPeriodStart ? ', inicio de período' : cycleEntry && cycleEntry.flow !== 'NONE' ? `, flujo: ${ETIQUETAS_FLUJO[cycleEntry.flow] ?? cycleEntry.flow}` : ''}${cycleEntry?.symptoms.length ? `, ${cycleEntry.symptoms.length} síntomas` : ''}`}
+            aria-label={`Ver actividad del ${etiquetasFecha.get(fecha)}${sessions.length ? ', con sesión de entrenamiento' : ''}${cycleEntry?.isPeriodStart ? ', inicio de período' : cycleEntry && cycleEntry.flow !== 'NONE' ? `, flujo: ${ETIQUETAS_FLUJO[cycleEntry.flow] ?? cycleEntry.flow}` : ''}${cycleEntry?.symptoms.length ? `, ${cycleEntry.symptoms.length} síntomas` : ''}`}
             className={cn(
               'aspect-square rounded flex flex-col items-center justify-center relative transition-all border text-[11px]',
               selected ? 'border-primary bg-primary/15' : compareCivil(fecha, hoy) === 0 ? 'border-primary/50 bg-surface-container-low' : 'border-transparent bg-surface-container-low hover:bg-surface-container-high',

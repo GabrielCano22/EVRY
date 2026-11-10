@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { todayCivil, type CivilDate } from '@evry/domain';
+import type { components } from '@evry/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { apiError, withMobileAuth, type CurrentUser, type MobileSession } from '@/src/api/client';
+import { apiError, isCurrentMobileSession, withMobileAuth, type CurrentUser, type MobileSession } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
 import {
   createProfileDraft,
@@ -16,11 +18,40 @@ import {
 } from '@/src/profile/profile-form';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
+import { useReadinessDay } from '@/src/profile/use-readiness-day';
 
-async function loadReadiness(session: MobileSession) {
-  const response = await withMobileAuth((client) => client.GET('/readiness/latest'), session);
-  if (response.error) throw new Error('No se pudo cargar el readiness de hoy.');
-  return response.data ?? null;
+type Readiness = components['schemas']['Readiness'];
+const readinessFields = ['sleepHrs', 'stress', 'soreness', 'motivation'] as const;
+type ReadinessField = typeof readinessFields[number];
+type ReadinessValues = Pick<Readiness, ReadinessField>;
+type ReadinessDraft = { values: ReadinessValues; touched: Partial<Record<ReadinessField, boolean>>;
+  source: Readiness | null | undefined; version: number };
+
+function readinessValues(record: Readiness): ReadinessValues {
+  return { sleepHrs: record.sleepHrs, stress: record.stress, soreness: record.soreness, motivation: record.motivation };
+}
+
+function confirmedReadiness(record: Readiness, session: MobileSession): Readiness {
+  const metric = (value: unknown, min: number, max: number, integer = false) => value === null
+    || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+      && (!integer || Number.isInteger(value)));
+  if (typeof record !== 'object' || record === null || typeof record.id !== 'string'
+    || record.userId !== session.userId || typeof record.date !== 'string' || !Number.isFinite(Date.parse(record.date))
+    || !(record.civilDate === null || (typeof record.civilDate === 'string' && Number.isFinite(Date.parse(record.civilDate))))
+    || typeof record.score !== 'number' || !Number.isFinite(record.score) || record.score < 0 || record.score > 100
+    || !metric(record.sleepHrs, 0, 16) || !metric(record.stress, 1, 5, true)
+    || !metric(record.soreness, 1, 5, true) || !metric(record.motivation, 1, 5, true)) {
+    throw apiError({ code: 'INVALID_RESPONSE', message: 'El servidor devolvió un readiness incompatible. Reintenta.' }, '');
+  }
+  return record;
+}
+
+async function loadReadiness(session: MobileSession, signal: AbortSignal) {
+  const response = await withMobileAuth((client) => client.GET('/readiness/latest', { signal }), session);
+  if (response.error || response.data === undefined) throw apiError(
+    response.error, 'No se pudo cargar el readiness de hoy.', response.response.status,
+  );
+  return response.data === null ? null : confirmedReadiness(response.data, session);
 }
 
 type ProfileUpdateError = Error & {
@@ -47,10 +78,10 @@ async function updateProfile(session: MobileSession, input: ProfileUpdateInput) 
   return response.data;
 }
 
-async function saveReadiness(session: MobileSession, values: { sleepHrs: number; stress: number; soreness: number; motivation: number }) {
+async function saveReadiness(session: MobileSession, values: ReadinessValues) {
   const response = await withMobileAuth((client) => client.POST('/readiness/checkin', { body: values }), session);
   if (!response.data || response.error) throw new Error('No se pudo guardar el readiness.');
-  return response.data;
+  return confirmedReadiness(response.data, session);
 }
 
 const sexOptions: readonly { label: string; value: BiologicalSex }[] = [
@@ -113,12 +144,6 @@ export default function ProfileScreen() {
   const currentUser = user!;
   const [draft, setDraft] = useState<ProfileDraft>(() => createProfileDraft(currentUser));
   const [profileErrors, setProfileErrors] = useState<ProfileErrors>({});
-  const [sleepHrs, setSleepHrs] = useState(7);
-  const [stress, setStress] = useState(3);
-  const [soreness, setSoreness] = useState(2);
-  const [motivation, setMotivation] = useState(3);
-  const queryClient = useQueryClient();
-  const readinessQuery = useQuery({ queryKey: ['readiness', 'today'], queryFn: () => loadReadiness(session) });
   const profileMutation = useMutation({
     mutationFn: (input: ProfileUpdateInput) => updateProfile(session, input),
     onError: (error: ProfileUpdateError) => {
@@ -133,11 +158,8 @@ export default function ProfileScreen() {
       } catch {
         // The confirmed PATCH response remains authoritative for this form.
       }
-      try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch {
-        // Haptic availability must not turn a confirmed update into a failed save.
-      }
+      // Device feedback must neither reject nor delay a confirmed update.
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     },
   });
   const updateDraft = (changes: Partial<ProfileDraft>) => {
@@ -175,13 +197,6 @@ export default function ProfileScreen() {
     setProfileErrors(result.errors);
     if (result.input) profileMutation.mutate(result.input);
   };
-  const readinessMutation = useMutation({
-    mutationFn: () => saveReadiness(session, { sleepHrs, stress, soreness, motivation }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['readiness', 'today'] });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-  });
 
   return (
     <Screen>
@@ -291,52 +306,131 @@ export default function ProfileScreen() {
         </PrimaryButton>
       </View>
 
-      <View style={styles.card}>
-        <Text style={textStyles.heading}>Readiness de hoy</Text>
-        <Text style={textStyles.muted}>Sirve como contexto para sugerencias conservadoras; no cambia cargas automáticamente.</Text>
-        {readinessQuery.data ? <Text style={styles.score}>Puntaje actual: {readinessQuery.data.score}/100</Text> : null}
-        {readinessQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>No pudimos consultar el registro de hoy.</Text> : null}
-        <MetricStepper label="Horas de sueño" max={16} min={0} onChange={setSleepHrs} step={0.5} value={sleepHrs} />
-        <MetricStepper label="Estrés" max={5} min={1} onChange={setStress} value={stress} />
-        <MetricStepper label="Dolor muscular" max={5} min={1} onChange={setSoreness} value={soreness} />
-        <MetricStepper label="Motivación" max={5} min={1} onChange={setMotivation} value={motivation} />
-        {readinessMutation.error ? <Text accessibilityRole="alert" style={textStyles.error}>{readinessMutation.error.message}</Text> : null}
-        {readinessMutation.isSuccess ? <Text accessibilityLiveRegion="polite" style={styles.success}>Readiness guardado para hoy.</Text> : null}
-        <PrimaryButton disabled={readinessMutation.isPending} onPress={() => readinessMutation.mutate()}>
-          {readinessMutation.isPending ? 'Guardando…' : 'Guardar readiness'}
-        </PrimaryButton>
-      </View>
+      <DailyReadiness session={session} />
 
       <PrimaryButton onPress={() => void logout()}>Cerrar sesión</PrimaryButton>
     </Screen>
   );
 }
 
+function DailyReadiness({ session }: { session: MobileSession }) {
+  const { day, refreshDay } = useReadinessDay();
+  return <ReadinessForm key={JSON.stringify([session.serverUrl, session.userId, session.version, day])}
+    session={session} day={day} refreshDay={refreshDay} />;
+}
+
+function ReadinessForm({ session, day, refreshDay }: {
+  session: MobileSession; day: CivilDate; refreshDay: () => void;
+}) {
+  const [draft, setDraft] = useState<ReadinessDraft>(() => ({
+    values: { sleepHrs: 7, stress: 3, soreness: 2, motivation: 3 }, touched: {}, source: undefined, version: 0,
+  }));
+  const [confirmedValues, setConfirmedValues] = useState<ReadinessValues | null>(null);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const owned = () => alive.current && isCurrentMobileSession(session) && day === todayCivil(new Date(Date.now()));
+  const queryClient = useQueryClient();
+  const readinessKey = ['readiness', session.serverUrl, session.userId, session.version, day];
+  const readinessQuery = useQuery({ queryKey: readinessKey,
+    queryFn: ({ signal }) => loadReadiness(session, signal), networkMode: 'always' });
+  // Adjust only this component's state when its canonical source changes.
+  // An external refresh must not replace any field the user has edited.
+  if (draft.source !== readinessQuery.data) {
+    const values = { ...draft.values };
+    if (readinessQuery.data) for (const field of readinessFields) {
+      if (!draft.touched[field]) values[field] = readinessQuery.data[field];
+    }
+    setDraft({ ...draft, values, source: readinessQuery.data });
+  }
+  const updateField = (field: ReadinessField, value: number | null) => setDraft(current => {
+    if (current.values[field] === value) return current;
+    return { ...current, values: { ...current.values, [field]: value },
+      touched: { ...current.touched, [field]: true }, version: current.version + 1 };
+  });
+  const readinessMutation = useMutation({
+    onMutate: () => { setConfirmedValues(null); },
+    mutationFn: ({ values }: { values: ReadinessValues; version: number }) => {
+      if (day !== todayCivil(new Date(Date.now()))) {
+        refreshDay();
+        throw new Error('El día cambió. Registra el readiness del nuevo día.');
+      }
+      if (!owned()) throw new Error('La sesión cambió. Vuelve a intentar la operación.');
+      return saveReadiness(session, values);
+    },
+    onSuccess: async (saved, submitted) => {
+      if (!owned()) return;
+      // A GET begun before the save must not overwrite the confirmed POST.
+      await queryClient.cancelQueries({ queryKey: readinessKey, exact: true });
+      if (!owned()) return;
+      const canonical = queryClient.setQueryData<Readiness | null>(readinessKey, saved);
+      setDraft(current => current.version === submitted.version
+        ? { ...current, values: readinessValues(saved), touched: {}, source: canonical }
+        : { ...current, source: canonical });
+      setConfirmedValues(readinessValues(saved));
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    },
+  });
+  return <View style={styles.card}>
+    <Text style={textStyles.heading}>Readiness de hoy</Text>
+    <Text accessibilityLabel="Fecha de readiness" style={textStyles.muted}>{day}</Text>
+    <Text style={textStyles.muted}>Sirve como contexto para sugerencias conservadoras; no cambia cargas automáticamente.</Text>
+    {readinessQuery.isFetching ? <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Consultando readiness de hoy…</Text> : null}
+    {readinessQuery.data ? <Text style={styles.score}>Puntaje actual: {readinessQuery.data.score}/100</Text> : null}
+    {readinessQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>No pudimos consultar el registro de hoy.</Text> : null}
+    {readinessQuery.isError && readinessQuery.data ? <Text style={textStyles.muted}>Se conserva el último puntaje consultado; no se pudo actualizar.</Text> : null}
+    {readinessQuery.isSuccess && readinessQuery.data === null ? <Text style={textStyles.muted}>No has registrado readiness hoy.</Text> : null}
+    <PrimaryButton disabled={readinessQuery.isFetching} onPress={() => void readinessQuery.refetch()}>
+      {readinessQuery.isError ? 'Reintentar readiness' : 'Actualizar readiness'}
+    </PrimaryButton>
+    <MetricStepper label="Horas de sueño" max={16} min={0} onChange={value => updateField('sleepHrs', value)} step={0.5} value={draft.values.sleepHrs} />
+    <MetricStepper label="Estrés" max={5} min={1} onChange={value => updateField('stress', value)} value={draft.values.stress} />
+    <MetricStepper label="Dolor muscular" max={5} min={1} onChange={value => updateField('soreness', value)} value={draft.values.soreness} />
+    <MetricStepper label="Motivación" max={5} min={1} onChange={value => updateField('motivation', value)} value={draft.values.motivation} />
+    {readinessMutation.error ? <Text accessibilityRole="alert" style={textStyles.error}>{readinessMutation.error.message}</Text> : null}
+    {readinessMutation.isSuccess && confirmedValues !== null ? <Text accessibilityLiveRegion="polite" style={styles.success}>
+      {readinessFields.every(field => confirmedValues[field] === draft.values[field])
+        ? 'Readiness guardado para hoy.' : 'Registro guardado; tienes cambios sin guardar.'}
+    </Text> : null}
+    <PrimaryButton disabled={readinessMutation.isPending} onPress={() => readinessMutation.mutate({ values: { ...draft.values }, version: draft.version })}>
+      {readinessMutation.isPending ? 'Guardando…' : 'Guardar readiness'}
+    </PrimaryButton>
+  </View>;
+}
+
 function MetricStepper(props: {
   label: string;
   max: number;
   min: number;
-  onChange: (value: number) => void;
+  onChange: (value: number | null) => void;
   step?: number;
-  value: number;
+  value: number | null;
 }) {
   const step = props.step ?? 1;
-  const change = async (direction: -1 | 1) => {
-    props.onChange(Math.max(props.min, Math.min(props.max, props.value + direction * step)));
-    await Haptics.selectionAsync();
+  const change = (direction: -1 | 1) => {
+    // Choosing a value from unset is explicit; merely loading/saving never
+    // replaces null with zero or a standard answer.
+    props.onChange(props.value === null ? props.min : Math.max(props.min, Math.min(props.max, props.value + direction * step)));
+    void Haptics.selectionAsync().catch(() => undefined);
   };
   return (
-    <View style={styles.stepper}>
-      <Text style={textStyles.body}>{props.label}</Text>
-      <View style={styles.stepperControls}>
-        <Pressable accessibilityLabel={`Reducir ${props.label}`} accessibilityRole="button" onPress={() => void change(-1)} style={styles.stepButton}>
+    <View style={{ gap: 6 }}>
+      <View style={styles.stepper}>
+        <Text style={[textStyles.body, { flex: 1 }]}>{props.label}</Text>
+        <View style={styles.stepperControls}>
+        <Pressable accessibilityLabel={`Reducir ${props.label}`} accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined} accessibilityRole="button" onPress={() => void change(-1)} style={styles.stepButton}>
           <Text style={styles.stepText}>−</Text>
         </Pressable>
-        <Text accessibilityLiveRegion="polite" style={styles.stepValue}>{props.value}</Text>
-        <Pressable accessibilityLabel={`Aumentar ${props.label}`} accessibilityRole="button" onPress={() => void change(1)} style={styles.stepButton}>
+        <Text accessibilityLabel={`Valor de ${props.label}`} accessibilityLiveRegion="polite" style={styles.stepValue}>{props.value === null ? 'Sin registrar' : props.value}</Text>
+        <Pressable accessibilityLabel={`Aumentar ${props.label}`} accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined} accessibilityRole="button" onPress={() => void change(1)} style={styles.stepButton}>
           <Text style={styles.stepText}>+</Text>
         </Pressable>
+        </View>
       </View>
+      <Pressable accessibilityLabel={`Dejar sin registrar ${props.label}`} accessibilityRole="button"
+        accessibilityState={{ disabled: props.value === null }} disabled={props.value === null}
+        onPress={() => props.onChange(null)} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text style={textStyles.muted}>Dejar sin registrar</Text>
+      </Pressable>
     </View>
   );
 }
@@ -349,8 +443,8 @@ const styles = StyleSheet.create({
   optionSelected: { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.primary },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   score: { color: theme.colors.primary, fontSize: 18, fontWeight: '800' },
-  stepButton: { alignItems: 'center', backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 42, justifyContent: 'center', width: 42 },
-  stepper: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  stepButton: { alignItems: 'center', backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 48, justifyContent: 'center', width: 48 },
+  stepper: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   stepperControls: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   stepText: { color: theme.colors.text, fontSize: 24, fontWeight: '700' },
   stepValue: { color: theme.colors.text, fontSize: 16, minWidth: 34, textAlign: 'center' },

@@ -221,6 +221,51 @@ describe('DetalleEntrenamiento generated remote state', () => {
     expect(screen.queryByRole('button', { name: /Finalizar|Editar serie|Eliminar serie|Cancelar sesión/ })).not.toBeInTheDocument();
   });
 
+  it('adds after the maximum surviving order when a nonlast set was deleted', async () => {
+    const current = workout('w1', 'ACTIVE', true);
+    current.sets = [
+      { ...current.sets[0], id: 'set-a', order: 0 },
+      { ...current.sets[0], id: 'set-b', order: 1 },
+    ];
+    const additions: Array<{ order: number }> = [];
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('/exercises/exercise-a')) return Response.json({ ...exercise, imageUrl: null, gifUrl: null });
+      if (path.endsWith('/adaptive/recommend/exercise-a')) return Response.json({
+        exerciseId: exercise.id, targetWeightKg: 20, targetReps: 8,
+        rationale: [], confidence: 0.7, action: 'HOLD',
+      });
+      if (request.method === 'DELETE') {
+        current.sets = current.sets.filter((set) => set.id !== 'set-a');
+        return Response.json({ ok: true });
+      }
+      if (request.method === 'POST' && path.endsWith('/sets')) {
+        const body = await request.json();
+        additions.push(body);
+        if (current.sets.some((set) => set.order === body.order)) {
+          return Response.json({ code: 'CONFLICT', message: 'Orden duplicado.' }, { status: 409 });
+        }
+        const created = { ...current.sets[0], ...body, id: 'set-c' };
+        current.sets.push(created);
+        return Response.json(created);
+      }
+      return Response.json(current);
+    }));
+    show();
+    await screen.findByText('Sesión w1');
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar serie 1' }));
+    await screen.findByText('1 series totales · 1 ejercicios');
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir serie' }));
+    await screen.findByText('Registrando');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar serie' }));
+    await waitFor(() => expect(additions).toHaveLength(1));
+    expect(additions[0]).toMatchObject({ order: 2 });
+    await screen.findByText('2 series totales · 1 ejercicios');
+    expect(screen.queryByText('Orden duplicado.')).not.toBeInTheDocument();
+  });
+
   it('keeps canonical data and offers retry when adding a set fails', async () => {
     const requests: Request[] = [];
     let setAttempts = 0;

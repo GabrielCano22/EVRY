@@ -74,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
         <Link
           href="/profile"
+          aria-label="Abrir perfil"
           className="w-8 h-8 rounded-full bg-primary/20 border border-white/20 flex items-center justify-center"
         >
           <Icon name="person" size={18} className="text-primary" />

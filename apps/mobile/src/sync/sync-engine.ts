@@ -1,12 +1,14 @@
 import NetInfo from '@react-native-community/netinfo';
-import { isCurrentMobileSession, syncWorkoutWithRefresh, type MobileSession, type SyncWorkoutInput } from '../api/client';
+import { isCurrentMobileSession, syncWorkoutWithRefresh, type MobileSession } from '../api/client';
 import {
   markSyncAttempt,
+  markInvalidSyncPayload,
   markSyncFailure,
   markSyncSuccess,
   pendingSyncRows,
 } from '../db/database';
 import { nextSyncState } from './queue-policy';
+import { decodeSyncPayload } from './stored-sync-payload';
 
 const flights = new WeakMap<MobileSession, { promise: Promise<void>; requested: boolean }>();
 
@@ -34,7 +36,10 @@ export function syncPendingWorkouts(session: MobileSession): Promise<void> {
 
 async function performSync(session: MobileSession): Promise<void> {
   const network = await NetInfo.fetch();
-  if (!isCurrentMobileSession(session) || !network.isConnected || network.isInternetReachable === false) return;
+  // Public-internet validation cannot determine reachability of the configured
+  // API (for example, a local HTTPS server reached through USB or a LAN).
+  // Keep disconnected devices idle; actual API failures retain the queued data.
+  if (!isCurrentMobileSession(session) || !network.isConnected) return;
 
   for (let batch = 0; batch < 10; batch += 1) {
     if (!isCurrentMobileSession(session)) return;
@@ -43,10 +48,15 @@ async function performSync(session: MobileSession): Promise<void> {
     if (rows.length === 0) return;
     for (const row of rows) {
       if (!isCurrentMobileSession(session)) return;
+      const payload = decodeSyncPayload(row);
+      if (!payload) {
+        await markInvalidSyncPayload(session, row);
+        continue;
+      }
       if (!await markSyncAttempt(session, row.id)) continue;
       let response: Awaited<ReturnType<typeof syncWorkoutWithRefresh>>;
       try {
-        response = await syncWorkoutWithRefresh(JSON.parse(row.payload) as SyncWorkoutInput, session);
+        response = await syncWorkoutWithRefresh(payload, session);
       } catch {
         await markSyncFailure(session, row.id, row.workoutClientId, 'pending', 'network_error');
         return;

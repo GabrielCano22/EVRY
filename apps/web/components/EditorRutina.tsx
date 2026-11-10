@@ -358,6 +358,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
               <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
                 <CampoNumero
                   etiqueta="Series"
+                  nombreAccesible={`${traducirNombreEjercicio(it.exercise.name)}: series`}
                   valor={it.targetSets}
                   onChange={(v) => cambiarNumeroDeSeries(idx, v)}
                   min={1}
@@ -375,6 +376,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                     <span className="pb-xs text-center font-grotesk text-sm text-primary">{numero + 1}</span>
                     <CampoNumero
                       etiqueta=""
+                      nombreAccesible={`${traducirNombreEjercicio(it.exercise.name)}: serie ${numero + 1}, repeticiones`}
                       valor={serie.reps}
                       onChange={(valor) => cambiarObjetivoDeSerie(idx, numero, { reps: valor })}
                       min={0}
@@ -382,6 +384,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
                     />
                     <CampoNumero
                       etiqueta=""
+                      nombreAccesible={`${traducirNombreEjercicio(it.exercise.name)}: serie ${numero + 1}, peso (kg)`}
                       valor={serie.weightKg}
                       onChange={(valor) => cambiarObjetivoDeSerie(idx, numero, { weightKg: valor })}
                       min={0}
@@ -432,6 +435,7 @@ export function EditorRutina({ titulo, diaInicial, rutinaExistente, onListo, onC
 
 function CampoNumero({
   etiqueta,
+  nombreAccesible,
   valor,
   onChange,
   min,
@@ -439,6 +443,7 @@ function CampoNumero({
   paso = 1,
 }: {
   etiqueta: string;
+  nombreAccesible: string;
   valor: number | null;
   onChange: (v: number | null) => void;
   min: number;
@@ -484,6 +489,7 @@ function CampoNumero({
       </span>
       <input
         type="number"
+        aria-label={nombreAccesible}
         min={min}
         max={max}
         step={paso}

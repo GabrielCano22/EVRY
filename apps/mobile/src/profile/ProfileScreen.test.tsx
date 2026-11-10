@@ -27,15 +27,18 @@ const mockSessionState = {
   refreshUser: mockRefreshUser,
   logout: mockLogout,
 };
+const readinessFixture = { id: 'readiness-1', userId: 'user-1', date: '2026-10-07T14:00:00.000Z',
+  civilDate: '2026-10-07T00:00:00.000Z', sleepHrs: 7, stress: 3, soreness: 2, motivation: 3 };
 
 jest.mock('expo-haptics', () => ({
-  impactAsync: jest.fn(),
-  notificationAsync: jest.fn(),
-  selectionAsync: jest.fn(),
+  impactAsync: jest.fn().mockResolvedValue(undefined),
+  notificationAsync: jest.fn().mockResolvedValue(undefined),
+  selectionAsync: jest.fn().mockResolvedValue(undefined),
   ImpactFeedbackStyle: { Medium: 'medium' },
   NotificationFeedbackType: { Success: 'success' },
 }));
 jest.mock('@/src/api/client', () => ({
+  isCurrentMobileSession: () => true,
   withMobileAuth: jest.fn(async (operation: (client: {
     GET: typeof mockGet;
     PATCH: typeof mockPatch;
@@ -74,8 +77,11 @@ function response<T>(data: T, status = 200) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGet.mockResolvedValue(response({ score: 73 }));
-  mockPost.mockResolvedValue(response({ score: 81 }));
+  jest.mocked(Haptics.impactAsync).mockReset().mockResolvedValue(undefined);
+  jest.mocked(Haptics.notificationAsync).mockReset().mockResolvedValue(undefined);
+  jest.mocked(Haptics.selectionAsync).mockReset().mockResolvedValue(undefined);
+  mockGet.mockResolvedValue(response({ ...readinessFixture, score: 73 }));
+  mockPost.mockResolvedValue(response({ ...readinessFixture, score: 81 }));
   mockPatch.mockResolvedValue(response({
     id: 'user-1',
     email: 'profile@example.com',
@@ -204,6 +210,37 @@ it('retains the confirmed mutation response when refreshing the account fails', 
   expect(screen.queryByText('Sin conexión')).toBeNull();
 });
 
+it.each([
+  ['profile', 'Guardar perfil', 'Perfil guardado.'],
+  ['readiness', 'Guardar readiness', 'Readiness guardado para hoy.'],
+] as const)('does not leave the confirmed %s save pending while optional vibration is unfinished', async (kind, button, confirmation) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const feedback = kind === 'profile' ? Haptics.impactAsync : Haptics.notificationAsync;
+  jest.mocked(feedback).mockReturnValueOnce(pending);
+  try {
+    await show();
+    await screen.findByText('Puntaje actual: 73/100');
+    await fireEvent.press(screen.getByRole('button', { name: button }));
+    expect(await screen.findByText(confirmation)).toBeTruthy();
+    expect(screen.getByRole('button', { name: button })).not.toBeDisabled();
+    expect(screen.queryByRole('alert')).toBeNull();
+  } finally {
+    await act(async () => { release(); });
+  }
+});
+
+it('keeps readiness edits and their save working when stepper vibration rejects', async () => {
+  jest.mocked(Haptics.selectionAsync).mockRejectedValueOnce(new Error('Vibración de control no disponible'));
+  await show();
+  await screen.findByText('Puntaje actual: 73/100');
+  await fireEvent.press(screen.getByRole('button', { name: 'Aumentar Estrés' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar readiness' }));
+  expect(await screen.findByText('Readiness guardado para hoy.')).toBeTruthy();
+  expect(mockPost).toHaveBeenCalledWith('/readiness/checkin', { body: expect.objectContaining({ stress: 4 }) });
+  expect(screen.queryByText('Vibración de control no disponible')).toBeNull();
+});
+
 it('disables repeated profile submission while the update is pending', async () => {
   let resolvePatch: ((value: ReturnType<typeof response>) => void) | undefined;
   mockPatch.mockImplementationOnce(() => new Promise((resolve) => { resolvePatch = resolve; }));
@@ -230,7 +267,7 @@ it('keeps readiness loading, save success, and haptics separate from profile fee
   expect(screen.queryByText('No pudimos consultar el registro de hoy.')).toBeNull();
 
   await act(async () => {
-    resolveReadiness?.(response({ score: 73 }));
+    resolveReadiness?.(response({ ...readinessFixture, score: 73 }));
   });
   expect(await screen.findByText('Puntaje actual: 73/100')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Guardar readiness' }));
@@ -247,4 +284,39 @@ it('shows a readiness query error without profile mutation feedback', async () =
   expect(await screen.findByText('No pudimos consultar el registro de hoy.')).toBeTruthy();
   expect(screen.queryByText('Perfil guardado.')).toBeNull();
   expect(screen.queryByText('Readiness guardado para hoy.')).toBeNull();
+});
+
+it('keeps a confirmed readiness save successful when optional native haptics reject', async () => {
+  jest.mocked(Haptics.notificationAsync).mockRejectedValueOnce(new Error('Vibración no disponible'));
+  const savedReadiness = {
+    id: 'readiness-1', userId: 'user-1', date: '2026-10-07T14:00:00.000Z',
+    civilDate: '2026-10-07T00:00:00.000Z', sleepHrs: 7, stress: 3, soreness: 2, motivation: 3, score: 81,
+  };
+  mockGet.mockResolvedValue(response({ ...savedReadiness, score: 73 }));
+  mockPost.mockResolvedValue(response(savedReadiness));
+  await show();
+  expect(await screen.findByText('Puntaje actual: 73/100')).toBeTruthy();
+  mockGet.mockResolvedValue(response(savedReadiness));
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar readiness' }));
+
+  expect(await screen.findByText('Readiness guardado para hoy.')).toBeTruthy();
+  expect(await screen.findByText('Puntaje actual: 81/100')).toBeTruthy();
+  expect(screen.queryByText('Vibración no disponible')).toBeNull();
+  expect(mockPost).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a failed readiness save visible without success feedback or vibration', async () => {
+  mockGet.mockResolvedValue(response({
+    id: 'readiness-1', userId: 'user-1', date: '2026-10-07T14:00:00.000Z',
+    civilDate: '2026-10-07T00:00:00.000Z', sleepHrs: 7, stress: 3, soreness: 2, motivation: 3, score: 73,
+  }));
+  mockPost.mockResolvedValueOnce({ data: undefined, error: { message: 'No disponible' }, response: { status: 503 } });
+  await show();
+  expect(await screen.findByText('Puntaje actual: 73/100')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Guardar readiness' }));
+
+  expect(await screen.findByText('No se pudo guardar el readiness.')).toBeTruthy();
+  expect(screen.getByText('Puntaje actual: 73/100')).toBeTruthy();
+  expect(screen.queryByText('Readiness guardado para hoy.')).toBeNull();
+  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
 });

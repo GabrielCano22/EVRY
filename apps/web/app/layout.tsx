@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/manrope';
 import './globals.css';
-import { Providers } from './providers';
+import { buildDocumentRefreshScript } from '../lib/document-refresh';
+import { resolveApiBaseUrl } from '../lib/api-origin';
 
 export const metadata: Metadata = {
   title: 'EVRY — Rendimiento adaptativo',
@@ -17,8 +18,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className="dark">
+      <head>
+        <script id="evry-document-refresh" dangerouslySetInnerHTML={{ __html: buildDocumentRefreshScript(resolveApiBaseUrl()) }} />
+      </head>
       <body className="bg-background text-on-background font-manrope antialiased">
-        <Providers>{children}</Providers>
+        {children}
       </body>
     </html>
   );

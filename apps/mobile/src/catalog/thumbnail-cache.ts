@@ -16,7 +16,7 @@ export class ThumbnailCache {
   constructor(private readonly storage: ThumbnailStorage, private readonly maxBytes: number) {}
 
   resolve(owner: DatabaseOwner, url: string): Promise<string> {
-    const key = JSON.stringify([owner.serverUrl, owner.userId, url]);
+    const key = JSON.stringify([owner.serverUrl.replace(/\/+$/, ''), owner.userId, url]);
     const pending = this.inFlight.get(key);
     if (pending) return pending;
     const operation = this.load(owner, url).finally(() => { this.inFlight.delete(key); });

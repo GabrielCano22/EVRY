@@ -1,7 +1,10 @@
 import nextTypescript from "eslint-config-next/typescript";
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
-const config = [...nextTypescript, ...nextCoreWebVitals, {
+const config = [{
+  // Build output directories are configurable; source rules still cover app/.
+  ignores: ['.next/**', '.next-*/**'],
+}, ...nextTypescript, ...nextCoreWebVitals, {
   ignores: ['.next/**', '.next-dev/**', 'node_modules/**'],
   rules: {
     // Existing client loaders are migrated to TanStack Query incrementally.

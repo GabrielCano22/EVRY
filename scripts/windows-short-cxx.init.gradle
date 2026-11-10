@@ -1,0 +1,17 @@
+// Local Windows build configuration only; never changes generated app sources.
+// Keep the failed .cxx tree intact and create a separate short staging directory.
+gradle.beforeProject { project ->
+    if (project.path == ':app') {
+        project.pluginManager.withPlugin('com.android.application') {
+            def configuredRoot = project.findProperty('evry.cxxRoot')
+            if (!configuredRoot) {
+                throw new GradleException('Specify an explicit short D: path with -Pevry.cxxRoot')
+            }
+            def staging = new File(configuredRoot.toString()).canonicalFile
+            if (!staging.isAbsolute() || !staging.path.toLowerCase().startsWith('d:\\') || staging.path.length() <= 3) {
+                throw new GradleException('EVRY local native staging must remain in a named directory on D:')
+            }
+            project.extensions.getByName('android').externalNativeBuild.cmake.buildStagingDirectory = staging
+        }
+    }
+}

@@ -97,6 +97,21 @@ it('returns an explicitly stale and bounded local page when the network fails', 
   expect(result.notice).toMatch(/copia local/i);
 });
 
+it('retains a refreshed catalog name offline without removing other cached exercises', async () => {
+  const custom = { ...exercise, id: 'custom-1', name: 'Ejercicio propio', isCustom: true, ownerId: session.userId };
+  await db.cacheEntities(session, 'exercise_cache', [exercise, custom]);
+  const renamed = { ...exercise, name: 'Sentadilla revisada' };
+  http.mockResolvedValue(json({ items: [renamed], page: 1, limit: 30, total: 1, hasMore: false }));
+
+  expect(await catalog.loadExercises(session)).toMatchObject({ source: 'server', items: [renamed] });
+  http.mockRejectedValue(new TypeError('Network request failed'));
+  const offline = await catalog.loadExercises(session);
+
+  expect(offline).toMatchObject({ source: 'cache', stale: true, total: 2 });
+  expect(offline.items).toEqual(expect.arrayContaining([renamed, custom]));
+  expect(offline.items).not.toContainEqual(exercise);
+});
+
 it('shows healthy cached exercises with a damage notice while keeping the bad record intact', async () => {
   await db.cacheEntities(session, 'exercise_cache', [exercise]);
   const connection = await db.getDatabase(session);

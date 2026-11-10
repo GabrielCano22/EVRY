@@ -2,7 +2,6 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
 import { useSessionStore } from '@/src/auth/session-store';
 import { SyncCoordinator } from '@/src/sync/SyncCoordinator';
 import { useTrainingStore } from '@/src/training/training-store';

@@ -2,6 +2,8 @@
 
 import type { components } from '@evry/api-client';
 import { evryApi, unwrapApiResponse } from './generated-api';
+import { restoreAccessToken } from './api';
+import { cancelDocumentRefresh } from './document-refresh';
 
 export type AuthUser = components['schemas']['AuthUser'];
 export type User = components['schemas']['User'];
@@ -18,5 +20,14 @@ export const logoutWeb = () =>
   unwrapApiResponse(evryApi.POST('/auth/logout'));
 export const getCurrentUser = (signal?: AbortSignal) =>
   unwrapApiResponse(evryApi.GET('/users/me', { signal }));
-export const updateCurrentUser = (body: UserUpdateInput) =>
-  unwrapApiResponse(evryApi.PATCH('/users/me', { body }));
+export const restoreCurrentUser = async (signal?: AbortSignal) => {
+  await restoreAccessToken(signal);
+  return getCurrentUser(signal);
+};
+export const updateCurrentUser = async (body: UserUpdateInput) => {
+  const updated = await unwrapApiResponse(evryApi.PATCH('/users/me', { body }));
+  // A document-time snapshot predates this confirmed write. Keep the current
+  // credentials, but make subsequent profile reads use the server again.
+  cancelDocumentRefresh();
+  return updated;
+};

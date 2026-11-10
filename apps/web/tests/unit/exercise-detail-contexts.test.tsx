@@ -67,7 +67,7 @@ it('gives the detail muscle map its own accessible label when another map is beh
   show(<EditorRutina titulo="Editar rutina" rutinaExistente={routine} onListo={() => {}} onCancelar={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'Sentadilla' }));
   const dialog = await screen.findByRole('dialog', { name: 'Sentadilla' });
-  const map = within(dialog).getByRole('img', { name: /^Mapa de músculos trabajados/ });
+  const map = await within(dialog).findByRole('img', { name: /^Mapa de músculos trabajados/ });
   const titleId = map.getAttribute('aria-labelledby')!.split(' ')[0];
   expect(dialog).toContainElement(document.getElementById(titleId));
 });

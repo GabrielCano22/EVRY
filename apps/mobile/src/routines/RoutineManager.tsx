@@ -2,10 +2,11 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { MobileSession } from '../api/client';
 import type { Exercise } from '../catalog/catalog';
 import { CachedThumbnail } from '../catalog/CachedThumbnail';
+import { muscleTargetLabel } from '../catalog/muscle-labels';
 import { mediaUrl } from '../catalog/media-url';
 import { mobileThumbnailCache } from '../catalog/thumbnail-files';
 import { PrimaryButton, textStyles } from '../ui/components';
@@ -168,7 +169,10 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     {success ? <Text accessibilityLiveRegion="polite" style={textStyles.body}>{success}</Text> : null}
     {!draft ? <PrimaryButton disabled={mutationsDisabled} onPress={() => { setError(null); setSuccess(null); setDraft(emptyDraft()); }}>Crear rutina</PrimaryButton> : null}
     {routines.map((routine) => <View key={routine.id} style={styles.card}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Iniciar ${routine.name}`} onPress={() => onStartRoutine(routine)}><Text style={textStyles.heading}>{routine.name}</Text><Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text></Pressable>
+      <Text style={textStyles.heading}>{routine.name}</Text>
+      <Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text>
+      {routine.exercises.length ? <Text numberOfLines={2} style={textStyles.muted}>{routine.exercises.map((item) => item.exercise.name).join(' · ')}</Text> : null}
+      <PrimaryButton accessibilityLabel={`Iniciar ${routine.name}`} onPress={() => onStartRoutine(routine)}>Empezar rutina</PrimaryButton>
       <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
     </View>)}
     {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
@@ -184,7 +188,7 @@ function ExercisePreview({ exercise, session }: { exercise: Exercise; session: M
   return <View accessibilityLabel={`Vista previa de ${exercise.name}`} style={styles.preview}>
     <Text style={textStyles.heading}>{exercise.name}</Text>
     <Text style={textStyles.body}>Equipo: {exercise.equipmentLabel ?? exercise.equipment}</Text>
-    <Text style={textStyles.body}>Músculo: {exercise.target ?? exercise.muscleGroup}</Text>
+    <Text style={textStyles.body}>Músculo: {muscleTargetLabel(exercise.target, exercise.muscleGroup)}</Text>
     {exercise.description ? <Text style={textStyles.body}>{exercise.description}</Text> : null}
     {source ? playingGif
       ? <Image accessibilityLabel={`Demostración de ${exercise.name}`} cachePolicy="none" contentFit="contain" source={{ uri: source }} style={styles.exerciseMedia} />

@@ -87,6 +87,19 @@ afterEach(() => {
 });
 
 describe('EditorRutina generated mutations', () => {
+  it('names each numeric target by exercise, series and quantity', () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir sentadilla' }));
+    expect(screen.getByRole('spinbutton', { name: 'Barra sentadilla: series' })).toHaveValue(3);
+    expect(screen.getByRole('spinbutton', { name: 'Barra sentadilla: serie 1, repeticiones' })).toHaveValue(10);
+    expect(screen.getByRole('spinbutton', { name: 'Barra sentadilla: serie 2, repeticiones' })).toHaveValue(10);
+    const weight = screen.getByRole('spinbutton', { name: 'Barra sentadilla: serie 3, peso (kg)' });
+    fireEvent.change(weight, { target: { value: '25' } });
+    expect(weight).toHaveValue(25);
+    for (const input of screen.getAllByRole('spinbutton')) expect(input).toHaveAccessibleName();
+  });
+
   it('creates a routine with the generated DTO and invalidates only the current account routines', async () => {
     const requests: Request[] = [];
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

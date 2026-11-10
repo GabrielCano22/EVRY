@@ -1,7 +1,8 @@
 'use client';
 
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAutenticacion } from '@/lib/auth-store';
 import {
   listExercises,
@@ -85,6 +86,48 @@ export function ExercisePicker({
   const [busquedaDiferida, setBusquedaDiferida] = useState('');
   const [zona, setZona] = useState('TODOS');
   const [equipo, setEquipo] = useState<Equipo | 'TODOS'>('TODOS');
+  const overlay = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useLayoutEffect(() => { close.current = onClose; }, [onClose]);
+  useLayoutEffect(() => {
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const originalOverflow = document.body.style.overflow;
+    const previous = [...document.body.children]
+      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay.current)
+      .map(element => ({ element, inert: element.inert, hidden: element.getAttribute('aria-hidden') }));
+    for (const { element } of previous) { element.inert = true; element.setAttribute('aria-hidden', 'true'); }
+    document.body.style.overflow = 'hidden';
+    panel.current?.querySelector<HTMLInputElement>('input')?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      // The nested detail drawer owns keyboard focus while this portal is inert.
+      if (overlay.current?.inert) return;
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopImmediatePropagation(); close.current();
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []]
+        .filter(element => element.tabIndex >= 0 && !element.closest('[hidden]'))
+        .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+      const first = focusable[0]; const last = focusable.at(-1);
+      if (event.shiftKey && (document.activeElement === first || !panel.current?.contains(document.activeElement))) {
+        event.preventDefault(); last?.focus();
+      }
+      if (!event.shiftKey && (document.activeElement === last || !panel.current?.contains(document.activeElement))) {
+        event.preventDefault(); first?.focus();
+      }
+    };
+    document.addEventListener('keydown', keydown, true);
+    return () => {
+      document.removeEventListener('keydown', keydown, true);
+      document.body.style.overflow = originalOverflow;
+      for (const { element, inert, hidden } of previous) {
+        element.inert = inert;
+        if (hidden === null) element.removeAttribute('aria-hidden'); else element.setAttribute('aria-hidden', hidden);
+      }
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setBusquedaDiferida(busqueda.trim()), 220);
@@ -127,14 +170,6 @@ export function ExercisePicker({
   const hayMas = catalogo.hasNextPage;
   const cargandoMas = catalogo.isFetchingNextPage;
 
-  useEffect(() => {
-    const cerrarConEscape = (evento: KeyboardEvent) => {
-      if (evento.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', cerrarConEscape);
-    return () => window.removeEventListener('keydown', cerrarConEscape);
-  }, [onClose]);
-
   const excluidos = useMemo(() => new Set(idsExcluidos), [idsExcluidos]);
   const disponibles = useMemo(
     () => lista.filter((ejercicio) => !excluidos.has(ejercicio.id)),
@@ -147,9 +182,10 @@ export function ExercisePicker({
     void catalogo.fetchNextPage();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 p-0 backdrop-blur-sm md:p-lg" onMouseDown={onClose}>
+  return createPortal(
+    <div ref={overlay} className="fixed inset-0 z-50 flex justify-center bg-black/60 p-0 backdrop-blur-sm md:p-lg" onMouseDown={onClose}>
       <div
+        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby="selector-ejercicios-titulo"
@@ -175,7 +211,7 @@ export function ExercisePicker({
         onChange={(e) => setBusqueda(e.target.value)}
         placeholder="Buscar por nombre, músculo o equipo…"
         icon="search"
-        autoFocus
+        aria-label="Buscar ejercicios"
       />
       <div className="space-y-sm py-md">
         <label className="block font-grotesk text-[10px] uppercase tracking-[0.18em] text-on-surface-variant" htmlFor="filtro-zona">
@@ -264,7 +300,7 @@ export function ExercisePicker({
         )}
       </ul>
       </div>
-    </div>
+    </div>, document.body
   );
 }
 

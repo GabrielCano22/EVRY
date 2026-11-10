@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAutenticacion } from '@/lib/auth-store';
@@ -9,10 +9,12 @@ import { Icon } from '@/components/ui/Icon';
 import type { Sexo } from '@/lib/types';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { registrationPasswordError } from '@evry/domain';
 
 export default function PaginaRegistro() {
   const router = useRouter();
   const { registrar, cargando, error } = useAutenticacion();
+  const passwordHintId = useId();
   const [datos, setDatos] = useState({
     email: '',
     password: '',
@@ -33,8 +35,10 @@ export default function PaginaRegistro() {
       setErrorLocal('Selecciona una opción de sexo biológico.');
       return;
     }
-    if (datos.password.length < 8) {
-      setErrorLocal('La contraseña debe tener al menos 8 caracteres.');
+    const passwordError = registrationPasswordError(datos.password);
+    if (passwordError) {
+      setErrorLocal(passwordError);
+      setErroresCampos({ password: [passwordError] });
       return;
     }
     try {
@@ -66,6 +70,7 @@ export default function PaginaRegistro() {
       <header className="flex justify-between items-center mb-xl">
         <Link
           href="/"
+          aria-label="Volver al menú principal"
           className="w-10 h-10 flex items-center justify-center rounded-lg bg-surface-container hover:bg-surface-container-high transition-colors text-on-surface"
         >
           <Icon name="arrow_back" />
@@ -84,10 +89,10 @@ export default function PaginaRegistro() {
           </p>
         </div>
 
-        <div>
-          <label className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-primary mb-sm block">
+        <fieldset>
+          <legend className="font-grotesk text-label-caps tracking-[0.18em] uppercase text-primary mb-sm block">
             Sexo biológico
-          </label>
+          </legend>
           <div className="grid grid-cols-2 gap-gutter">
             {opcionesSexo.map((opcion) => {
               const activo = datos.sexoBiologico === opcion.valor;
@@ -95,6 +100,7 @@ export default function PaginaRegistro() {
                 <button
                   type="button"
                   key={opcion.valor}
+                  aria-pressed={activo}
                   onClick={() =>
                     setDatos({
                       ...datos,
@@ -124,7 +130,7 @@ export default function PaginaRegistro() {
               );
             })}
           </div>
-        </div>
+        </fieldset>
 
         <div className="bg-surface-container rounded-xl overflow-hidden animate-fade-in">
             <div className="p-md flex items-start gap-sm">
@@ -188,15 +194,19 @@ export default function PaginaRegistro() {
             icon="lock"
             type="password"
             minLength={8}
+            aria-describedby={passwordHintId}
             required
             value={datos.password}
             onChange={(evento) => setDatos({ ...datos, password: evento.target.value })}
             error={erroresCampos?.password?.[0]}
           />
+          <p id={passwordHintId} className="text-sm text-on-surface-variant">
+            Máximo 72 bytes UTF-8. Las letras acentuadas y los emoji pueden ocupar varios bytes.
+          </p>
         </div>
 
         {mensajeError && (
-          <div className="bg-error/10 border border-error/30 rounded-lg p-md flex items-start gap-sm">
+          <div role="alert" className="bg-error/10 border border-error/30 rounded-lg p-md flex items-start gap-sm">
             <Icon name="error" className="text-error mt-px" size={18} />
             <p className="text-sm text-error">{mensajeError}</p>
           </div>

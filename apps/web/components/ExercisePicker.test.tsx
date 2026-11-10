@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
+import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAutenticacion } from '@/lib/auth-store';
@@ -70,6 +72,49 @@ afterEach(() => {
 });
 
 describe('ExercisePicker remote catalog states', () => {
+  it('contains keyboard focus at both ends of the exercise selector', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(page([exercise('a', 'Sentadilla')])));
+    const user = userEvent.setup();
+    show();
+    const last = await screen.findByRole('button', { name: 'Agregar Sentadilla' });
+    const first = screen.getByRole('button', { name: 'Cerrar selector de ejercicios' });
+    first.focus();
+    await user.tab({ shift: true });
+    expect(last).toHaveFocus();
+    await user.tab();
+    expect(first).toHaveFocus();
+  });
+
+  it('isolates the background and restores focus and prior page state when closed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(page([])));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return <><button onClick={() => setOpen(true)}>Elegir ejercicio</button>
+        {open && <ExercisePicker onPick={() => setOpen(false)} onClose={() => setOpen(false)} />}</>;
+    }
+    const user = userEvent.setup();
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'scroll';
+    const view = render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>);
+    const trigger = screen.getByRole('button', { name: 'Elegir ejercicio' });
+    try {
+      await user.click(trigger);
+      expect(view.container.inert).toBe(true);
+      expect(view.container).toHaveAttribute('aria-hidden', 'true');
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(screen.getByPlaceholderText('Buscar por nombre, músculo o equipo…')).toHaveFocus();
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      expect(view.container.inert).not.toBe(true);
+      expect(view.container).not.toHaveAttribute('aria-hidden');
+      expect(document.body.style.overflow).toBe('scroll');
+    } finally {
+      view.unmount(); client.clear(); document.body.style.overflow = originalOverflow;
+    }
+  });
+
   it('offers independent view and add actions for a catalog exercise', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(page([exercise('a', 'Sentadilla')])));
     show();

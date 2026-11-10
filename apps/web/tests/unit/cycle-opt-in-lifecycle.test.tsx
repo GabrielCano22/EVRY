@@ -75,10 +75,17 @@ it('hydrates the profile from the real session then applies disabled consent wit
   useAutenticacion.setState({ usuario: null });
   let saved = user;
   const bodies: unknown[] = [];
+  const sessionRequests: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input.clone() : new Request(input, init);
     const path = new URL(request.url).pathname;
+    sessionRequests.push(`${request.method} ${path}`);
+    if (path === '/api/v1/auth/refresh') {
+      expect(request.credentials).toBe('include');
+      return Response.json({ accessToken: 'restored-profile-token' });
+    }
     if (path !== '/api/v1/users/me') throw new Error(`Unexpected ${path}`);
+    expect(request.headers.get('authorization')).toBe('Bearer restored-profile-token');
     if (request.method === 'PATCH') {
       const body = JSON.parse(await request.text()); bodies.push(body); saved = { ...user, ...body };
     }
@@ -95,7 +102,9 @@ it('hydrates the profile from the real session then applies disabled consent wit
   await waitFor(() => expect(useAutenticacion.getState().usuario?.trackCycle).toBe(false));
   expect(bodies).toContainEqual(expect.objectContaining({ name: 'Alex hidratado', trackCycle: false }));
   expect(useAutenticacion.getState().estado).toBe('authenticated');
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(sessionRequests).toEqual([
+    'POST /api/v1/auth/refresh', 'GET /api/v1/users/me', 'PATCH /api/v1/users/me',
+  ]);
 });
 
 it('removes opted-in OTHER calendar markers, legend and details and only reloads activity after opt-out', async () => {

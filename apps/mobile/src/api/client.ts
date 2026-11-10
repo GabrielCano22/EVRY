@@ -372,6 +372,23 @@ export async function restoreCachedUser(): Promise<CurrentUser | null> {
   });
 }
 
+export async function adoptWorkoutWithRefresh(
+  id: string,
+  session: MobileSession,
+): Promise<SyncCanonicalWorkoutForRecovery> {
+  const response = await withMobileAuth((client) => client.POST('/workouts/{id}/adopt', {
+    params: { path: { id } },
+  }), session);
+  if (response.error || !response.data) {
+    throw apiError(response.error, 'No se pudo adoptar la sesión del servidor.', response.response.status);
+  }
+  const canonical = recoveryWorkoutFromUnknown(response.data);
+  if (!canonical || canonical.id !== id) {
+    throw new Error('El servidor no devolvió la sesión solicitada para continuar.');
+  }
+  return canonical;
+}
+
 export async function syncWorkoutWithRefresh(
   body: SyncWorkoutInput,
   session: MobileSession,

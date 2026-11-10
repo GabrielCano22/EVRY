@@ -238,11 +238,15 @@ function ContenidoCiclo() {
           </Button>
         </div>
       </header>
-      {estadoCarga === 'loading' && <p role="status" className="text-on-surface-variant">Cargando datos del ciclo…</p>}
+      {estadoCarga === 'loading' && <div role="status" className="min-h-[240px] rounded-xl border border-white/5 bg-surface-container-low p-lg text-on-surface-variant">
+        <p>Cargando datos del ciclo…</p>
+        <div aria-hidden="true" className="mt-md h-12 w-40 rounded bg-white/5" />
+        <div aria-hidden="true" className="mt-md h-4 w-full rounded bg-white/5" />
+      </div>}
       {diario.isError && <p role="alert" className="text-error">No pudimos cargar los datos del ciclo. {diario.error instanceof Error && `${diario.error.message} `}{diario.data && 'Mostramos la última consulta correcta. '}<button type="button" onClick={() => void diario.refetch()} className="underline">Reintentar</button></p>}
 
       {estadoCarga === 'success' && fase ? (
-        <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">
+        <div className="min-h-[240px] bg-surface-container-low rounded-xl p-lg border border-white/5 relative overflow-hidden">
           <div className="absolute -right-8 -top-8 w-64 h-64 bg-tertiary/10 rounded-full blur-3xl"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-md">
@@ -272,8 +276,8 @@ function ContenidoCiclo() {
             )}
           </div>
         </div>
-      ) : estadoCarga === 'empty' ? (
-        <div className="bg-surface-container-low rounded-xl p-lg border border-white/5 text-center">
+      ) : estadoCarga === 'empty' || (estadoCarga === 'success' && !fase) ? (
+        <div className="min-h-[240px] bg-surface-container-low rounded-xl p-lg border border-white/5 text-center">
           <Icon name="info" size={32} className="text-on-surface-variant mb-sm" />
           <p className="font-body-md text-on-surface-variant">
             Datos insuficientes. Marca abajo el inicio de tu próximo período para empezar.

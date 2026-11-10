@@ -1,5 +1,5 @@
 'use client';
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 
@@ -13,10 +13,15 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
   { label, error, icon, className, id, ...rest },
   ref,
 ) {
-  const inputId = id ?? label?.replace(/\s+/g, '-').toLowerCase();
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const labelId = `${generatedId}-label`;
+  const errorId = `${generatedId}-error`;
+  const describedBy = [rest['aria-describedby'], error ? errorId : undefined]
+    .filter(Boolean).join(' ') || undefined;
   return (
     <label className="block w-full" htmlFor={inputId}>
-      {label && <span className="font-label-caps text-label-caps text-primary uppercase tracking-widest mb-sm block">{label}</span>}
+      {label && <span id={labelId} className="font-label-caps text-label-caps text-primary uppercase tracking-widest mb-sm block">{label}</span>}
       <div className={cn(
         'relative flex items-center bg-surface-container rounded-lg overflow-hidden transition-all',
         'focus-within:ring-1 focus-within:ring-primary',
@@ -36,9 +41,12 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
             className,
           )}
           {...rest}
+          aria-labelledby={rest['aria-labelledby'] ?? (rest['aria-label'] ? undefined : label ? labelId : undefined)}
+          aria-describedby={describedBy}
+          aria-invalid={error ? true : rest['aria-invalid']}
         />
       </div>
-      {error && <span className="text-xs text-error mt-1 block">{error}</span>}
+      {error && <span id={errorId} className="text-xs text-error mt-1 block">{error}</span>}
     </label>
   );
 });

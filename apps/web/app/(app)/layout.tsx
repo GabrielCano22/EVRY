@@ -4,14 +4,19 @@ import { useRouter } from 'next/navigation';
 import { useAutenticacion } from '@/lib/auth-store';
 import { AppShell } from '@/components/AppShell';
 import { ExerciseDetailProvider } from '@/components/ExerciseDetail';
+import { Providers } from '@/app/providers';
 
 export default function LayoutApp({ children }: { children: React.ReactNode }) {
+  return <Providers><AuthenticatedLayout>{children}</AuthenticatedLayout></Providers>;
+}
+
+function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const { usuario, estado, inicializar } = useAutenticacion();
   const router = useRouter();
   const [intentado, setIntentado] = useState(false);
 
   useEffect(() => {
-    inicializar().finally(() => setIntentado(true));
+    inicializar({ reuseForDocument: true }).finally(() => setIntentado(true));
   }, [inicializar]);
 
   useEffect(() => {

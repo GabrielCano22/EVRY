@@ -38,7 +38,9 @@ npm.cmd run expo:doctor
 npm.cmd run export:mobile
 ```
 
-`test` ejecuta las suites de todos los workspaces, incluida accesibilidad web. `api:check` verifica sin modificar archivos que el snapshot y los tipos coincidan con su revisión fijada del backend. `api:test` prueba el importador con repositorios Git temporales.
+`test` ejecuta primero los controles de seguridad del ejecutor E2E y después las suites de todos los workspaces, incluida accesibilidad web. `api:check` verifica sin modificar archivos que el snapshot y los tipos coincidan con su revisión fijada del backend. `api:test` prueba el importador con repositorios Git temporales.
+
+`test:e2e` descubre las pruebas web reales y ejecuta cada archivo con una base PostgreSQL local nueva y migrada, conservando ambos proyectos de navegador y todos sus casos. Requiere Chromium, web/backend compilados, `EVRY_BACKEND_ROOT` y una `TEST_DATABASE_URL` local de aprovisionamiento separada de `DATABASE_URL`. Su rol debe tener `CREATEDB`. No reinicia ni elimina la base suministrada ni sus cuotas; conserva los informes y bases generadas. Consulte [aislamiento y comprobaciones](docs/quality/fundamentos.md).
 
 ## Actualizar el contrato API
 

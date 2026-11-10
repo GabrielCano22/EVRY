@@ -19,7 +19,12 @@ beforeEach(() => {
     const request = new Request(input, init); requests.push(request); return answer(request);
   });
 });
-afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); useAutenticacion.setState({ usuario: null }); });
+afterEach(async () => {
+  cleanup(); client.clear(); vi.unstubAllGlobals(); useAutenticacion.setState({ usuario: null });
+  // Unmount stops delivery, not the already-requested module download. Drain
+  // those imports before the next case; do not import or prewarm unused content.
+  await vi.dynamicImportSettled();
+});
 function show(children = <><ExerciseDetailButton exerciseId="squat">Ver Sentadilla</ExerciseDetailButton><ExerciseDetailButton exerciseId="other">Ver otro</ExerciseDetailButton></>) {
   return render(<QueryClientProvider client={client}><ExerciseDetailProvider>{children}</ExerciseDetailProvider></QueryClientProvider>);
 }
@@ -138,21 +143,29 @@ it('keeps metadata usable after progress fails and offers an independent retry',
   expect(screen.getByText('Ejercicio de piernas.')).toBeInTheDocument();
 });
 it('opens instructions directly and keeps view separate from picker add and close', async () => {
+  const user = userEvent.setup();
   answer = async request => Response.json(new URL(request.url).pathname.endsWith('/exercises') ? { items: [detail], page: 1, limit: 30, total: 1, hasMore: false } : detail);
   let picked = ''; let closed = false;
-  show(<><ExercisePicker onPick={item => { picked = item.id; }} onClose={() => { closed = true; }} /><ExerciseDetailButton exerciseId="squat" tab="instructions">Ver indicaciones</ExerciseDetailButton></>);
+  const rendered = show(<ExercisePicker onPick={item => { picked = item.id; }} onClose={() => { closed = true; }} />);
   fireEvent.change(screen.getByPlaceholderText('Buscar por nombre, músculo o equipo…'), { target: { value: 'Sentadilla' } });
   fireEvent.change(screen.getByLabelText('Zona muscular'), { target: { value: 'QUADS' } });
   const view = await screen.findByRole('button', { name: 'Ver Sentadilla' });
   const results = view.closest('ul')!; results.scrollTop = 120;
   fireEvent.click(view); await screen.findByRole('dialog', { name: 'Sentadilla' });
   expect(picked).toBe('');
+  expect(screen.getByRole('button', { name: 'Cerrar ficha' })).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(screen.getByRole('button', { name: 'Espalda' })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Cerrar ficha' })).toHaveFocus();
   fireEvent.keyDown(screen.getByRole('dialog', { name: 'Sentadilla' }), { key: 'Escape' });
   expect(closed).toBe(false); expect(view).toHaveFocus();
   expect(screen.getByPlaceholderText('Buscar por nombre, músculo o equipo…')).toHaveValue('Sentadilla');
   expect(screen.getByLabelText('Zona muscular')).toHaveValue('QUADS');
   expect(results.scrollTop).toBe(120);
   fireEvent.click(screen.getByRole('button', { name: 'Agregar Sentadilla' })); expect(picked).toBe('squat');
+  rendered.unmount();
+  show(<ExerciseDetailButton exerciseId="squat" tab="instructions">Ver indicaciones</ExerciseDetailButton>);
   fireEvent.click(screen.getByRole('button', { name: 'Ver indicaciones' }));
   expect(await screen.findByRole('tabpanel', { name: 'Indicaciones' })).toHaveTextContent('Desciende con control.');
 });

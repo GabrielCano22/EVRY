@@ -3,6 +3,7 @@ import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { RegisterInput } from '../api/client';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
+import { registrationPasswordError } from '@evry/domain';
 
 type Field = 'name' | 'email' | 'password' | 'confirmation';
 
@@ -22,7 +23,8 @@ export function RegistrationForm({ busy, error, onSubmit }: {
     const next: Partial<Record<Field, string>> = {};
     if (name.trim().length < 2) next.name = 'Escribe un nombre de al menos 2 caracteres.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = 'Escribe un correo electrónico válido.';
-    if (password.length < 8) next.password = 'Usa al menos 8 caracteres.';
+    const passwordError = registrationPasswordError(password);
+    if (passwordError) next.password = passwordError;
     if (password !== confirmation) next.confirmation = 'Las contraseñas no coinciden.';
     setErrors(next);
     if (Object.keys(next).length) return;
@@ -39,6 +41,7 @@ export function RegistrationForm({ busy, error, onSubmit }: {
       <TextInput accessibilityLabel="Correo electrónico" autoCapitalize="none" autoComplete="email" autoCorrect={false} keyboardType="email-address" editable={!busy} maxLength={254} value={email} onChangeText={setEmail} style={styles.input} />
       {errors.email ? <Text accessibilityRole="alert" style={textStyles.error}>{errors.email}</Text> : null}
       <Text style={textStyles.body}>Contraseña</Text>
+      <Text style={textStyles.muted}>Mínimo 8 caracteres y máximo 72 bytes UTF-8; las letras acentuadas y los emoji pueden ocupar varios bytes.</Text>
       <TextInput accessibilityLabel="Contraseña" autoCapitalize="none" autoComplete="new-password" autoCorrect={false} editable={!busy} maxLength={128} secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
       {errors.password ? <Text accessibilityRole="alert" style={textStyles.error}>{errors.password}</Text> : null}
       <Text style={textStyles.body}>Confirmar contraseña</Text>

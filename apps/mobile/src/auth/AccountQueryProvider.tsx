@@ -15,8 +15,9 @@ function QueryScope({ session, children }: { session: MobileSession | null; chil
     },
   }));
   useEffect(() => () => {
-    void client.cancelQueries();
-    client.clear();
+    // Children unsubscribe after this parent cleanup. Clear only after
+    // cancellation settles, otherwise they can schedule GC on removed queries.
+    void client.cancelQueries().then(() => client.clear());
   }, [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

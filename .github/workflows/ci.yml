@@ -19,6 +19,7 @@ jobs:
       - run: npm ci
       - run: npm run api:test
       - run: npm run api:check
+      - run: npm run test:mobile:backend:safety
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test
@@ -122,6 +123,8 @@ jobs:
           CORS_ORIGIN: http://127.0.0.1:3000
           PORT: 4000
           SWAGGER_ENABLED: "false"
+      - run: npm run test:mobile:backend
+        working-directory: frontend
       - run: npm run build --workspace @evry/web
         working-directory: frontend
         env:
@@ -135,3 +138,46 @@ jobs:
           CORS_ORIGIN: http://127.0.0.1:3000
           PORT: 4000
           SWAGGER_ENABLED: "false"
+      - run: npm run test:performance --workspace @evry/web
+        working-directory: frontend
+      - run: npm run test:performance:conditions --workspace @evry/web
+        working-directory: frontend
+      - run: npm run test:performance:controlled --workspace @evry/web
+        working-directory: frontend
+      - run: npm run test:performance:authenticated --workspace @evry/web
+        working-directory: frontend
+      - run: npm run test:performance:authenticated:controlled --workspace @evry/web
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-web-functional
+          path: |
+            frontend/.worktrees/web-e2e-isolated-*/discovery.json
+            frontend/.worktrees/web-e2e-isolated-*/summary.json
+            frontend/.worktrees/web-e2e-isolated-*/suite-*/results.json
+            frontend/.worktrees/web-e2e-isolated-*/suite-*/artifacts/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-web-performance
+          path: |
+            frontend/.worktrees/web-performance-*/results.json
+            frontend/.worktrees/conditions-probe/results.json
+            frontend/.worktrees/web-controlled-performance-*/results.json
+            frontend/.worktrees/web-auth-performance-*/results.json
+            frontend/.worktrees/web-auth-controlled-performance-*/results.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-mobile-restart
+          path: frontend/.worktrees/native-restart-*/*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

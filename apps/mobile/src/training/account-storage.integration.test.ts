@@ -3,6 +3,7 @@ import type * as Db from '../db/database';
 import type { useSessionStore } from '../auth/session-store';
 import type { useTrainingStore } from './training-store';
 import * as SecureStore from 'expo-secure-store';
+import { finishRestTimer, pauseRestTimer, remainingRestMs, resumeRestTimer, startRestTimer } from '@evry/domain';
 
 jest.mock('expo-sqlite', () => jest.requireActual('../testing/sqlite-native').createSQLiteBridge());
 jest.mock('expo-crypto', () => ({
@@ -69,6 +70,38 @@ async function login(email: string) {
   return scope;
 }
 
+it('recovers running and paused rest offline across JS restarts and retains completion acknowledgement without changing the outbox', async () => {
+  const owner = await login('rest-restart@example.com');
+  await training.getState().startWorkout('Descanso offline');
+  const workoutId = training.getState().activeWorkout!.clientId;
+  const source = await db.loadActiveWorkout(owner);
+  const queue = await db.pendingSyncRows(owner);
+  const started = startRestTimer(120, 1_000_000);
+  await db.saveRestTimer(owner, workoutId, started);
+  offline = true;
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+  const recovered = await db.loadRestTimer(owner, workoutId);
+  expect(recovered).toEqual(started);
+  expect(remainingRestMs(recovered!, 1_031_500)).toBe(88_500);
+  await db.saveRestTimer(owner, workoutId, pauseRestTimer(recovered!, 1_031_500));
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+  const paused = await db.loadRestTimer(owner, workoutId);
+  expect(paused).toMatchObject({ mode: 'PAUSED', remainingMs: 88_500, deadlineMs: null });
+  expect(remainingRestMs(paused!, 2_000_000)).toBe(88_500);
+  const finished = finishRestTimer(resumeRestTimer(paused!, 2_000_000), 2_088_500);
+  await db.saveRestTimer(owner, workoutId, { ...finished, notificationDelivered: true });
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+  expect(await db.loadRestTimer(owner, workoutId)).toEqual({ mode: 'FINISHED', remainingMs: 0, deadlineMs: null, notificationDelivered: true });
+  expect(await db.loadActiveWorkout(owner)).toEqual(source);
+  expect(await db.pendingSyncRows(owner)).toEqual(queue);
+});
+
 it('preserves each account workout and hides the previous one immediately on logout', async () => {
   const alice = await login('isolation-a@example.com');
   await training.getState().startWorkout('Private A');
@@ -100,6 +133,52 @@ it('reopens, edits and completes a persisted workout offline in a fresh process'
   expect(training.getState().activeWorkout).toBeNull();
   const rows = await db.pendingSyncRows(owner);
   expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'COMPLETED', sets: [{ reps: 9, weightKg: 50 }] });
+});
+
+it('reopens nullable timed-set details and completes offline without fabricating repetitions', async () => {
+  const owner = await login('timed-parity@example.com');
+  await training.getState().startWorkout('Sesión por tiempo');
+  await training.getState().addSet('timed-exercise');
+  const setId = training.getState().activeWorkout!.sets[0].clientId;
+  await training.getState().updateSet(setId, {
+    weightKg: null, reps: null, durationS: 45, rpe: 8, isWarmup: true, techniqueStable: false,
+  });
+  offline = true;
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+  expect(training.getState().activeWorkout?.sets[0]).toMatchObject({
+    clientId: setId, weightKg: null, reps: null, durationS: 45, rpe: 8,
+    isWarmup: true, techniqueStable: false,
+  });
+  await training.getState().updateSet(setId, { rpe: null, techniqueStable: null });
+  await training.getState().finishWorkout();
+  expect(training.getState().activeWorkout).toBeNull();
+  const rows = await db.pendingSyncRows(owner);
+  expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'COMPLETED', sets: [{
+    clientId: setId, weightKg: null, reps: null, durationS: 45, rpe: null,
+    isWarmup: true, techniqueStable: null,
+  }] });
+});
+
+it('blocks offline initialization on damaged saved data without replacing the session', async () => {
+  const owner = await login('damaged-restart@example.com');
+  await training.getState().startWorkout('Protected session');
+  const connection = await db.getDatabase(owner);
+  const queue = await db.pendingSyncRows(owner);
+  await connection.runAsync('UPDATE workouts SET payload = ?', '{}');
+  offline = true;
+  startProcess();
+  await session.getState().initialize();
+  await training.getState().initialize(api.captureMobileSession());
+
+  expect(training.getState()).toMatchObject({
+    ready: false, activeWorkout: null, localSaveState: 'failed',
+    error: 'La sesión guardada contiene datos inválidos. Los datos locales se conservan.',
+  });
+  await training.getState().startWorkout('Must not overwrite');
+  expect(await connection.getAllAsync('SELECT payload FROM workouts')).toEqual([{ payload: '{}' }]);
+  expect(await db.pendingSyncRows(owner)).toEqual(queue);
 });
 
 it('persists a cancelled workout offline and does not reopen it as active', async () => {
@@ -134,6 +213,23 @@ it('restores a draft as one new offline session and archives the source', async 
   expect(training.getState().activeWorkout).toMatchObject({ name: 'Borrador recuperado', status: 'ACTIVE' });
   expect(await db.loadRecoveredDrafts(owner)).toEqual([]);
   expect(await db.pendingSyncRows(owner)).toHaveLength(1);
+});
+
+it('rolls back optimistic recovery when the stored draft changed after being shown', async () => {
+  const owner = await login('recover-changed@example.com');
+  const draft = { clientId: 'changed-draft', revision: 0, status: 'DRAFT' as const,
+    name: 'Borrador protegido', startedAt: '2026-08-30T10:00:00Z',
+    notes: null, sets: [], deletedSetClientIds: [] };
+  await db.saveWorkout(owner, draft);
+  await db.saveWorkout(owner, { ...draft, notes: 'La nota más reciente' });
+  offline = true;
+
+  await expect(training.getState().recoverDraft(draft)).rejects.toThrow('El borrador cambió.');
+  expect(training.getState()).toMatchObject({ activeWorkout: null, localSaveState: 'failed' });
+  expect(training.getState().error).toContain('El borrador cambió.');
+  expect(await db.loadActiveWorkout(owner)).toBeNull();
+  expect(await db.pendingSyncRows(owner)).toEqual([]);
+  expect(await db.loadRecoveredDrafts(owner)).toMatchObject([{ clientId: draft.clientId, notes: 'La nota más reciente' }]);
 });
 
 it('keeps a draft recoverable without a phantom session if its archival fails', async () => {
