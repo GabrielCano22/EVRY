@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
+import type { SetType } from '@evry/domain';
 import { isCurrentMobileSession, type MobileSession, type SyncWorkoutInput } from '../api/client';
 import { useSessionStore } from '../auth/session-store';
 import {
@@ -13,6 +14,7 @@ import type { SyncQueueState } from '../sync/queue-policy';
 import {
   cancelLocalWorkout,
   finishLocalWorkout,
+  setTypeOfLocal,
   type LocalWorkout,
   type LocalWorkoutSet,
 } from './workout-domain';
@@ -31,8 +33,11 @@ interface TrainingState {
   initialize: (session: MobileSession) => Promise<void>;
   startWorkout: (name?: string, routineId?: string) => Promise<void>;
   recoverDraft: (draft: LocalWorkout) => Promise<void>;
-  addSet: (exerciseId: string) => Promise<void>;
+  renameWorkout: (name: string) => Promise<void>;
+  addSet: (exerciseId: string, initial?: { weightKg?: number | null; reps?: number | null }) => Promise<void>;
   updateSet: (clientId: string, changes: Partial<LocalWorkoutSet>) => Promise<void>;
+  setSetCompleted: (clientId: string, completed: boolean) => Promise<void>;
+  changeSetType: (clientId: string, setType: SetType) => Promise<void>;
   deleteSet: (clientId: string) => Promise<void>;
   cancelWorkout: () => Promise<void>;
   finishWorkout: () => Promise<void>;
@@ -131,12 +136,16 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       throw reason;
     }
   },
-  async addSet(exerciseId) {
+  async addSet(exerciseId, initial) {
     const session = get().session;
     if (!session || !get().ready || !isCurrentMobileSession(session)) return;
     const workout = get().activeWorkout;
     if (!workout || workout.status !== 'ACTIVE') return;
     const exerciseSets = workout.sets.filter((item) => item.exerciseId === exerciseId);
+    // The last type chosen for this exercise is the default for the next set,
+    // and the previous values are copied so a straight set is one tap away.
+    const previous = exerciseSets.length > 0 ? exerciseSets[exerciseSets.length - 1] : undefined;
+    const setType = previous ? setTypeOfLocal(previous) : 'NORMAL';
     const next: LocalWorkout = {
       ...workout,
       sets: [...workout.sets, {
@@ -144,14 +153,61 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         revision: 0,
         exerciseId,
         order: exerciseSets.length,
-        weightKg: 0,
-        reps: 0,
+        weightKg: initial?.weightKg !== undefined ? initial.weightKg : previous?.weightKg ?? null,
+        reps: initial?.reps !== undefined ? initial.reps : previous?.reps ?? null,
         durationS: null,
         rpe: null,
-        isWarmup: false,
+        isWarmup: setType === 'WARMUP',
+        setType,
         techniqueStable: null,
-        completedAt: new Date().toISOString(),
+        completedAt: null,
       }],
+    };
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
+    await persistOptimisticWorkout(session, next, version);
+  },
+  async renameWorkout(name) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
+    const workout = get().activeWorkout;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    const trimmed = name.trim();
+    if (trimmed.length < 1 || trimmed.length > 120 || trimmed === workout.name) return;
+    const next: LocalWorkout = { ...workout, name: trimmed };
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
+    await persistOptimisticWorkout(session, next, version);
+  },
+  async setSetCompleted(clientId, completed) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
+    const workout = get().activeWorkout;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    const target = workout.sets.find((item) => item.clientId === clientId);
+    if (!target || (target.completedAt !== null) === completed) return;
+    const next: LocalWorkout = {
+      ...workout,
+      sets: workout.sets.map((item) => item.clientId === clientId
+        ? { ...item, completedAt: completed ? new Date().toISOString() : null }
+        : item),
+    };
+    const version = get().editVersion + 1;
+    set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
+    await persistOptimisticWorkout(session, next, version);
+  },
+  async changeSetType(clientId, setType) {
+    const session = get().session;
+    if (!session || !get().ready || !isCurrentMobileSession(session)) return;
+    const workout = get().activeWorkout;
+    if (!workout || workout.status !== 'ACTIVE') return;
+    const target = workout.sets.find((item) => item.clientId === clientId);
+    if (!target || setTypeOfLocal(target) === setType) return;
+    const next: LocalWorkout = {
+      ...workout,
+      sets: workout.sets.map((item) => item.clientId === clientId
+        ? { ...item, setType, isWarmup: setType === 'WARMUP' }
+        : item),
     };
     const version = get().editVersion + 1;
     set({ editVersion: version, activeWorkout: next, syncState: 'pending', localSaveState: 'saving', error: null });
@@ -340,6 +396,7 @@ function syncPayload(workout: LocalWorkout, syncId: string): SyncWorkoutInput {
       durationS: item.durationS,
       rpe: item.rpe,
       isWarmup: item.isWarmup,
+      ...(item.setType ? { setType: item.setType } : {}),
       techniqueStable: item.techniqueStable,
       completedAt: item.completedAt,
     })),

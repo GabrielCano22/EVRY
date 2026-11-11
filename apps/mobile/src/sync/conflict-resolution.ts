@@ -38,8 +38,9 @@ export function canonicalWorkoutFromServer(
       durationS: set.durationS ?? null,
       rpe: set.rpe ?? null,
       isWarmup: set.isWarmup,
+      ...(set.setType ? { setType: set.setType } : {}),
       techniqueStable: set.techniqueStable,
-      completedAt: set.completedAt,
+      completedAt: set.completedAt ?? null,
     })),
     deletedSetClientIds: [],
   };

@@ -1,3 +1,4 @@
+import { isSetType } from '@evry/domain';
 import type { LocalWorkout, LocalWorkoutSet } from '../training/workout-domain';
 
 export interface StoredWorkoutRow {
@@ -35,8 +36,9 @@ function workoutSet(value: unknown): value is LocalWorkoutSet {
     && (value.durationS === null || integer(value.durationS))
     && (value.rpe === null || (typeof value.rpe === 'number' && Number.isFinite(value.rpe)))
     && typeof value.isWarmup === 'boolean'
+    && (value.setType === undefined || isSetType(value.setType))
     && (value.techniqueStable === null || typeof value.techniqueStable === 'boolean')
-    && timestamp(value.completedAt);
+    && (value.completedAt === null || timestamp(value.completedAt));
 }
 
 function workout(value: unknown): value is LocalWorkout {

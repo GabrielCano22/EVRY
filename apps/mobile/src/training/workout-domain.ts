@@ -1,3 +1,7 @@
+import {
+  setTypeOf, type SetType,
+} from '@evry/domain';
+
 export type LocalWorkoutStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DRAFT';
 
 export interface LocalWorkoutSet {
@@ -10,9 +14,17 @@ export interface LocalWorkoutSet {
   durationS: number | null;
   rpe: number | null;
   isWarmup: boolean;
+  /** Optional so workouts stored before set types existed stay byte-identical. */
+  setType?: SetType;
   techniqueStable: boolean | null;
-  completedAt: string;
+  /** Null until the user ticked the set. Legacy rows are already completed. */
+  completedAt: string | null;
 }
+
+export function setTypeOfLocal(set: LocalWorkoutSet): SetType {
+  return setTypeOf(set);
+}
+
 
 export interface LocalWorkout {
   clientId: string;
@@ -29,7 +41,10 @@ export interface LocalWorkout {
 }
 
 export function hasUsefulSet(workout: LocalWorkout): boolean {
-  return workout.sets.some((set) => (set.reps ?? 0) > 0 || (set.durationS ?? 0) > 0);
+  // A set only counts once the lifter ticks it, matching the server rule that
+  // rejects finishing a session without a completed useful set.
+  return workout.sets.some((set) => set.completedAt !== null
+    && ((set.reps ?? 0) > 0 || (set.durationS ?? 0) > 0));
 }
 
 export function finishLocalWorkout(workout: LocalWorkout, now: Date = new Date()): LocalWorkout {

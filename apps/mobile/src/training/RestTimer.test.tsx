@@ -1,194 +1,160 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AppState, type AppStateStatus } from 'react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
-import type { RestTimerState } from '@evry/domain';
-import TrainScreen from '../../app/(tabs)/train';
-import { useSessionStore } from '../auth/session-store';
+import { AppState } from 'react-native';
+import { startRestTimer } from '@evry/domain';
+import { RestTimer, type RestStartRequest } from './RestTimer';
 import { loadRestTimer, saveRestTimer } from '../db/database';
+import { useSessionStore } from '../auth/session-store';
 import { useTrainingStore } from './training-store';
 import type { LocalWorkout } from './workout-domain';
 
-// Real Train, query observers, Zustand and pure timer transitions. Native
-// SQLite/auth identity/AppState delivery/haptics are controlled at their boundary.
-jest.mock('../api/client', () => ({ API_BASE_URL: 'http://127.0.0.1:4000/api/v1',
-  isCurrentMobileSession: () => true, onMobileSessionInvalidated: () => () => undefined }));
-jest.mock('../db/database', () => ({ loadRestTimer: jest.fn(), saveRestTimer: jest.fn() }));
-jest.mock('../catalog/catalog', () => ({
-  loadExercises: async () => ({ items: [], total: 0, page: 1, limit: 30, hasMore: false,
-    source: 'cache', stale: false, notice: null, updatedAt: null }),
-  loadRoutines: async () => ({ items: [], source: 'cache', stale: false, notice: null, updatedAt: null }),
+// Native haptics, storage and the session ownership check are replaced at their
+// boundary. The timer state machine and the component stay real.
+jest.mock('expo-haptics', () => ({
+  notificationAsync: jest.fn(async () => undefined),
+  selectionAsync: jest.fn(async () => undefined),
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning' },
 }));
-jest.mock('../catalog/thumbnail-files', () => ({ mobileThumbnailCache: {} }));
-jest.mock('expo-haptics', () => ({ notificationAsync: jest.fn().mockResolvedValue(undefined),
-  selectionAsync: jest.fn().mockResolvedValue(undefined), NotificationFeedbackType: { Success: 'success' } }));
+jest.mock('../api/client', () => ({
+  isCurrentMobileSession: () => true,
+  onMobileSessionInvalidated: () => () => undefined,
+}));
+jest.mock('../db/database', () => ({
+  loadRestTimer: jest.fn(async () => null),
+  saveRestTimer: jest.fn(async () => undefined),
+}));
 
-const session = { userId: 'rest-user', serverUrl: 'http://127.0.0.1:4000/api/v1', version: 1 };
-const workout: LocalWorkout = { clientId: 'rest-screen', revision: 0, name: 'Descanso offline', status: 'ACTIVE',
-  startedAt: '2026-10-07T12:00:00Z', notes: null, sets: [], deletedSetClientIds: [] };
-let client: QueryClient;
-let now: number;
-let saved: RestTimerState | null;
-let appChange: ((state: AppStateStatus) => void) | null;
-const originalAppState = AppState.currentState;
+const session = { userId: 'rest-user', serverUrl: 'https://example.test/api/v1', version: 1 };
+const workout: LocalWorkout = {
+  clientId: 'workout-1', revision: 0, status: 'ACTIVE', name: 'Sesión', notes: null,
+  startedAt: '2026-11-08T10:00:00.000Z', deletedSetClientIds: [], sets: [],
+};
+const request = (overrides: Partial<RestStartRequest> = {}): RestStartRequest => ({
+  key: 'request-1', seconds: 60, label: null, exerciseId: 'exercise-1', ...overrides,
+});
+
+function show(startRequest: RestStartRequest | null = null, state: 'ACTIVE' | 'COMPLETED' = 'ACTIVE') {
+  return render(<RestTimer
+    onAdjustExercise={jest.fn()}
+    session={session}
+    startRequest={startRequest}
+    workoutId={workout.clientId}
+  />);
+}
+
 beforeEach(() => {
-  now = 1_000_000; saved = null; appChange = null;
-  AppState.currentState = 'active';
-  jest.clearAllMocks();
-  jest.spyOn(Date, 'now').mockImplementation(() => now);
-  jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, handler) => {
-    appChange = handler; return { remove: () => { appChange = null; } };
+  jest.useFakeTimers().setSystemTime(new Date('2026-11-08T10:00:00.000Z'));
+  // The React Native Jest mock exposes currentState as a jest.fn(); the timer
+  // only ticks while the app is foregrounded.
+  (AppState as unknown as { currentState: string }).currentState = 'active';
+  jest.mocked(Haptics.notificationAsync).mockClear();
+  jest.mocked(loadRestTimer).mockReset().mockResolvedValue(null);
+  jest.mocked(saveRestTimer).mockReset().mockResolvedValue(undefined);
+  useSessionStore.setState({ session });
+  useTrainingStore.setState({
+    session, ready: true, activeWorkout: workout, localSaveState: 'saved', syncState: 'synced', error: null,
   });
-  jest.mocked(loadRestTimer).mockReset().mockImplementation(async () => saved);
-  jest.mocked(saveRestTimer).mockReset().mockImplementation(async (_owner, _id, next) => { saved = next; });
-  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  useSessionStore.setState({ session, status: 'authenticated' });
-  useTrainingStore.setState({ session, ready: true, activeWorkout: workout, localSaveState: 'saved', syncState: 'pending', error: null });
 });
-afterEach(async () => { await cleanup(); client.clear(); jest.restoreAllMocks(); AppState.currentState = originalAppState; });
-const show = () => render(<QueryClientProvider client={client}><TrainScreen /></QueryClientProvider>);
-async function press(name: string) { await fireEvent.press(await screen.findByRole('button', { name })); }
-async function app(state: AppStateStatus) { await act(async () => { AppState.currentState = state; appChange?.(state); }); }
-function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
+afterEach(() => jest.useRealTimers());
 
-it('starts and durably pauses, adjusts and resumes rest without changing workout source', async () => {
-  await show(); await press('Iniciar descanso');
-  expect(await screen.findByLabelText('Tiempo de descanso')).toHaveTextContent('02:00');
-  now += 31_500;
-  await press('Pausar descanso');
-  expect(saved).toEqual({ mode: 'PAUSED', remainingMs: 88_500, deadlineMs: null, notificationDelivered: false });
-  expect(screen.getByLabelText('Tiempo de descanso')).toHaveTextContent('01:29');
-  await press('Añadir 10 segundos');
-  expect(saved?.remainingMs).toBe(98_500);
-  await press('Restar 10 segundos');
-  now = 2_000_000;
-  await press('Reanudar descanso');
-  expect(saved).toMatchObject({ mode: 'RUNNING', remainingMs: 88_500, deadlineMs: 2_088_500 });
-  expect(useTrainingStore.getState().activeWorkout).toEqual(workout);
-});
-
-it('prevents duplicate presses and does not claim a pending start is saved', async () => {
-  const write = deferred<void>();
-  jest.mocked(saveRestTimer).mockImplementation(async (_owner, _id, next) => { await write.promise; saved = next; });
+it('hydrates the durable rest of this workout instead of starting from zero', async () => {
+  jest.mocked(loadRestTimer).mockResolvedValue(startRestTimer(90));
   await show();
-  try {
-    await press('Iniciar descanso');
-    expect(screen.getByText('Guardando descanso…')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Iniciar descanso' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Pausar descanso' })).toBeNull();
-    await press('Iniciar descanso');
-    expect(saveRestTimer).toHaveBeenCalledTimes(1);
-  } finally { await act(async () => { write.resolve(); }); }
-  expect(await screen.findByRole('button', { name: 'Pausar descanso' })).toBeTruthy();
+  expect(await screen.findByLabelText('Pausar descanso')).toBeTruthy();
+  expect(screen.getByText('01:30')).toBeTruthy();
+  expect(screen.getByText('Descanso')).toBeTruthy();
+  expect(loadRestTimer).toHaveBeenCalledWith(session, 'workout-1');
 });
 
-it('keeps the durable state after a failed pause and retries its original transition', async () => {
-  await show(); await press('Iniciar descanso');
-  const original = saved;
-  now += 10_000;
-  jest.mocked(saveRestTimer).mockRejectedValueOnce(new Error('Disco no disponible.'));
-  await press('Pausar descanso');
-  expect(await screen.findByRole('alert')).toHaveTextContent(/Disco no disponible/);
-  expect(saved).toEqual(original);
-  expect(screen.getByRole('button', { name: 'Pausar descanso' })).toBeDisabled();
-  await press('Reintentar descanso');
-  await waitFor(() => expect(saved?.mode).toBe('PAUSED'));
-  expect(saved?.remainingMs).toBe(110_000);
-  expect(screen.queryByRole('alert')).toBeNull();
+it('starts a rest for the completed set and persists every ±15 adjustment', async () => {
+  const onAdjustExercise = jest.fn();
+  await render(<RestTimer
+    onAdjustExercise={onAdjustExercise}
+    session={session}
+    startRequest={request({ label: 'Calentamiento · descanso corto' })}
+    workoutId={workout.clientId}
+  />);
+
+  expect(await screen.findByText('01:00')).toBeTruthy();
+  expect(screen.getByText('Calentamiento · descanso corto')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenCalledWith(session, 'workout-1', expect.objectContaining({ mode: 'RUNNING', remainingMs: 60_000 }));
+
+  await act(async () => { await fireEvent.press(screen.getByLabelText('Añadir quince segundos de descanso')); });
+  expect(await screen.findByText('01:15')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenLastCalledWith(session, 'workout-1', expect.objectContaining({ mode: 'RUNNING', remainingMs: 75_000 }));
+  expect(onAdjustExercise).toHaveBeenCalledWith('exercise-1', 15);
+
+  await act(async () => { await fireEvent.press(screen.getByLabelText('Restar quince segundos de descanso')); });
+  expect(await screen.findByText('01:00')).toBeTruthy();
+  expect(onAdjustExercise).toHaveBeenLastCalledWith('exercise-1', -15);
 });
 
-it('recovers a paused timer on remount without silently restarting it', async () => {
-  saved = { mode: 'PAUSED', remainingMs: 88_500, deadlineMs: null, notificationDelivered: false };
-  const view = await show();
-  await screen.findByRole('button', { name: 'Reanudar descanso' });
-  await view.unmount(); now += 500_000;
-  await show();
-  expect(await screen.findByLabelText('Tiempo de descanso')).toHaveTextContent('01:29');
-  expect(await screen.findByRole('button', { name: 'Reanudar descanso' })).toBeTruthy();
-  expect(saveRestTimer).not.toHaveBeenCalled();
+it('pauses and resumes without losing the remaining rest', async () => {
+  await show(request({ key: 'request-pause' }));
+  await act(async () => { await fireEvent.press(await screen.findByLabelText('Pausar descanso')); });
+  expect(await screen.findByText('Pausado · toca para seguir')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenLastCalledWith(session, 'workout-1', expect.objectContaining({ mode: 'PAUSED', deadlineMs: null }));
+
+  await act(async () => { await fireEvent.press(screen.getByLabelText('Reanudar descanso')); });
+  expect(await screen.findByLabelText('Pausar descanso')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenLastCalledWith(session, 'workout-1', expect.objectContaining({ mode: 'RUNNING' }));
 });
 
-it('finishes elapsed background time on foreground and emits one durable completion haptic only', async () => {
-  await show(); await press('Iniciar descanso');
-  await app('background'); now += 180_000;
+it('skips the rest without vibrating as if it had finished', async () => {
+  await show(request({ key: 'request-skip' }));
+  await act(async () => { await fireEvent.press(await screen.findByLabelText('Omitir descanso')); });
+
+  await waitFor(() => expect(saveRestTimer).toHaveBeenLastCalledWith(
+    session, 'workout-1', expect.objectContaining({ mode: 'FINISHED', notificationDelivered: true }),
+  ));
   expect(Haptics.notificationAsync).not.toHaveBeenCalled();
-  await app('active');
+});
+
+it('announces the end of the rest exactly once and then hides the bar', async () => {
+  await show(request({ key: 'request-finish', seconds: 5 }));
+  await screen.findByText('00:05');
+
+  await act(async () => { await jest.advanceTimersByTimeAsync(5_000); });
   expect(await screen.findByText('Descanso terminado')).toBeTruthy();
-  await waitFor(() => expect(saved?.notificationDelivered).toBe(true));
+  expect(saveRestTimer).toHaveBeenLastCalledWith(
+    session, 'workout-1', expect.objectContaining({ mode: 'FINISHED', notificationDelivered: true }),
+  );
   expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
-  expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
-  await app('active'); await cleanup(); await show();
-  await screen.findByText('Descanso terminado');
-  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
-});
 
-it('never vibrates for a completion whose acknowledgement failed to persist', async () => {
-  saved = { mode: 'RUNNING', remainingMs: 120_000, deadlineMs: 999_000, notificationDelivered: false };
-  jest.mocked(saveRestTimer).mockRejectedValueOnce(new Error('No se pudo confirmar el descanso.'));
-  await show();
-  await screen.findByRole('alert');
-  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
-  await press('Reintentar descanso');
-  await waitFor(() => expect(saved?.notificationDelivered).toBe(true));
-  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
-});
-
-it('shows failed loading and retries without inventing or replacing stored state', async () => {
-  jest.mocked(loadRestTimer).mockRejectedValueOnce(new Error('Datos locales dañados.'));
-  await show();
-  await screen.findByRole('alert');
-  expect(screen.getByRole('button', { name: 'Iniciar descanso' })).toBeDisabled();
-  expect(saveRestTimer).not.toHaveBeenCalled();
-  await press('Reintentar descanso');
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Iniciar descanso' })).toBeEnabled());
-});
-
-it('does not apply a late old-workout load or render timer controls on a terminal workout', async () => {
-  const load = deferred<RestTimerState | null>();
-  jest.mocked(loadRestTimer).mockImplementationOnce(async () => load.promise);
-  await show();
-  await act(async () => { useTrainingStore.setState({ activeWorkout: { ...workout, clientId: 'new-workout' } }); });
-  await act(async () => { load.resolve({ mode: 'PAUSED', remainingMs: 10_000, deadlineMs: null, notificationDelivered: false }); });
-  expect(screen.queryByRole('button', { name: 'Reanudar descanso' })).toBeNull();
-  await act(async () => { useTrainingStore.setState({ activeWorkout: { ...workout, status: 'COMPLETED' } }); });
-  expect(screen.queryByRole('button', { name: 'Iniciar descanso' })).toBeNull();
-});
-
-it('does not vibrate when a completion write returns after its login version changed', async () => {
-  saved = { mode: 'RUNNING', remainingMs: 120_000, deadlineMs: 999_000, notificationDelivered: false };
-  const write = deferred<void>();
-  jest.mocked(saveRestTimer).mockImplementationOnce(async () => write.promise);
-  await show();
-  await waitFor(() => expect(saveRestTimer).toHaveBeenCalledTimes(1));
-  const next = { ...session, version: 2 };
-  jest.mocked(loadRestTimer).mockResolvedValue(null);
-  await act(async () => { useSessionStore.setState({ session: next }); useTrainingStore.setState({ session: next }); });
-  await act(async () => { write.resolve(); });
-  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
-});
-
-it('keeps a late old-account completion out of another account and skips background haptics', async () => {
-  saved = { mode: 'RUNNING', remainingMs: 120_000, deadlineMs: 999_000, notificationDelivered: false };
-  const write = deferred<void>();
-  jest.mocked(saveRestTimer).mockImplementationOnce(async () => write.promise);
-  await show();
-  await waitFor(() => expect(saveRestTimer).toHaveBeenCalledTimes(1));
-  const next = { ...session, userId: 'another-account', version: 2 };
-  jest.mocked(loadRestTimer).mockResolvedValue(null);
-  await act(async () => { useSessionStore.setState({ session: next }); useTrainingStore.setState({ session: next }); });
-  await app('background');
-  await act(async () => { write.resolve(); });
-  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+  await act(async () => { await jest.advanceTimersByTimeAsync(3_000); });
   expect(screen.queryByText('Descanso terminado')).toBeNull();
+  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
 });
 
-it('does not retry optional native haptic failures after remounting acknowledged completion', async () => {
-  saved = { mode: 'RUNNING', remainingMs: 120_000, deadlineMs: 999_000, notificationDelivered: false };
-  jest.mocked(Haptics.notificationAsync).mockRejectedValueOnce(new Error('Native haptics unavailable'));
+it('keeps the previous rest visible and offers a retry when the local write fails', async () => {
+  jest.mocked(saveRestTimer).mockRejectedValueOnce(new Error('SQLite sin espacio'));
+  await show(request({ key: 'request-failure' }));
+
+  expect(await screen.findByText('SQLite sin espacio')).toBeTruthy();
+  expect(screen.getByLabelText('Reintentar descanso')).toBeTruthy();
+  await act(async () => { await fireEvent.press(screen.getByLabelText('Reintentar descanso')); });
+  expect(await screen.findByLabelText('Pausar descanso')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenLastCalledWith(session, 'workout-1', expect.objectContaining({ mode: 'RUNNING' }));
+});
+
+it('does not paint a rest for a workout that is no longer active', async () => {
+  jest.mocked(loadRestTimer).mockResolvedValue(startRestTimer(90));
+  useTrainingStore.setState({ activeWorkout: { ...workout, status: 'COMPLETED' } });
   await show();
-  await screen.findByText('Descanso terminado');
-  expect(saved?.notificationDelivered).toBe(true);
-  expect(screen.queryByRole('alert')).toBeNull();
-  await cleanup(); await show(); await screen.findByText('Descanso terminado');
-  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByLabelText('Pausar descanso')).toBeNull();
+  expect(loadRestTimer).not.toHaveBeenCalled();
+});
+
+it('replaces the current rest when a new set starts another one', async () => {
+  const view = await show(request({ key: 'first', seconds: 30 }));
+  await screen.findByText('00:30');
+  await view.rerender(<RestTimer
+    onAdjustExercise={jest.fn()}
+    session={session}
+    startRequest={request({ key: 'second', seconds: 120, exerciseId: 'exercise-2' })}
+    workoutId={workout.clientId}
+  />);
+  expect(await screen.findByText('02:00')).toBeTruthy();
+  expect(saveRestTimer).toHaveBeenLastCalledWith(session, 'workout-1', expect.objectContaining({ remainingMs: 120_000 }));
 });

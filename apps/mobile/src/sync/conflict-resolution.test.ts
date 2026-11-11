@@ -31,6 +31,7 @@ const serverWorkout: components['schemas']['SyncCanonicalWorkout'] = {
         durationS: null,
         rpe: 7,
         isWarmup: true,
+        setType: 'WARMUP',
         techniqueStable: false,
         completedAt: '2026-08-30T10:25:00.000Z',
         updatedAt: '2026-08-30T10:25:00.000Z',

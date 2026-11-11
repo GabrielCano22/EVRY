@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { createEvryApiClient, type components } from '@evry/api-client';
+import { isSetType, type SetType } from '@evry/domain';
 import type { DatabaseOwner } from '../db/database';
 import { resolveMobileApiBaseUrl } from './api-config';
 
@@ -42,8 +43,8 @@ export type SyncWorkoutInput = components['schemas']['SyncWorkoutInput'];
 export type SyncWorkoutResult = components['schemas']['SyncWorkoutResult'];
 export type SyncCanonicalWorkoutSetForRecovery = Pick<components['schemas']['WorkoutSet'],
   'id' | 'clientId' | 'revision' | 'exerciseId' | 'order' | 'weightKg' | 'reps' | 'durationS' |
-  'rpe' | 'isWarmup' | 'techniqueStable' | 'completedAt'
->;
+  'rpe' | 'isWarmup' | 'techniqueStable'
+> & { setType?: SetType; completedAt: string | null };
 export type SyncCanonicalWorkoutForRecovery = Pick<components['schemas']['SyncCanonicalWorkout'],
   'id' | 'clientId' | 'revision' | 'name' | 'startedAt' | 'endedAt' | 'cancelledAt' | 'status' |
   'notes' | 'routineId'
@@ -84,11 +85,13 @@ function recoverySetFromUnknown(value: unknown): SyncCanonicalWorkoutSetForRecov
     !isFiniteNumber(record.durationS) && record.durationS !== null ||
     !isFiniteNumber(record.rpe) && record.rpe !== null ||
     typeof record.isWarmup !== 'boolean' || !isNullableBoolean(record.techniqueStable) ||
-    typeof record.completedAt !== 'string') return null;
+    (record.setType !== undefined && !isSetType(record.setType)) ||
+    !isNullableString(record.completedAt)) return null;
   return {
     id: record.id, clientId: record.clientId, revision: record.revision, exerciseId: record.exerciseId,
     order: record.order, weightKg: record.weightKg, reps: record.reps, durationS: record.durationS,
     rpe: record.rpe, isWarmup: record.isWarmup, techniqueStable: record.techniqueStable,
+    ...(record.setType === undefined ? {} : { setType: record.setType as SetType }),
     completedAt: record.completedAt,
   };
 }

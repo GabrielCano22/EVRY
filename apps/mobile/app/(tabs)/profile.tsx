@@ -18,6 +18,7 @@ import {
 } from '@/src/profile/profile-form';
 import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
+import { RestPreferencesCard } from '@/src/training/RestPreferencesCard';
 import { useReadinessDay } from '@/src/profile/use-readiness-day';
 
 type Readiness = components['schemas']['Readiness'];
@@ -307,6 +308,8 @@ export default function ProfileScreen() {
       </View>
 
       <DailyReadiness session={session} />
+
+      <RestPreferencesCard key={JSON.stringify([session.serverUrl, session.userId, session.version])} session={session} />
 
       <PrimaryButton onPress={() => void logout()}>Cerrar sesión</PrimaryButton>
     </Screen>

@@ -1,5 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { civilDate } from '@evry/domain';
 import { calendarMonth, CycleCalendar } from './cycle-calendar';
+
+const today = civilDate('2026-11-08');
 
 it('builds a Monday-first leap-year calendar without changing civil dates', () => {
   const days = calendarMonth(2024, 1);
@@ -10,15 +13,53 @@ it('builds a Monday-first leap-year calendar without changing civil dates', () =
   expect(calendarMonth(2024, -1)).toContain('2023-12-31');
 });
 
-it('marks only provided records and allows month navigation', async () => {
-  jest.useFakeTimers().setSystemTime(new Date(2026, 10, 8, 12));
-  try {
-    await render(<CycleCalendar entries={[{ date: '2026-11-08T00:00:00.000Z' }]} />);
-    expect(screen.getByLabelText('2026-11-08, registro de ciclo')).toBeTruthy();
-    expect(screen.getByText('Calendario de registros de ciclo')).toBeTruthy();
-    expect(screen.queryByText(/entrenamiento sincronizado/)).toBeNull();
-    expect(screen.getByText(/No representa una predicción/)).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Mes anterior' }));
-    expect(screen.getByLabelText('2026-10-08')).toBeTruthy();
-  } finally { jest.useRealTimers(); }
+it('distinguishes training, cycle, today and future days and opens the tapped day', async () => {
+  const onSelectDay = jest.fn();
+  await render(<CycleCalendar
+    activityDates={['2026-11-03', '2026-11-08']}
+    entries={[{ date: '2026-11-08T00:00:00.000Z' }]}
+    onSelectDay={onSelectDay}
+    selectedDate="2026-11-03"
+    streakDays={3}
+    restDays={4}
+    today={today}
+  />);
+
+  expect(screen.getByLabelText('3 de noviembre, entrenamiento')).toBeTruthy();
+  expect(screen.getByLabelText('8 de noviembre, entrenamiento, registro de ciclo, hoy')).toBeTruthy();
+  expect(screen.getByLabelText('20 de noviembre, fecha futura')).toBeTruthy();
+  expect(screen.getByText('Calendario de entrenamientos y ciclo')).toBeTruthy();
+  expect(screen.getByText('Racha de 3 días · 4 días de descanso este mes')).toBeTruthy();
+  expect(screen.getByText(/No representa una predicción/)).toBeTruthy();
+
+  await fireEvent.press(screen.getByLabelText('3 de noviembre, entrenamiento'));
+  expect(onSelectDay).toHaveBeenCalledWith('2026-11-03');
+  await fireEvent.press(screen.getByRole('button', { name: 'Mes anterior' }));
+  expect(screen.getByText('octubre de 2026')).toBeTruthy();
+});
+
+it('hides every cycle mark while the layer is off and can turn it back on', async () => {
+  const onToggleCycleLayer = jest.fn();
+  await render(<CycleCalendar
+    entries={[{ date: '2026-11-08T00:00:00.000Z' }]}
+    onToggleCycleLayer={onToggleCycleLayer}
+    showCycle={false}
+    today={today}
+  />);
+
+  expect(screen.queryByLabelText(/registro de ciclo/)).toBeNull();
+  expect(screen.getByText('Calendario de entrenamientos')).toBeTruthy();
+  expect(screen.getByText('Mostrar ciclo')).toBeTruthy();
+  await fireEvent(screen.getByLabelText('Ocultar capa de ciclo'), 'valueChange', true);
+  expect(onToggleCycleLayer).toHaveBeenCalledWith(true);
+});
+
+it('offers to enable tracking when the account does not follow the cycle', async () => {
+  const onActivateTracking = jest.fn();
+  await render(<CycleCalendar entries={[]} onActivateTracking={onActivateTracking} today={today} tracking={false} />);
+
+  expect(screen.queryByText('Ciclo')).toBeNull();
+  expect(screen.queryByLabelText('Ocultar capa de ciclo')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Activar seguimiento del ciclo' }));
+  expect(onActivateTracking).toHaveBeenCalled();
 });

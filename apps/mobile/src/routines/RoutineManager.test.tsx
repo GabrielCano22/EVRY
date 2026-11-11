@@ -5,6 +5,10 @@ import { RoutineManager } from './RoutineManager';
 import { createRoutine, deleteRoutine, updateRoutine, type Routine } from './routines';
 import type { Exercise } from '../catalog/catalog';
 
+// Image/GIF previews resolve real assets in this environment; the default 5 s
+// per-test budget is not enough on a loaded CI machine.
+jest.setTimeout(15_000);
+
 jest.mock('expo-haptics', () => ({ notificationAsync: jest.fn(), NotificationFeedbackType: { Success: 'success' } }));
 jest.mock('./routines', () => ({ createRoutine: jest.fn(), updateRoutine: jest.fn(), deleteRoutine: jest.fn() }));
 jest.mock('../catalog/thumbnail-files', () => ({ mobileThumbnailCache: { resolve: async (_owner: unknown, url: string) => url } }));

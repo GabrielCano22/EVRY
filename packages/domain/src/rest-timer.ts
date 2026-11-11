@@ -49,6 +49,15 @@ export function finishRestTimer(state: RestTimerState, now = Date.now()): RestTi
   return { mode: 'FINISHED', remainingMs: 0, deadlineMs: null, notificationDelivered: false };
 }
 
+/**
+ * Ends a rest early because the lifter chose to skip it. The notification is
+ * marked as delivered so skipping never vibrates as if the rest had finished.
+ */
+export function skipRestTimer(state: RestTimerState): RestTimerState {
+  decodeRestTimer(state);
+  return { mode: 'FINISHED', remainingMs: 0, deadlineMs: null, notificationDelivered: true };
+}
+
 export function pauseRestTimer(state: RestTimerState, now = Date.now()): RestTimerState {
   if (state.mode !== 'RUNNING') return decodeRestTimer(state);
   const remainingMs = remainingRestMs(state, now);

@@ -54,6 +54,10 @@ jest.mock('@/src/api/client', () => ({
 jest.mock('@/src/auth/session-store', () => ({
   useSessionStore: jest.fn((selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState)),
 }));
+jest.mock('@/src/db/database', () => ({
+  loadRestPreferences: jest.fn(async () => ({ defaultRestSeconds: 120, restSecondsByExerciseId: {} })),
+  saveRestPreferences: jest.fn(async () => undefined),
+}));
 
 let queryClient: QueryClient | undefined;
 

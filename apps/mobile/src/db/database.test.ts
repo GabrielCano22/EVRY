@@ -25,7 +25,7 @@ const serverVersion: components['schemas']['SyncCanonicalWorkout'] = {
   createdAt: '2026-08-30T10:00:00.000Z', updatedAt: '2026-08-30T10:30:00.000Z', routine: null,
   sets: [{
     id: 'server-set', workoutId: 'server-workout', exerciseId: 'exercise-1', order: 0,
-    weightKg: 50, reps: 5, durationS: null, rpe: 7, isWarmup: true,
+    weightKg: 50, reps: 5, durationS: null, rpe: 7, isWarmup: true, setType: 'WARMUP',
     completedAt: '2026-08-30T10:25:00.000Z', clientMutationId: 'mutation-1', clientId: null,
     revision: 2, techniqueStable: false, updatedAt: '2026-08-30T10:25:00.000Z',
     exercise: {

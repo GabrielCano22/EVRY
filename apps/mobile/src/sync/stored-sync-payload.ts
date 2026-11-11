@@ -1,3 +1,4 @@
+import { isSetType } from '@evry/domain';
 import type { SyncWorkoutInput } from '../api/client';
 import type { PendingSyncRow } from '../db/database';
 
@@ -17,6 +18,7 @@ function set(value: unknown): boolean {
     && optional(value.weightKg, nonnegative) && optional(value.reps, integer)
     && optional(value.durationS, integer) && optional(value.rpe, finite)
     && (value.isWarmup === undefined || typeof value.isWarmup === 'boolean')
+    && optional(value.setType, (item) => isSetType(item))
     && optional(value.techniqueStable, (item) => typeof item === 'boolean')
     && optional(value.completedAt, timestamp);
 }

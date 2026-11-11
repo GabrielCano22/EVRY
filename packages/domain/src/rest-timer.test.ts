@@ -40,6 +40,16 @@ describe('offline rest timer', () => {
     expect(timer.finishRestTimer(paused, 2_000_000)).toEqual(paused);
   });
 
+  it('skips a rest without emitting the completion notification', () => {
+    expect(typeof timer.skipRestTimer).toBe('function');
+    const started = timer.startRestTimer(120, 1_000_000);
+    expect(timer.skipRestTimer(started)).toEqual({
+      mode: 'FINISHED', remainingMs: 0, deadlineMs: null, notificationDelivered: true,
+    });
+    const paused = timer.pauseRestTimer(started, 1_030_000);
+    expect(timer.skipRestTimer(paused).notificationDelivered).toBe(true);
+  });
+
   it('keeps an adjusted paused timer paused and does not silently restart a finished timer', () => {
     expect(typeof timer.adjustRestTimer).toBe('function');
     const paused = timer.pauseRestTimer(timer.startRestTimer(120, 1_000_000), 1_030_000);

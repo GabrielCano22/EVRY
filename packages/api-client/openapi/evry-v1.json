@@ -5587,8 +5587,18 @@
           "isWarmup": {
             "type": "boolean"
           },
+          "setType": {
+            "enum": [
+              "WARMUP",
+              "NORMAL",
+              "FAILURE",
+              "DROP"
+            ],
+            "type": "string"
+          },
           "completedAt": {
             "type": "string",
+            "nullable": true,
             "format": "date-time"
           },
           "clientMutationId": {
@@ -5625,6 +5635,7 @@
           "durationS",
           "rpe",
           "isWarmup",
+          "setType",
           "completedAt",
           "clientMutationId",
           "clientId",
@@ -5911,6 +5922,15 @@
           "isWarmup": {
             "type": "boolean"
           },
+          "setType": {
+            "enum": [
+              "WARMUP",
+              "NORMAL",
+              "FAILURE",
+              "DROP"
+            ],
+            "type": "string"
+          },
           "clientMutationId": {
             "type": "string",
             "format": "uuid"
@@ -5955,6 +5975,15 @@
           },
           "isWarmup": {
             "type": "boolean"
+          },
+          "setType": {
+            "enum": [
+              "WARMUP",
+              "NORMAL",
+              "FAILURE",
+              "DROP"
+            ],
+            "type": "string"
           }
         }
       },
@@ -7257,14 +7286,23 @@
           "isWarmup": {
             "type": "boolean"
           },
+          "setType": {
+            "enum": [
+              "WARMUP",
+              "NORMAL",
+              "FAILURE",
+              "DROP"
+            ],
+            "type": "string"
+          },
           "techniqueStable": {
             "type": "boolean",
             "nullable": true
           },
           "completedAt": {
             "type": "string",
-            "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "format": "date-time"
           }
         },
         "required": [

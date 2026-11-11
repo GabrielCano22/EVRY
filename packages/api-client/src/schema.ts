@@ -807,8 +807,10 @@ export interface components {
             durationS: number | null;
             rpe: number | null;
             isWarmup: boolean;
+            /** @enum {string} */
+            setType: "WARMUP" | "NORMAL" | "FAILURE" | "DROP";
             /** Format: date-time */
-            completedAt: string;
+            completedAt: string | null;
             clientMutationId: string | null;
             /** Format: uuid */
             clientId: string | null;
@@ -888,6 +890,8 @@ export interface components {
             durationS?: number;
             rpe?: number;
             isWarmup?: boolean;
+            /** @enum {string} */
+            setType?: "WARMUP" | "NORMAL" | "FAILURE" | "DROP";
             /** Format: uuid */
             clientMutationId: string;
             techniqueStable?: boolean;
@@ -899,6 +903,8 @@ export interface components {
             rpe?: number | null;
             techniqueStable?: boolean | null;
             isWarmup?: boolean;
+            /** @enum {string} */
+            setType?: "WARMUP" | "NORMAL" | "FAILURE" | "DROP";
         };
         CyclePhaseInfo: {
             /** @enum {string} */
@@ -1219,6 +1225,8 @@ export interface components {
             durationS?: number | null;
             rpe?: number | null;
             isWarmup?: boolean;
+            /** @enum {string} */
+            setType?: "WARMUP" | "NORMAL" | "FAILURE" | "DROP";
             techniqueStable?: boolean | null;
             /** Format: date-time */
             completedAt?: string | null;

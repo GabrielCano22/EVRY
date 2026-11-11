@@ -1,7 +1,10 @@
 import * as SQLite from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
 import type { components } from '@evry/api-client';
-import { decodeRestTimer, type RestTimerState } from '@evry/domain';
+import {
+  decodeRestPreferences, decodeRestTimer, DEFAULT_REST_PREFERENCES,
+  type RestPreferences, type RestTimerState,
+} from '@evry/domain';
 import type { LocalWorkout } from '../training/workout-domain';
 import { decodeStoredWorkout, workoutSnapshotsEqual, type StoredWorkoutRow } from './stored-workout';
 import { aggregateSyncState, type SyncQueueState } from '../sync/queue-policy';
@@ -13,7 +16,7 @@ export interface DatabaseOwner {
   readonly userId: string;
   readonly serverUrl: string;
 }
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 5;
 
 export interface PendingSyncRow {
   id: number;
@@ -92,12 +95,15 @@ export function getDatabase(owner: DatabaseOwner): Promise<SQLite.SQLiteDatabase
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
   const version = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  if ((version?.user_version ?? 0) >= DATABASE_VERSION) return;
-  if ((version?.user_version ?? 0) >= 2) {
-    await migrateRestTimers(database);
-    return;
-  }
+  const current = version?.user_version ?? 0;
+  if (current >= DATABASE_VERSION) return;
+  if (current < 2) await migrateBaseSchema(database);
+  if (current < 3) await migrateRestTimers(database);
+  if (current < 4) await migrateRestPreferences(database);
+  await migrateUiPreferences(database);
+}
 
+async function migrateBaseSchema(database: SQLite.SQLiteDatabase): Promise<void> {
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS exercise_cache (
       id TEXT PRIMARY KEY NOT NULL,
@@ -179,7 +185,6 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     }
     await database.execAsync('PRAGMA user_version = 2;');
   });
-  await migrateRestTimers(database);
 }
 
 async function migrateRestTimers(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -192,6 +197,70 @@ async function migrateRestTimers(database: SQLite.SQLiteDatabase): Promise<void>
       );
       PRAGMA user_version = 3;
     `);
+  });
+}
+
+async function migrateRestPreferences(database: SQLite.SQLiteDatabase): Promise<void> {
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS rest_preferences (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        payload TEXT NOT NULL
+      );
+      PRAGMA user_version = 4;
+    `);
+  });
+}
+
+async function migrateUiPreferences(database: SQLite.SQLiteDatabase): Promise<void> {
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS ui_preferences (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
+      PRAGMA user_version = 5;
+    `);
+  });
+}
+
+/** Small non-training UI choices that must survive a restart, per account. */
+export async function loadUiPreference(owner: DatabaseOwner, key: string): Promise<string | null> {
+  const database = await getDatabase(owner);
+  const row = await database.getFirstAsync<{ value: string }>('SELECT value FROM ui_preferences WHERE key = ?', key);
+  return row?.value ?? null;
+}
+
+export async function saveUiPreference(owner: DatabaseOwner, key: string, value: string): Promise<void> {
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => {
+    await database.runAsync(
+      'INSERT INTO ui_preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      key, value,
+    );
+  });
+}
+
+export async function loadRestPreferences(owner: DatabaseOwner): Promise<RestPreferences> {
+  const database = await getDatabase(owner);
+  const row = await database.getFirstAsync<{ payload: string }>('SELECT payload FROM rest_preferences WHERE id = 1');
+  if (!row) return DEFAULT_REST_PREFERENCES;
+  try {
+    return decodeRestPreferences(JSON.parse(row.payload));
+  } catch {
+    // A preference is not training data: fall back to design defaults instead of
+    // blocking the session on a damaged row.
+    return DEFAULT_REST_PREFERENCES;
+  }
+}
+
+export async function saveRestPreferences(owner: DatabaseOwner, preferences: RestPreferences): Promise<void> {
+  const database = await getDatabase(owner);
+  await writeTransaction(database, async () => {
+    await database.runAsync(
+      'INSERT INTO rest_preferences (id, payload) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload',
+      JSON.stringify(preferences),
+    );
   });
 }
 
@@ -838,6 +907,53 @@ export async function cachedExerciseGroups(owner: DatabaseOwner, exerciseIds: re
         if (record.id === row.id && typeof record.muscleGroup === 'string' && validGroups.has(record.muscleGroup as MuscleGroup)) {
           result.push({ id: row.id, muscleGroup: record.muscleGroup as MuscleGroup });
         }
+      } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+    }
+  }
+  return result;
+}
+
+export interface CachedExerciseSummary {
+  id: string;
+  name: string;
+  muscleGroup: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  imagePath: string | null;
+}
+
+/**
+ * Names and media for the exercises of the active session. The session payload
+ * only stores exercise ids, and the catalog page may not include them when the
+ * screen opens offline, so this reads the owner-scoped cache.
+ */
+export async function cachedExerciseSummaries(
+  owner: DatabaseOwner,
+  exerciseIds: readonly string[],
+): Promise<CachedExerciseSummary[]> {
+  const ids = [...new Set(exerciseIds)];
+  if (!ids.length) return [];
+  const database = await getDatabase(owner);
+  const result: CachedExerciseSummary[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const rows = await database.getAllAsync<{ id: string; payload: string }>(
+      `SELECT id, payload FROM exercise_cache WHERE id IN (${batch.map(() => '?').join(',')})`, ...batch,
+    );
+    for (const row of rows) {
+      try {
+        const value: unknown = JSON.parse(row.payload);
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+        const record = value as Record<string, unknown>;
+        if (record.id !== row.id || typeof record.name !== 'string' || record.name.trim() === '') continue;
+        result.push({
+          id: row.id,
+          name: record.name,
+          muscleGroup: typeof record.muscleGroup === 'string' ? record.muscleGroup : null,
+          category: typeof record.category === 'string' ? record.category : null,
+          imageUrl: typeof record.imageUrl === 'string' ? record.imageUrl : null,
+          imagePath: typeof record.imagePath === 'string' ? record.imagePath : null,
+        });
       } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
     }
   }

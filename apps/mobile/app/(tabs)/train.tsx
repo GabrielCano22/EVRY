@@ -1,67 +1,176 @@
 import * as Haptics from 'expo-haptics';
-import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  SET_TYPE_LABELS, isSecondarySetType, restSecondsForExercise, restSecondsForSetType,
+  setTypeOf, type SetType,
+} from '@evry/domain';
 import { API_BASE_URL, isCurrentMobileSession } from '@/src/api/client';
 import { useSessionStore } from '@/src/auth/session-store';
-import { loadExercises, loadRoutines } from '@/src/catalog/catalog';
-import { CachedThumbnail } from '@/src/catalog/CachedThumbnail';
+import { loadExercises, loadRoutines, type Exercise } from '@/src/catalog/catalog';
 import { mediaUrl } from '@/src/catalog/media-url';
-import { mobileThumbnailCache } from '@/src/catalog/thumbnail-files';
 import { muscleGroupLabel } from '@/src/catalog/muscle-labels';
 import { RoutineManager } from '@/src/routines/RoutineManager';
 import { useTrainingStore } from '@/src/training/training-store';
-import { TrainingRecommendation } from '@/src/training/TrainingRecommendation';
-import { RestTimer } from '@/src/training/RestTimer';
+import { useRestPreferencesStore } from '@/src/training/rest-preferences-store';
+import { useExerciseInsights } from '@/src/training/use-exercise-insights';
+import { ExerciseCard, type ExerciseCardModel } from '@/src/training/ExerciseCard';
+import { ExercisePicker } from '@/src/training/ExercisePicker';
+import { RestTimer, type RestStartRequest } from '@/src/training/RestTimer';
+import { SetTypeSheet } from '@/src/training/SetTypeSheet';
+import { SetOptionsSheet } from '@/src/training/SetOptionsSheet';
+import { RestSecondsSheet } from '@/src/training/RestSecondsSheet';
 import { summarizeRecordedMuscles } from '@/src/training/muscle-summary';
+import { formatDuration } from '@/src/training/format-rest';
 import { BodyMuscleMap } from '@/src/progress/body-muscle-map';
-import { cachedExerciseGroups } from '@/src/db/database';
+import { cachedExerciseSummaries } from '@/src/db/database';
+import { BottomSheet } from '@/src/ui/bottom-sheet';
 import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
+import type { LocalWorkoutSet } from '@/src/training/workout-domain';
+
+type ExerciseInfo = {
+  id: string;
+  name: string;
+  muscleGroup: Exercise['muscleGroup'] | null;
+  category: string | null;
+  imageUrl: string | null;
+  imagePath: string | null;
+  targetWeightKg?: number | null;
+  targetReps?: number | null;
+};
 
 export default function TrainScreen() {
   const session = useSessionStore((state) => state.session)!;
   const sex = useSessionStore((state) => state.user?.biologicalSex);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
-  const [playingGif, setPlayingGif] = useState(false);
-  const exercisesQuery = useQuery({
-    queryKey: ['exercises', search.trim(), page],
-    queryFn: ({ signal }) => loadExercises(session, { search, page, signal }),
-  });
-  const exercises = exercisesQuery.data?.items ?? [];
-  const routinesQuery = useQuery({ queryKey: ['routines'], queryFn: ({ signal }) => loadRoutines(session, signal) });
-  function changePage(nextPage: number) {
-    setPage(nextPage);
-    setSelectedExerciseId(null);
-    setPlayingGif(false);
-  }
-  function changeSearch(value: string) {
-    setSearch(value);
-    setPage(1);
-    setSelectedExerciseId(null);
-    setPlayingGif(false);
-  }
   const workout = useTrainingStore((state) => state.activeWorkout);
-  const workoutExerciseIds = [...new Set(workout?.sets.map((set) => set.exerciseId) ?? [])].sort();
-  const cachedGroups = useQuery({
-    queryKey: ['workout-muscle-groups', session.userId, session.version, workoutExerciseIds, exercisesQuery.data?.updatedAt],
-    queryFn: () => cachedExerciseGroups(session, workoutExerciseIds),
-    enabled: Boolean(workout && workoutExerciseIds.length),
-  });
   const syncState = useTrainingStore((state) => state.syncState);
   const localSaveState = useTrainingStore((state) => state.localSaveState);
   const error = useTrainingStore((state) => state.error);
   const startWorkout = useTrainingStore((state) => state.startWorkout);
   const addSet = useTrainingStore((state) => state.addSet);
   const updateSet = useTrainingStore((state) => state.updateSet);
+  const setSetCompleted = useTrainingStore((state) => state.setSetCompleted);
+  const changeSetType = useTrainingStore((state) => state.changeSetType);
   const deleteSet = useTrainingStore((state) => state.deleteSet);
+  const renameWorkout = useTrainingStore((state) => state.renameWorkout);
   const cancelWorkout = useTrainingStore((state) => state.cancelWorkout);
   const finishWorkout = useTrainingStore((state) => state.finishWorkout);
 
+  const exercisesQuery = useQuery({
+    enabled: !workout,
+    queryKey: ['exercises', session.userId, session.version, search.trim(), page],
+    queryFn: ({ signal }) => loadExercises(session, { search, page, signal }),
+  });
+  const exercises = useMemo(() => exercisesQuery.data?.items ?? [], [exercisesQuery.data]);
+  const routinesQuery = useQuery({
+    queryKey: ['routines', session.userId, session.version],
+    queryFn: ({ signal }) => loadRoutines(session, signal),
+  });
+
+  const restPreferences = useRestPreferencesStore((state) => state.preferences);
+  const loadRestPreferences = useRestPreferencesStore((state) => state.load);
+  const setRestForExercise = useRestPreferencesStore((state) => state.setExercise);
+  const resetRestForExercise = useRestPreferencesStore((state) => state.resetExercise);
+  const adjustRestForExercise = useRestPreferencesStore((state) => state.adjustExercise);
+  const restSaving = useRestPreferencesStore((state) => state.saving);
+  const restError = useRestPreferencesStore((state) => state.error);
+  useEffect(() => { void loadRestPreferences(session); }, [session, loadRestPreferences]);
+
+  const [pickedExercises, setPickedExercises] = useState<Record<string, Exercise>>({});
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [typeSet, setTypeSet] = useState<LocalWorkoutSet | null>(null);
+  const [optionsSet, setOptionsSet] = useState<{ set: LocalWorkoutSet; ordinal: string } | null>(null);
+  const [restExerciseId, setRestExerciseId] = useState<string | null>(null);
+  const [exerciseOptionsId, setExerciseOptionsId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [restRequest, setRestRequest] = useState<RestStartRequest | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  const restSequence = useRef(0);
+
+  useEffect(() => {
+    if (!workout || workout.status !== 'ACTIVE') return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [workout]);
+
+  const routine = routinesQuery.data?.items.find((item) => item.id === workout?.routineId);
+  const setExerciseIds = [...new Set(workout?.sets.map((set) => set.exerciseId) ?? [])];
+  const routineExerciseIds = routine?.exercises.map((item) => item.exerciseId) ?? [];
+  // A routine defines the order; without one, the order is the first appearance
+  // of each exercise in the session. Every id must be listed exactly once.
+  const primaryExerciseIds = routineExerciseIds.length > 0 ? routineExerciseIds : setExerciseIds;
+  const exerciseIds = [
+    ...primaryExerciseIds,
+    ...setExerciseIds.filter((id) => !primaryExerciseIds.includes(id)),
+    ...Object.keys(pickedExercises).filter((id) => !primaryExerciseIds.includes(id) && !setExerciseIds.includes(id)),
+  ];
+  const summariesQuery = useQuery({
+    enabled: Boolean(workout) && setExerciseIds.length > 0,
+    queryKey: ['workout-exercises', session.userId, session.version, setExerciseIds],
+    queryFn: () => cachedExerciseSummaries(session, setExerciseIds),
+  });
+  const insights = useExerciseInsights(session, workout ? exerciseIds : []);
+  const exerciseKey = exerciseIds.join('|');
+  const info = useMemo(() => {
+    const map = new Map<string, ExerciseInfo>();
+    for (const summary of summariesQuery.data ?? []) {
+      map.set(summary.id, {
+        id: summary.id,
+        name: summary.name,
+        muscleGroup: summary.muscleGroup as Exercise['muscleGroup'] | null,
+        category: summary.category,
+        imageUrl: summary.imageUrl,
+        imagePath: summary.imagePath,
+      });
+    }
+    for (const item of routine?.exercises ?? []) {
+      map.set(item.exerciseId, {
+        ...(map.get(item.exerciseId) ?? {}),
+        id: item.exerciseId,
+        name: item.exercise.name,
+        muscleGroup: item.exercise.muscleGroup,
+        category: item.exercise.category,
+        imageUrl: null,
+        imagePath: item.exercise.imagePath,
+        targetWeightKg: item.targetWeightKg,
+        targetReps: item.targetReps,
+      });
+    }
+    for (const exercise of exercises) {
+      map.set(exercise.id, {
+        id: exercise.id,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        category: exercise.category,
+        imageUrl: exercise.imageUrl,
+        imagePath: exercise.imagePath,
+      });
+    }
+    for (const exercise of Object.values(pickedExercises)) {
+      map.set(exercise.id, {
+        id: exercise.id,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        category: exercise.category,
+        imageUrl: exercise.imageUrl,
+        imagePath: exercise.imagePath,
+      });
+    }
+    for (const id of exerciseKey ? exerciseKey.split('|') : []) {
+      if (!map.has(id)) map.set(id, { id, name: 'Ejercicio sin catálogo', muscleGroup: null, category: null, imageUrl: null, imagePath: null });
+    }
+    return map;
+  }, [summariesQuery.data, routine, exercises, pickedExercises, exerciseKey]);
+
   if (!workout) {
+    function changePage(nextPage: number) { setPage(nextPage); }
+    function changeSearch(value: string) { setSearch(value); setPage(1); }
     return (
       <Screen>
         <Text style={textStyles.title}>Entrenar</Text>
@@ -79,338 +188,401 @@ export default function TrainScreen() {
           <Text style={textStyles.muted}>{routinesQuery.data.source === 'cache' ? 'No hay rutinas en la copia local.' : 'No tienes rutinas guardadas.'}</Text>
         ) : null}
         {routinesQuery.isSuccess ? <RoutineManager
-          session={session}
-          routines={routinesQuery.data.items}
-          routinesStale={routinesQuery.data.stale}
-          exercises={exercises}
-          onStartRoutine={(routine) => void startWorkout(routine.name, routine.id)}
-          catalogSearch={search}
-          catalogPage={page}
+          catalogError={exercisesQuery.isError ? exercisesQuery.error : null}
           catalogHasMore={Boolean(exercisesQuery.data?.hasMore)}
           catalogLoading={exercisesQuery.isFetching}
-          catalogError={exercisesQuery.isError ? exercisesQuery.error : null}
           catalogNotice={exercisesQuery.data?.notice ?? null}
+          catalogPage={page}
+          catalogSearch={search}
           catalogSource={exercisesQuery.data?.source ?? null}
           catalogSuccess={exercisesQuery.isSuccess}
-          onSearchChange={changeSearch}
+          exercises={exercises}
           onChangePage={changePage}
           onRetryCatalog={() => void exercisesQuery.refetch()}
+          onSearchChange={changeSearch}
+          onStartRoutine={(value) => void startWorkout(value.name, value.id)}
+          routines={routinesQuery.data.items}
+          routinesStale={routinesQuery.data.stale}
+          session={session}
         /> : null}
       </Screen>
     );
   }
 
-  const routine = routinesQuery.data?.items.find((item) => item.id === workout.routineId);
-  const routineExercises = routine?.exercises.map((item) => ({ ...item.exercise, imageUrl: null, gifUrl: null })) ?? [];
-  const muscleSummary = summarizeRecordedMuscles(workout.sets, [...(cachedGroups.data ?? []), ...routineExercises, ...exercises]);
-  const selectedExercise = exercises.find((exercise) => exercise.id === selectedExerciseId)
-    ?? routineExercises.find((exercise) => exercise.id === selectedExerciseId)
-    ?? exercises[0];
-  const previewUrl = selectedExercise
-    ? mediaUrl(playingGif ? (selectedExercise.gifUrl ?? selectedExercise.gifPath) : (selectedExercise.imageUrl ?? selectedExercise.imagePath), API_BASE_URL)
-    : null;
+  const active = workout.status === 'ACTIVE';
+  const elapsedMs = Math.max(0, (workout.endedAt ? new Date(workout.endedAt).getTime() : now) - new Date(workout.startedAt).getTime());
+  const completedSets = workout.sets.filter((set) => set.completedAt !== null
+    && setTypeOf(set) !== 'WARMUP' && ((set.reps ?? 0) > 0 || (set.durationS ?? 0) > 0));
+  const volumeKg = completedSets.reduce((total, set) => total + (set.weightKg ?? 0) * (set.reps ?? 0), 0);
+  const pendingSets = workout.sets.filter((set) => set.completedAt === null
+    && ((set.reps ?? 0) > 0 || (set.durationS ?? 0) > 0)).length;
+  const muscleSummary = summarizeRecordedMuscles(
+    workout.sets,
+    [...info.values()].filter((item): item is ExerciseInfo & { muscleGroup: Exercise['muscleGroup'] } => item.muscleGroup !== null)
+      .map((item) => ({ id: item.id, muscleGroup: item.muscleGroup })),
+  );
+  const version = (set: LocalWorkoutSet) => {
+    const sets = workout.sets.filter((item) => item.exerciseId === set.exerciseId).sort((a, b) => a.order - b.order);
+    let working = 0;
+    for (const item of sets) {
+      if (setTypeOf(item) !== 'WARMUP') working += 1;
+      if (item.clientId === set.clientId) return setTypeOf(item) === 'WARMUP' ? 'W' : String(working);
+    }
+    return '1';
+  };
+
+  function baseRest(exerciseId: string): number {
+    return restSecondsForExercise(restPreferences, exerciseId);
+  }
+
+  async function toggleSet(set: LocalWorkoutSet) {
+    const completing = set.completedAt === null;
+    if (completing) void Haptics.selectionAsync().catch(() => undefined);
+    await setSetCompleted(set.clientId, completing);
+    if (!completing) return;
+    const type = setTypeOf(set);
+    const seconds = restSecondsForSetType(baseRest(set.exerciseId), type);
+    restSequence.current += 1;
+    setRestRequest({
+      key: `${set.clientId}:${restSequence.current}`,
+      seconds,
+      label: isSecondarySetType(type) ? `${SET_TYPE_LABELS[type]} · descanso corto` : null,
+      exerciseId: set.exerciseId,
+    });
+  }
+
+  async function addExerciseSet(exerciseId: string) {
+    const targets = info.get(exerciseId);
+    await addSet(exerciseId, {
+      weightKg: targets?.targetWeightKg ?? undefined,
+      reps: targets?.targetReps ?? undefined,
+    });
+    void Haptics.selectionAsync().catch(() => undefined);
+  }
+
+  async function addFromPicker(exercise: Exercise) {
+    setPickedExercises((current) => ({ ...current, [exercise.id]: exercise }));
+    setPickerVisible(false);
+    await addSet(exercise.id);
+    void Haptics.selectionAsync().catch(() => undefined);
+  }
+
+  async function removeExercise(exerciseId: string) {
+    const sets = workout!.sets.filter((set) => set.exerciseId === exerciseId);
+    for (const set of sets) await deleteSet(set.clientId);
+    setExerciseOptionsId(null);
+  }
+
+  function confirmFinish() {
+    if (!active) return;
+    if (completedSets.length === 0) {
+      Alert.alert('Marca una serie', 'Necesitas al menos una serie completada con repeticiones o duración para terminar la sesión.');
+      return;
+    }
+    const finish = async () => {
+      try {
+        await finishWorkout();
+        if (isCurrentMobileSession(session)) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        }
+      } catch {
+        // The training store keeps the session and publishes the storage error.
+      }
+    };
+    if (pendingSets > 0) {
+      Alert.alert(
+        'Terminar sesión',
+        `Hay ${pendingSets} ${pendingSets === 1 ? 'serie sin completar' : 'series sin completar'}. ¿Terminar de todos modos?`,
+        [{ text: 'Seguir entrenando', style: 'cancel' }, { text: 'Terminar', style: 'destructive', onPress: () => void finish() }],
+      );
+      return;
+    }
+    void finish();
+  }
+
+  function confirmCancel() {
+    Alert.alert(
+      'Cancelar sesión',
+      'La sesión se conservará como cancelada y se sincronizará cuando haya conexión.',
+      [
+        { text: 'Seguir entrenando', style: 'cancel' },
+        {
+          text: 'Cancelar sesión',
+          style: 'destructive',
+          onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+            void cancelWorkout().catch(() => undefined);
+          },
+        },
+      ],
+    );
+  }
+
   return (
-    <Screen>
-      <Text style={textStyles.title}>{workout.name}</Text>
-      {workout.status === 'COMPLETED' ? (
-        <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Finalizando sesión…</Text>
-      ) : <SyncStatus state={syncState} localSaveState={localSaveState} />}
-      {workout.sets.length > 0 ? (
-        <View style={styles.exerciseCard}>
-          <Text style={textStyles.heading}>Trabajo muscular</Text>
-          <Text style={textStyles.muted}>Estimación según las series útiles y el grupo principal de cada ejercicio.</Text>
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <Pressable
+          accessibilityLabel="Cambiar nombre de la sesión"
+          accessibilityRole="button"
+          disabled={!active}
+          onPress={() => { setNameDraft(workout.name); setRenaming(true); }}
+          style={styles.headerIdentity}
+        >
+          <Text numberOfLines={1} style={styles.headerTitle}>{workout.name}</Text>
+          <Text style={styles.headerMeta}>{formatDuration(elapsedMs)}{workout.status === 'COMPLETED' ? ' · finalizando…' : ''}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Terminar"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !active }}
+          disabled={!active}
+          onPress={confirmFinish}
+          style={[styles.finish, !active && styles.disabled]}
+        >
+          <Text style={styles.finishText}>{workout.status === 'COMPLETED' ? 'Finalizando…' : 'Terminar'}</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.metrics}>
+          <Metric label="Duración" value={formatDuration(elapsedMs)} />
+          <Metric label="Volumen" value={`${volumeKg.toLocaleString('es-CO', { maximumFractionDigits: 1 })} kg`} />
+          <Metric label="Series" value={String(completedSets.length)} />
+        </View>
+
+        {active ? <SyncStatus localSaveState={localSaveState} state={syncState} /> : null}
+
+        {muscleSummary.groups.length > 0 || muscleSummary.unclassifiedSets > 0 ? <View style={styles.muscleCard}>
+          <View style={styles.muscleHeader}>
+            <Text style={textStyles.heading}>Trabajo muscular</Text>
+            <Pressable accessibilityLabel="Ver mapa muscular de la sesión" accessibilityRole="button" onPress={() => setShowMap((value) => !value)} style={styles.mapToggle}>
+              <Text style={styles.link}>{showMap ? 'Ocultar mapa' : 'Ver mapa'}</Text>
+            </Pressable>
+          </View>
+          <Text style={textStyles.muted}>Estimación en vivo por series no-calentamiento registradas.</Text>
           {muscleSummary.groups.map((item) => (
-            <Text key={item.muscleGroup} style={textStyles.body}>{muscleGroupLabel(item.muscleGroup)} · {item.workingSets} {item.workingSets === 1 ? 'serie' : 'series'}</Text>
+            <Text key={item.muscleGroup} style={textStyles.body}>
+              {muscleGroupLabel(item.muscleGroup)} · {item.workingSets} {item.workingSets === 1 ? 'serie' : 'series'}
+            </Text>
           ))}
-          {muscleSummary.unclassifiedSets > 0 ? <Text style={textStyles.muted}>Algunas series no se muestran porque su ejercicio no está disponible en el catálogo local.</Text> : null}
-          {muscleSummary.groups.length === 0 && muscleSummary.unclassifiedSets === 0 ? <Text style={textStyles.muted}>Aún no hay series útiles registradas.</Text> : null}
-        </View>
-      ) : null}
-      {muscleSummary.groups.length > 0 ? <><Text style={textStyles.heading}>Mapa de esta sesión</Text><BodyMuscleMap distribution={muscleSummary.groups} sex={sex} /></> : null}
-      {routine && routine.exercises.length > 0 ? (
-        <View style={styles.exerciseCard}>
-          <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
-          <Text style={textStyles.muted}>Selecciona un ejercicio para registrar tus series.</Text>
-          {routine.exercises.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Seleccionar ${item.exercise.name} de la rutina`}
-              onPress={() => { setSelectedExerciseId(item.exercise.id); setPlayingGif(false); }}
-              style={[styles.exerciseOption, selectedExercise?.id === item.exercise.id && styles.exerciseOptionSelected]}
-            >
-              <Text style={[textStyles.body, { flex: 1 }]}>{item.exercise.name}</Text>
-              <Text style={textStyles.muted}>{item.targetSets} series</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-      {exercisesQuery.isFetching ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
-      {exercisesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{exercisesQuery.error.message}</Text> : null}
-      {exercisesQuery.data?.notice ? <Text style={textStyles.muted}>{exercisesQuery.data.notice}</Text> : null}
-      {exercisesQuery.isError || exercisesQuery.data?.stale ? (
-        <PrimaryButton disabled={exercisesQuery.isFetching} onPress={() => void exercisesQuery.refetch()}>Reintentar catálogo</PrimaryButton>
-      ) : null}
-      <TextInput
-        accessibilityLabel="Buscar ejercicio"
-        autoCapitalize="none"
-        maxLength={80}
-        onChangeText={changeSearch}
-        placeholder="Buscar ejercicio"
-        placeholderTextColor={theme.colors.textMuted}
-        style={styles.searchInput}
-        value={search}
-      />
-      {exercisesQuery.isSuccess && exercises.length === 0 ? (
-        <Text style={textStyles.muted}>{exercisesQuery.data.source === 'cache' ? 'No hay coincidencias en la copia local. Solo incluye ejercicios consultados anteriormente.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text>
-      ) : null}
-      <View accessibilityRole="list" style={styles.exerciseList}>
-        {exercises.map((exercise) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Ver ${exercise.name}`}
-            key={exercise.id}
-            onPress={() => {
-              setSelectedExerciseId(exercise.id);
-              setPlayingGif(false);
-            }}
-            style={[
-              styles.exerciseOption,
-              selectedExercise?.id === exercise.id && styles.exerciseOptionSelected,
-            ]}
-          >
-            {exercise.imageUrl || exercise.imagePath ? <CachedThumbnail
-              cache={mobileThumbnailCache}
-              label={`Miniatura de ${exercise.name}`}
-              owner={session}
-              url={mediaUrl(exercise.imageUrl ?? exercise.imagePath, API_BASE_URL)!}
-              style={styles.thumbnail}
-            /> : null}
-            <Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text accessibilityLiveRegion="polite" style={textStyles.muted}>
-        Página {page}{exercisesQuery.data ? ` · ${exercisesQuery.data.total} coincidencias${exercisesQuery.data.source === 'cache' ? ' en la copia local' : ''}` : ''}
-      </Text>
-      <View style={styles.row}>
-        <PrimaryButton accessibilityLabel="Página anterior" disabled={page === 1 || exercisesQuery.isFetching} onPress={() => changePage(page - 1)}>Anterior</PrimaryButton>
-        <PrimaryButton accessibilityLabel="Página siguiente" disabled={!exercisesQuery.data?.hasMore || page >= 10000 || exercisesQuery.isFetching} onPress={() => changePage(page + 1)}>Siguiente</PrimaryButton>
-      </View>
-      {selectedExercise ? (
-        <View style={styles.exerciseCard}>
-          <Text style={textStyles.heading}>{selectedExercise.name}</Text>
-          {previewUrl ? playingGif
-            ? <Image accessibilityLabel={`Demostración de ${selectedExercise.name}`} cachePolicy="none" contentFit="contain" source={{ uri: previewUrl }} style={styles.exerciseMedia} />
-            : <CachedThumbnail cache={mobileThumbnailCache} label={`Demostración de ${selectedExercise.name}`} owner={session} url={previewUrl} style={styles.exerciseMedia} />
-          : null}
-          <Text style={textStyles.muted}>El catálogo muestra miniaturas; los GIF se reproducen solo bajo demanda.</Text>
-          {selectedExercise.attribution ? <Text style={textStyles.muted}>{selectedExercise.attribution}</Text> : null}
-          {workout.status === 'ACTIVE' ? <TrainingRecommendation
-            key={JSON.stringify([session.serverUrl, session.userId, session.version, workout.clientId, selectedExercise.id])}
-            session={session} exerciseId={selectedExercise.id} workoutId={workout.clientId}
-          /> : null}
-          {selectedExercise.gifUrl || selectedExercise.gifPath ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setPlayingGif((value) => !value)}
-            >
-              <Text style={textStyles.body}>{playingGif ? 'Detener demostración' : 'Reproducir GIF'}</Text>
-            </Pressable>
-          ) : null}
-          {workout.status === 'ACTIVE' ? <PrimaryButton
-            onPress={() => {
-              void Haptics.selectionAsync().catch(() => undefined);
-              void addSet(selectedExercise.id);
-            }}
-          >
-            Agregar serie
-          </PrimaryButton> : null}
-        </View>
-      ) : null}
-      {workout.sets.map((set, index) => (
-        <View key={set.clientId} style={styles.setCard}>
-          <Text style={textStyles.heading}>Serie {index + 1}</Text>
-          <View style={styles.row}>
-            <NumberField
-              label="Peso kg"
-              value={set.weightKg}
-              maximum={2000}
-              editable={workout.status === 'ACTIVE'}
-              onChange={(weightKg) => void updateSet(set.clientId, { weightKg })}
-            />
-            <NumberField
-              label="Repeticiones"
-              value={set.reps}
-              maximum={1000}
-              integer
-              editable={workout.status === 'ACTIVE'}
-              onChange={(reps) => void updateSet(set.clientId, { reps })}
-            />
-          </View>
-          <View style={styles.row}>
-            <NumberField label="Duración segundos" value={set.durationS} maximum={86400} integer
-              editable={workout.status === 'ACTIVE'} onChange={durationS => void updateSet(set.clientId, { durationS })} />
-            <NumberField label="RPE" value={set.rpe} minimum={1} maximum={10} integer
-              editable={workout.status === 'ACTIVE'} onChange={rpe => void updateSet(set.clientId, { rpe })} />
-          </View>
-          <Pressable accessibilityRole="checkbox" accessibilityLabel="Serie de calentamiento"
-            style={{ minHeight: 44, justifyContent: 'center' }}
-            accessibilityState={{ checked: set.isWarmup, disabled: workout.status !== 'ACTIVE' }}
-            disabled={workout.status !== 'ACTIVE'} onPress={() => void updateSet(set.clientId, { isWarmup: !set.isWarmup })}>
-            <Text style={textStyles.body}>{set.isWarmup ? '✓ ' : ''}Serie de calentamiento</Text>
-          </Pressable>
-          <Text style={textStyles.muted}>Técnica</Text>
-          <View accessibilityRole="radiogroup" accessibilityLabel="Técnica" style={{ gap: 8 }}>
-            {([{ value: null, label: 'Técnica sin registrar' }, { value: true, label: 'Técnica estable' },
-              { value: false, label: 'Técnica inestable' }] as const).map(option => (
-              <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.label}
-                style={{ minHeight: 44, justifyContent: 'center' }}
-                accessibilityState={{ checked: set.techniqueStable === option.value, disabled: workout.status !== 'ACTIVE' }}
-                disabled={workout.status !== 'ACTIVE'}
-                onPress={() => void updateSet(set.clientId, { techniqueStable: option.value })}>
-                <Text style={textStyles.body}>{set.techniqueStable === option.value ? '✓ ' : ''}{option.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {workout.status === 'ACTIVE' ? <Pressable
-            accessibilityRole="button"
-            onPress={() => void deleteSet(set.clientId)}
-          >
-            <Text style={textStyles.error}>Eliminar serie</Text>
-          </Pressable> : null}
-        </View>
-      ))}
-      {workout.status === 'ACTIVE' && session ? <RestTimer
+          {muscleSummary.unclassifiedSets > 0 ? <Text style={textStyles.muted}>Algunas series no se clasifican porque su ejercicio no está en la copia local del catálogo.</Text> : null}
+          {showMap && muscleSummary.groups.length > 0 ? <BodyMuscleMap distribution={muscleSummary.groups} sex={sex} /> : null}
+        </View> : null}
+
+        {exerciseIds.map((exerciseId) => {
+          const data = info.get(exerciseId)!;
+          const sets = workout.sets.filter((set) => set.exerciseId === exerciseId).sort((a, b) => a.order - b.order);
+          const rest = baseRest(exerciseId);
+          const insight = insights[exerciseId];
+          const model: ExerciseCardModel = {
+            id: exerciseId,
+            name: data.name,
+            muscleGroup: data.muscleGroup ?? null,
+            timed: data.category?.toUpperCase() === 'CARDIO' || data.muscleGroup === 'CARDIO',
+            thumbnailUrl: mediaUrl(data.imageUrl ?? data.imagePath, API_BASE_URL),
+            restSeconds: rest,
+            shortRestSeconds: restSecondsForSetType(rest, 'WARMUP'),
+            target: insight?.target ?? (data.targetWeightKg !== null || data.targetReps !== null ? {
+              weightKg: data.targetWeightKg ?? null, reps: data.targetReps ?? null, action: 'HOLD',
+            } : null),
+            targetSavedAt: insight?.targetSavedAt ?? null,
+            previous: insight?.previous ?? [],
+            sets,
+          };
+          return <ExerciseCard
+            compact={false}
+            editable={active}
+            exercise={model}
+            key={exerciseId}
+            onAddSet={() => void addExerciseSet(exerciseId)}
+            onChangeSet={(set, changes) => void updateSet(set.clientId, changes)}
+            onOpenExercise={() => setExerciseOptionsId(exerciseId)}
+            onOpenRest={() => setRestExerciseId(exerciseId)}
+            onOptionsSet={(set) => setOptionsSet({ set, ordinal: version(set) })}
+            onToggleSet={(set) => void toggleSet(set)}
+            onTypeSet={(set) => setTypeSet(set)}
+            owner={session}
+          />;
+        })}
+
+        {active ? <Pressable accessibilityLabel="Agregar ejercicio" accessibilityRole="button" onPress={() => setPickerVisible(true)} style={styles.addExercise}>
+          <Text style={styles.addExerciseText}>+ Agregar ejercicio</Text>
+        </Pressable> : null}
+
+        {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
+
+        {active ? <Pressable accessibilityLabel="Cancelar sesión" accessibilityRole="button" onPress={confirmCancel} style={styles.cancel}>
+          <Text style={textStyles.error}>Cancelar sesión</Text>
+        </Pressable> : null}
+        <View style={{ height: 96 }} />
+      </ScrollView>
+
+      {active ? <RestTimer
         key={JSON.stringify([session.serverUrl, session.userId, session.version, workout.clientId])}
-        session={session} workoutId={workout.clientId}
+        onAdjustExercise={(exerciseId, delta) => { void adjustRestForExercise(exerciseId, delta).catch(() => undefined); }}
+        session={session}
+        startRequest={restRequest}
+        workoutId={workout.clientId}
       /> : null}
-      {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
-      <Pressable
-        accessibilityLabel="Cancelar sesión"
-        accessibilityRole="button"
-        disabled={workout.status !== 'ACTIVE'}
-        onPress={() => Alert.alert(
-          'Cancelar sesión',
-          'La sesión se conservará como cancelada y se sincronizará cuando haya conexión.',
-          [
-            { text: 'Seguir entrenando', style: 'cancel' },
-            {
-              text: 'Cancelar sesión',
-              style: 'destructive',
-              onPress: () => {
-                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-                void cancelWorkout().catch(() => undefined);
-              },
-            },
-          ],
-        )}
-        style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
-      >
-        <Text style={textStyles.error}>{workout.status === 'CANCELLED' ? 'Cancelando sesión…' : 'Cancelar sesión'}</Text>
-      </Pressable>
-      <PrimaryButton
-        disabled={workout.status !== 'ACTIVE' || workout.sets.length === 0}
-        onPress={async () => {
-          if (useTrainingStore.getState().activeWorkout !== workout || workout.status !== 'ACTIVE') return;
-          try {
-            await finishWorkout();
-            if (isCurrentMobileSession(session)) {
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-            }
-          } catch {
-            // Storage failures are displayed by the training store; haptics are optional.
-          }
+
+      <SetTypeSheet
+        current={typeSet ? setTypeOf(typeSet) : 'NORMAL'}
+        onClose={() => setTypeSet(null)}
+        onSelect={(type: SetType) => {
+          const target = typeSet;
+          setTypeSet(null);
+          if (target) void changeSetType(target.clientId, type).catch(() => undefined);
         }}
+        visible={typeSet !== null}
+      />
+
+      <SetOptionsSheet
+        onClose={() => setOptionsSet(null)}
+        onDelete={() => {
+          const target = optionsSet;
+          setOptionsSet(null);
+          if (target) void deleteSet(target.set.clientId).catch(() => undefined);
+        }}
+        onUpdate={(changes) => {
+          const target = optionsSet;
+          if (!target) return;
+          setOptionsSet({ ...target, set: { ...target.set, ...changes } });
+          void updateSet(target.set.clientId, changes).catch(() => undefined);
+        }}
+        ordinal={optionsSet?.ordinal ?? '1'}
+        set={optionsSet?.set ?? null}
+        visible={optionsSet !== null}
+      />
+
+      <RestSecondsSheet
+        // Remount per exercise so the selector starts from that exercise's own
+        // value instead of whatever the previous sheet left in its local draft.
+        key={restExerciseId ?? 'closed'}
+        defaultSeconds={restPreferences.defaultRestSeconds}
+        error={restError}
+        hasOverride={Boolean(restExerciseId && restPreferences.restSecondsByExerciseId[restExerciseId] !== undefined)}
+        onClose={() => setRestExerciseId(null)}
+        onSave={(seconds) => {
+          const id = restExerciseId;
+          setRestExerciseId(null);
+          if (!id) return;
+          void (seconds === null ? resetRestForExercise(id) : setRestForExercise(id, seconds)).catch(() => undefined);
+        }}
+        saving={restSaving}
+        seconds={restExerciseId ? baseRest(restExerciseId) : restPreferences.defaultRestSeconds}
+        title={restExerciseId ? `Descanso · ${info.get(restExerciseId)?.name ?? 'ejercicio'}` : 'Descanso'}
+        visible={restExerciseId !== null}
+      />
+
+      <BottomSheet onClose={() => setExerciseOptionsId(null)} title={info.get(exerciseOptionsId ?? '')?.name ?? 'Ejercicio'} visible={exerciseOptionsId !== null}>
+        <PrimaryButton onPress={() => { const id = exerciseOptionsId; setExerciseOptionsId(null); if (id) void addExerciseSet(id); }}>
+          Agregar serie
+        </PrimaryButton>
+        <PrimaryButton
+          disabled={!workout.sets.some((set) => set.exerciseId === exerciseOptionsId)}
+          onPress={() => {
+            const id = exerciseOptionsId;
+            if (!id) return;
+            Alert.alert('Eliminar ejercicio', 'Se quitarán sus series de esta sesión. Las series ya sincronizadas se eliminarán al reconectar.', [
+              { text: 'Conservar', style: 'cancel' },
+              { text: 'Eliminar', style: 'destructive', onPress: () => void removeExercise(id) },
+            ]);
+          }}
+        >
+          Eliminar de la sesión
+        </PrimaryButton>
+      </BottomSheet>
+
+      <ExercisePicker
+        onClose={() => setPickerVisible(false)}
+        onPick={(exercise) => void addFromPicker(exercise)}
+        session={session}
+        visible={pickerVisible}
+      />
+
+      <BottomSheet
+        footer={<PrimaryButton disabled={!active || nameDraft.trim().length === 0} onPress={() => {
+          const value = nameDraft;
+          setRenaming(false);
+          void renameWorkout(value).catch(() => undefined);
+        }}>Guardar nombre</PrimaryButton>}
+        onClose={() => setRenaming(false)}
+        title="Nombre de la sesión"
+        visible={renaming}
       >
-        Finalizar y sincronizar
-      </PrimaryButton>
-    </Screen>
+        <TextInput
+          accessibilityLabel="Nombre de la sesión"
+          maxLength={120}
+          onChangeText={setNameDraft}
+          placeholder="Nombre de la sesión"
+          placeholderTextColor={theme.colors.textMuted}
+          style={styles.nameInput}
+          value={nameDraft}
+        />
+      </BottomSheet>
+    </View>
   );
 }
 
-function NumberField({ label, value, editable, onChange, minimum = 0, maximum, integer = false }: {
-  label: string;
-  value: number | null;
-  editable: boolean;
-  onChange: (value: number | null) => void;
-  minimum?: number;
-  maximum: number;
-  integer?: boolean;
-}) {
-  const [draft, setDraft] = useState(String(value ?? ''));
-  const [error, setError] = useState<string | null>(null);
-  const [previousValue, setPreviousValue] = useState(value);
-  if (previousValue !== value) {
-    setPreviousValue(value);
-    setDraft(String(value ?? ''));
-    setError(null);
-  }
-
-  function change(text: string) {
-    setDraft(text);
-    const normalized = text.trim().replace(',', '.');
-    const parsed = normalized === '' ? null : Number(normalized);
-    if (parsed !== null && (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)
-      || !Number.isFinite(parsed) || parsed < minimum || parsed > maximum
-      || (integer && !Number.isInteger(parsed)))) {
-      setError(`${label}: usa ${integer ? 'un entero' : 'un número'} entre ${minimum} y ${maximum}, o deja el campo vacío.`);
-      return;
-    }
-    setError(null);
-    onChange(parsed);
-  }
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flex: 1, gap: 6 }}>
-      <Text style={textStyles.muted}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        editable={editable}
-        inputMode={integer ? 'numeric' : 'decimal'}
-        maxLength={12}
-        accessibilityHint={error ?? undefined}
-        onChangeText={change}
-        style={styles.input}
-        value={draft}
-      />
-      {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text numberOfLines={1} style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  exerciseCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 12, padding: 18 },
-  exerciseList: { gap: 8 },
-  exerciseMedia: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 220, width: '100%' },
-  exerciseOption: { backgroundColor: theme.colors.surface, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  thumbnail: { width: 48, height: 48, borderRadius: 6, backgroundColor: theme.colors.surfaceHigh },
-  exerciseOptionSelected: { borderColor: theme.colors.primary, borderWidth: 2 },
-  searchInput: {
+  screen: { backgroundColor: theme.colors.background, flex: 1 },
+  header: {
+    alignItems: 'center',
+    borderBottomColor: theme.colors.surfaceHigh,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  headerIdentity: { flex: 1, justifyContent: 'center', minHeight: 48 },
+  headerTitle: { color: theme.colors.text, fontSize: 20, fontWeight: '800' },
+  headerMeta: { color: theme.colors.textMuted, fontSize: 13, fontVariant: ['tabular-nums'] },
+  finish: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 10,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 92,
+    paddingHorizontal: 14,
+  },
+  finishText: { color: theme.colors.onPrimary, fontSize: 15, fontWeight: '800' },
+  content: { gap: theme.spacing.md, padding: theme.spacing.md },
+  metrics: { flexDirection: 'row', gap: 8 },
+  metric: { backgroundColor: theme.colors.surface, borderRadius: 10, flex: 1, gap: 2, padding: 10 },
+  metricLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  metricValue: { color: theme.colors.text, fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '800' },
+  muscleCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 6, padding: 12 },
+  muscleHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
+  mapToggle: { justifyContent: 'center', minHeight: 44 },
+  link: { color: theme.colors.primary, fontSize: 14, fontWeight: '700' },
+  addExercise: {
+    alignItems: 'center',
+    borderColor: theme.colors.primary,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  addExerciseText: { color: theme.colors.primary, fontSize: 16, fontWeight: '700' },
+  cancel: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  disabled: { opacity: 0.45 },
+  nameInput: {
     backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: 8,
+    borderRadius: 10,
     color: theme.colors.text,
     fontSize: 16,
     minHeight: 48,
     paddingHorizontal: 12,
   },
-  setCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 12, padding: 18 },
-  row: { flexDirection: 'row', gap: 12 },
-  input: {
-    backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: 8,
-    color: theme.colors.text,
-    fontSize: 18,
-    minHeight: 48,
-    paddingHorizontal: 12,
-  },
-  cancelButton: {
-    alignItems: 'center',
-    borderColor: theme.colors.error,
-    borderRadius: 8,
-    borderWidth: 1,
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  cancelButtonPressed: { opacity: 0.75 },
 });

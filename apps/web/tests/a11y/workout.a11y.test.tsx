@@ -14,6 +14,7 @@ const set: WorkoutSet = {
   durationS: null,
   rpe: 7,
   isWarmup: false,
+  setType: 'NORMAL',
   completedAt: '2026-09-22T12:00:00.000Z',
   clientMutationId: 'mutation-a',
   clientId: null,

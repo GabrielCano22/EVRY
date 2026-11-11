@@ -129,10 +129,11 @@ it('reopens, edits and completes a persisted workout offline in a fresh process'
   await training.getState().initialize(api.captureMobileSession());
   expect(training.getState().activeWorkout).toMatchObject({ name: 'Offline workout', sets: [{ weightKg: 50, reps: 8 }] });
   await training.getState().updateSet(setId, { reps: 9 });
+  await training.getState().setSetCompleted(setId, true);
   await training.getState().finishWorkout();
   expect(training.getState().activeWorkout).toBeNull();
   const rows = await db.pendingSyncRows(owner);
-  expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'COMPLETED', sets: [{ reps: 9, weightKg: 50 }] });
+  expect(JSON.parse(rows[0].payload)).toMatchObject({ status: 'COMPLETED', sets: [{ reps: 9, weightKg: 50, completedAt: expect.any(String) }] });
 });
 
 it('reopens nullable timed-set details and completes offline without fabricating repetitions', async () => {
@@ -152,6 +153,7 @@ it('reopens nullable timed-set details and completes offline without fabricating
     isWarmup: true, techniqueStable: false,
   });
   await training.getState().updateSet(setId, { rpe: null, techniqueStable: null });
+  await training.getState().setSetCompleted(setId, true);
   await training.getState().finishWorkout();
   expect(training.getState().activeWorkout).toBeNull();
   const rows = await db.pendingSyncRows(owner);

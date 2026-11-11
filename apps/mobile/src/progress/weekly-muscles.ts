@@ -45,6 +45,8 @@ export function weeklyMuscleSummary(
     add(summarizeRecordedMuscles(workout.sets, activeExercises));
   }
   const inWeek = activeSets.filter((set) => {
+    // A set only happened once it is ticked; unchecked rows stay out of the week.
+    if (set.completedAt === null) return false;
     try { const day = timestampToLocalCivil(set.completedAt); return day >= range.from && day <= range.to; }
     catch { return false; }
   });

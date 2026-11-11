@@ -11,7 +11,6 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const status = useSessionStore((state) => state.status);
-  const trackCycle = useSessionStore((state) => state.user?.trackCycle ?? false);
   const session = useSessionStore((state) => state.session);
   const ready = useTrainingStore((state) => state.ready);
   const trainingSession = useTrainingStore((state) => state.session);
@@ -65,14 +64,6 @@ export default function TabLayout() {
         options={{
           title: 'Progreso',
           tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'chart.line.uptrend.xyaxis', android: 'show_chart', web: 'show_chart' }} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="cycle"
-        options={{
-          title: 'Ciclo',
-          href: trackCycle ? '/cycle' : null,
-          tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} color={color} />,
         }}
       />
       <Tabs.Screen

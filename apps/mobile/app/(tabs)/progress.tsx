@@ -41,7 +41,7 @@ export default function ProgressScreen() {
     <Screen>
       <Text style={textStyles.title}>Progreso</Text>
       <Text style={textStyles.muted}>Métricas del periodo seleccionado contra el periodo anterior equivalente.</Text>
-      <ActivityCalendar key={`${session.userId}:${session.version}`} session={session} trackCycle={trackCycle} />
+      <ActivityCalendar key={`${session.userId}:${session.version}`} session={session} streakDays={overview?.streakDays ?? null} trackCycle={trackCycle} />
       <View accessibilityRole="tablist" style={styles.periods}>
         {periods.map((option) => (
           <Pressable

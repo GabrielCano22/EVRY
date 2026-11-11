@@ -9,14 +9,19 @@ export type CycleEntry = components['schemas']['CycleEntry'];
 export type CycleInput = components['schemas']['CycleEntryInput'];
 const flows = { NONE: 'Sin flujo', SPOTTING: 'Manchado', LIGHT: 'Ligero', MEDIUM: 'Moderado', HEAVY: 'Abundante' } as const;
 
-export function CycleEntryForm({ entry, today = todayCivil(), busy, onSave, onCancel }: {
+/** Shared with the calendar day sheet so both render the same labels. */
+export const CYCLE_FLOW_LABELS: Record<CycleEntry['flow'], string> = flows;
+
+export function CycleEntryForm({ entry, today = todayCivil(), initialDate, busy, onSave, onCancel }: {
   entry?: CycleEntry;
   today?: string;
+  /** Pre-selected date when creating from a calendar day. Never bypasses the future check. */
+  initialDate?: string;
   busy: boolean;
   onSave: (input: CycleInput) => void;
   onCancel: () => void;
 }) {
-  const [date, setDate] = useState(entry?.date.slice(0, 10) ?? today);
+  const [date, setDate] = useState(entry?.date.slice(0, 10) ?? initialDate ?? today);
   const [flow, setFlow] = useState<CycleEntry['flow']>(entry?.flow ?? 'NONE');
   const [symptoms, setSymptoms] = useState(entry?.symptoms.join('\n') ?? '');
   const [energy, setEnergy] = useState(entry?.energy?.toString() ?? '');
