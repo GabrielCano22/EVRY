@@ -148,7 +148,7 @@ Dispositivo `CPH2239` (Android 11), serie `WCOBNF798LNZJVNZ`, API local por `adb
 - «Empezar rutina» creó la sesión `Verificacion OPPO` en estado `ACTIVE`, sincronizada con el backend.
 - El editor se abrió con «Editar» y se verificó en pantalla: `Editar rutina`, `DATOS` con el nombre «Verificacion OPPO», día y notas; `CATÁLOGO` con buscador (la búsqueda «Sentadilla» filtró el catálogo) y `EJERCICIOS DE LA RUTINA` con la fila `1. Sentadilla con barra`, botones Subir/Bajar/Quitar, `Series` = 4 y `Repeticiones`, `Peso kg` y `Notas` vacíos, más «Configurar plan por serie».
 - El intento anterior de abrir el editor falló por coordenadas y falta de desplazamiento: el editor se renderiza debajo de la tarjeta de la rutina, no por un estado `stale`. Con `bounds` frescos y scroll se abrió sin forzar ninguna protección.
-- «Cancelar edición» cerró el editor sin guardar; la lista siguió mostrando «Verificacion OPPO» con 1 ejercicio y sin cambios.
+- «Cancelar edición» cerró el editor sin guardar; la lista siguió mostrando «Verificacion OPPO» con 1 ejercicio y sin cambios. La rutina conservó su `updatedAt` (2026-10-19 14:27:17) y su único ejercicio con `targetSets=4`.
 
 ## 7. Verificación en API y base de datos
 
@@ -182,7 +182,7 @@ Readiness persistido:
 1. **`uiautomator dump` en la sesión activa.** La pantalla de sesión vuelve a renderizar cada segundo por el cronómetro y `uiautomator` falla de forma intermitente con «could not get idle state». Esa pantalla se verificó con capturas y con API/BD, no con la jerarquía completa.
 2. **Editor de rutinas sin guardado.** Se comprobó que abre, que muestra los datos y los campos, y que «Cancelar edición» no altera la rutina; no se ejecutó un guardado real en esta pasada. Las 47 pruebas de `RoutineManager` siguen cubriendo la validación y el guardado.
 3. **Revisión visual.** Las capturas se guardaron, pero no se hizo una comparación píxel a píxel ni una auditoría de contraste instrumentada. La coherencia se sostiene en los tokens, la jerarquía de accesibilidad y la revisión de código.
-4. **CI.** GitHub Actions sigue bloqueado por facturación (ticket **#4986721**); no hay ejecución remota que valide `3289ced`.
+4. **CI.** GitHub Actions sigue bloqueado por facturación (ticket **#4986721**); no hay ejecución remota que valide el código de `3289ced`. Los jobs fallan en 2 s sin pasos, como confirma la ejecución `43339512043`.
 5. **`versionName`.** Se mantiene `1.0.11-local` con `versionCode 12`; Android usa `versionCode` para la actualización, así que no hay downgrade.
 
 ## 9. Artefactos
@@ -196,7 +196,7 @@ Readiness persistido:
 
 ## 10. CI bloqueado
 
-GitHub Actions no ejecuta los workflows: la cuenta presenta un bloqueo por facturación con ticket **#4986721**. Consecuencias:
+GitHub Actions dispara los workflows, pero los jobs no llegan a ejecutarse: la cuenta presenta un bloqueo por facturación con ticket **#4986721**. La ejecución `43339512043` sobre `6927e68` (13 nov 00:44 UTC) terminó en 2 s con `quality` y `contract` en `failure`, `e2e` omitido y sin pasos registrados. Es el síntoma del bloqueo, no un fallo del código. Consecuencias:
 
 - No se declara CI verde; las puertas del apartado 4 son evidencia local.
 - Cuando se resuelva el bloqueo hay que ejecutar CI sobre `3289ced` antes de promover a `prod`.
