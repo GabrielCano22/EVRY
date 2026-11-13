@@ -22,6 +22,8 @@ export function muscleGroupLabel(group: MuscleGroup): string {
   return Object.prototype.hasOwnProperty.call(labels, group) ? labels[group] : 'Grupo sin clasificar';
 }
 
+export const MUSCLE_GROUP_OPTIONS = Object.keys(labels) as MuscleGroup[];
+
 const targetLabels = new Map<string, string>([
   ['abs', 'Abdomen'], ['biceps', 'Bíceps'], ['calves', 'Pantorrillas'],
   ['delts', 'Deltoides'], ['forearms', 'Antebrazos'], ['glutes', 'Glúteos'],

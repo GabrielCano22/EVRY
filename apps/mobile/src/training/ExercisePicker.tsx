@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { MobileSession } from '../api/client';
 import { loadExercises, type Exercise } from '../catalog/catalog';
-import { muscleGroupLabel } from '../catalog/muscle-labels';
+import { ExercisePreview } from '../catalog/ExercisePreview';
+import { EQUIPMENT_OPTIONS, equipmentLabel } from '../catalog/equipment-labels';
+import { MUSCLE_GROUP_OPTIONS, muscleGroupLabel } from '../catalog/muscle-labels';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { AppIcon } from '../ui/icon';
 import { PrimaryButton, textStyles } from '../ui/components';
@@ -18,12 +20,36 @@ export function ExercisePicker({ visible, session, onPick, onClose }: {
 }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [muscleGroup, setMuscleGroup] = useState<Exercise['muscleGroup'] | null>(null);
+  const [equipment, setEquipment] = useState<Exercise['equipment'] | null>(null);
+  const [preview, setPreview] = useState<Exercise | null>(null);
   const query = useQuery({
-    queryKey: ['exercise-picker', session.userId, session.version, search.trim(), page],
+    queryKey: [
+      'exercise-picker', session.userId, session.version, search.trim(), page,
+      muscleGroup, equipment,
+    ],
     enabled: visible,
-    queryFn: ({ signal }) => loadExercises(session, { search, page, signal }),
+    queryFn: ({ signal }) => loadExercises(session, {
+      search,
+      page,
+      signal,
+      ...(muscleGroup ? { muscleGroup } : {}),
+      ...(equipment ? { equipment } : {}),
+    }),
   });
-  const changeSearch = (value: string) => { setSearch(value); setPage(1); };
+  const changeSearch = (value: string) => { setSearch(value); setPage(1); setPreview(null); };
+  const changeMuscle = (value: Exercise['muscleGroup'] | null) => {
+    setMuscleGroup((current) => (current === value ? null : value));
+    setPage(1);
+    setPreview(null);
+  };
+  const changeEquipment = (value: Exercise['equipment'] | null) => {
+    setEquipment((current) => (current === value ? null : value));
+    setPage(1);
+    setPreview(null);
+  };
+  const hasFilters = muscleGroup !== null || equipment !== null;
+
   return (
     <BottomSheet
       footer={<PrimaryButton disabled={!query.data?.hasMore || query.isFetching} onPress={() => setPage((value) => Math.min(10000, value + 1))} variant="secondary">
@@ -47,6 +73,59 @@ export function ExercisePicker({ visible, session, onPick, onClose }: {
           value={search}
         />
       </View>
+
+      <View style={styles.filterBlock}>
+        <Text style={styles.filterLabel}>Músculo</Text>
+        <ScrollView horizontal contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
+          {MUSCLE_GROUP_OPTIONS.map((group) => {
+            const selected = muscleGroup === group;
+            return <Pressable
+              accessibilityLabel={`Filtrar por ${muscleGroupLabel(group)}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={group}
+              onPress={() => changeMuscle(group)}
+              style={[styles.chip, selected && styles.chipSelected]}
+            >
+              <Text style={selected ? styles.chipTextSelected : styles.chipText}>{muscleGroupLabel(group)}</Text>
+            </Pressable>;
+          })}
+        </ScrollView>
+      </View>
+
+      <View style={styles.filterBlock}>
+        <Text style={styles.filterLabel}>Equipo</Text>
+        <ScrollView horizontal contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
+          {EQUIPMENT_OPTIONS.map((option) => {
+            const selected = equipment === option;
+            return <Pressable
+              accessibilityLabel={`Filtrar por ${equipmentLabel(option)}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={option}
+              onPress={() => changeEquipment(option)}
+              style={[styles.chip, selected && styles.chipSelected]}
+            >
+              <Text style={selected ? styles.chipTextSelected : styles.chipText}>{equipmentLabel(option)}</Text>
+            </Pressable>;
+          })}
+        </ScrollView>
+      </View>
+
+      {hasFilters ? <View style={styles.filterSummary}>
+        <Text style={textStyles.muted}>
+          {[muscleGroup ? muscleGroupLabel(muscleGroup) : null, equipment ? equipmentLabel(equipment) : null].filter(Boolean).join(' · ')}
+        </Text>
+        <Pressable accessibilityLabel="Quitar filtros del catálogo" accessibilityRole="button" onPress={() => {
+          setMuscleGroup(null);
+          setEquipment(null);
+          setPage(1);
+          setPreview(null);
+        }} style={styles.clearFilters}>
+          <Text style={styles.clearFiltersText}>Quitar filtros</Text>
+        </Pressable>
+      </View> : null}
+
       {query.isFetching ? <Text style={textStyles.muted}>Buscando…</Text> : null}
       {query.isError ? <View style={styles.message}>
         <Text accessibilityRole="alert" style={textStyles.error}>{query.error.message}</Text>
@@ -58,23 +137,43 @@ export function ExercisePicker({ visible, session, onPick, onClose }: {
       </Text> : null}
       {query.isSuccess ? <View accessibilityRole="list" style={styles.list}>
         {query.data.items.map((exercise) => (
-          <Pressable
-            accessibilityLabel={`Agregar ${exercise.name}`}
-            accessibilityRole="button"
-            key={exercise.id}
-            onPress={() => { onPick(exercise); setSearch(''); setPage(1); }}
-            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-          >
-            <View style={styles.copy}>
-              <Text style={styles.name}>{exercise.name}</Text>
-              <Text style={textStyles.muted}>{muscleGroupLabel(exercise.muscleGroup)}</Text>
-            </View>
-            <View style={styles.plus}>
-              <AppIcon color={theme.colors.primary} name="add" size={18} />
-            </View>
-          </Pressable>
+          <View key={exercise.id} style={styles.row}>
+            <Pressable
+              accessibilityLabel={`Agregar ${exercise.name}`}
+              accessibilityRole="button"
+              onPress={() => {
+                onPick(exercise);
+                setSearch('');
+                setPage(1);
+                setPreview(null);
+              }}
+              style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+            >
+              <View style={styles.copy}>
+                <Text style={styles.name}>{exercise.name}</Text>
+                <Text style={textStyles.muted}>{muscleGroupLabel(exercise.muscleGroup)} · {equipmentLabel(exercise.equipment)}</Text>
+              </View>
+              <View style={styles.plus}>
+                <AppIcon color={theme.colors.primary} name="add" size={18} />
+              </View>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={`Ver ${exercise.name}`}
+              accessibilityRole="button"
+              onPress={() => setPreview((current) => (current?.id === exercise.id ? null : exercise))}
+              style={styles.previewButton}
+            >
+              <AppIcon color={theme.colors.textMuted} name="visibility" size={18} />
+            </Pressable>
+          </View>
         ))}
       </View> : null}
+      {preview ? <ExercisePreview
+        exercise={preview}
+        key={preview.id}
+        onClose={() => setPreview(null)}
+        session={session}
+      /> : null}
       {query.isSuccess ? <Text style={textStyles.muted}>Página {page}{query.data ? ` · ${query.data.total} coincidencias` : ''}</Text> : null}
       {page > 1 ? <PrimaryButton disabled={query.isFetching} onPress={() => setPage((value) => Math.max(1, value - 1))} variant="ghost">Página anterior</PrimaryButton> : null}
     </BottomSheet>
@@ -93,6 +192,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   input: { color: theme.colors.text, flex: 1, fontSize: 15, minHeight: 48, paddingVertical: 10 },
+  filterBlock: { gap: 6 },
+  filterLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  chips: { gap: 6, paddingVertical: 2 },
+  chip: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHigh,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 12,
+  },
+  chipSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  chipText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: '700' },
+  chipTextSelected: { color: theme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
+  filterSummary: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm, justifyContent: 'space-between' },
+  clearFilters: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 6 },
+  clearFiltersText: { color: theme.colors.primary, fontSize: 12, fontWeight: '700' },
   list: { gap: theme.spacing.sm },
   row: {
     alignItems: 'center',
@@ -100,6 +224,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderRadius: theme.radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 2,
+    paddingRight: 6,
+  },
+  rowMain: {
+    alignItems: 'center',
+    flex: 1,
     flexDirection: 'row',
     gap: theme.spacing.gutter,
     minHeight: 60,
@@ -117,5 +248,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 30,
   },
+  previewButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 40 },
   message: { gap: 8 },
 });

@@ -51,7 +51,7 @@ it('indexes every batch from v1 without changing workouts, queue, routines, mapp
   await getDatabase(owner);
   const after = await Promise.all(['workouts', 'sync_queue', 'routine_cache', 'id_mapping', 'media_cache', 'exercise_cache'].map((table) => raw.getAllAsync(`SELECT * FROM ${table}`)));
   expect(after).toEqual(before);
-  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 5 });
+  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 6 });
   const page = await cachedExercisePage(owner, 'CUÁDRICEPS', 7);
   expect(page).toMatchObject({ total: 205, page: 7, limit: 30, hasMore: false, available: true });
   expect(page.items).toHaveLength(25);
@@ -63,7 +63,7 @@ it('indexes every batch from v1 without changing workouts, queue, routines, mapp
 it('opens training data despite one malformed cached exercise and preserves its raw payload', async () => {
   const { owner, raw } = await seedV1('migration-damaged-cache', true);
   await getDatabase(owner);
-  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 5 });
+  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 6 });
   expect(await raw.getFirstAsync('SELECT payload FROM workouts')).toEqual({ payload: JSON.stringify(workout) });
   expect(await raw.getFirstAsync('SELECT payload, attempts FROM sync_queue')).toEqual({ payload: JSON.stringify(syncPayload), attempts: 2 });
   expect(await raw.getFirstAsync("SELECT payload FROM exercise_cache WHERE id = 'exercise-150'")).toEqual({ payload: '{invalid' });
@@ -85,7 +85,7 @@ it('expands populated v2 storage without rewriting catalog indexes, source data 
   const tables = ['workouts', 'sync_queue', 'routine_cache', 'id_mapping', 'media_cache', 'exercise_cache', 'cache_metadata', 'exercise_search'];
   const before = await Promise.all(tables.map(table => raw.getAllAsync(`SELECT * FROM ${table}`)));
   await getDatabase(owner);
-  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 5 });
+  expect(await raw.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 6 });
   expect(await raw.getFirstAsync("SELECT name FROM sqlite_master WHERE name = 'rest_timers' AND type = 'table'"))
     .toEqual({ name: 'rest_timers' });
   for (const table of ['rest_preferences', 'ui_preferences']) {

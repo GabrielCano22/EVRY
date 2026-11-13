@@ -3,6 +3,7 @@ import type { components } from '@evry/api-client';
 import { AppIcon } from '../ui/icon';
 import { Card, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
+import { ProgressChart } from './ProgressChart';
 import { signedMetric } from './progress-view';
 
 type Progress = components['schemas']['ExerciseProgress'];
@@ -63,6 +64,7 @@ export function ExerciseProgressDetails({ summary, comparison, points, history }
         <Text style={styles.cardTitle}>Evolución</Text>
       </View>
       {points.length === 0 ? <Text style={textStyles.muted}>Sin actividad en este periodo.</Text> : null}
+      <ProgressChart points={points} />
       {points.map((point) => <View key={`${point.from}:${point.to}`} style={styles.point}>
         <Text style={styles.pointDate}>{date(point.from)} – {date(point.to)}</Text>
         <Text style={textStyles.body}>{point.sessionsCount} sesiones · {point.volumeKg} kg de volumen</Text>

@@ -1,9 +1,13 @@
-import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import {
   MAX_REST_SECONDS, MIN_REST_SECONDS, REST_STEP_SECONDS, restSecondsForSetType,
 } from '@evry/domain';
 import type { MobileSession } from '../api/client';
+import { ensureNotificationPermission } from '../notifications/permissions';
+import {
+  loadRestNotificationsEnabled, saveRestNotificationsEnabled,
+} from '../notifications/preferences';
 import { AppIcon } from '../ui/icon';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
@@ -21,8 +25,35 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
   const error = useRestPreferencesStore((state) => state.error);
   const load = useRestPreferencesStore((state) => state.load);
   const setDefault = useRestPreferencesStore((state) => state.setDefault);
+  const [notifyOnFinish, setNotifyOnFinish] = useState(true);
+  const [notifyReady, setNotifyReady] = useState(false);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   useEffect(() => { void load(session); }, [session, load]);
+  useEffect(() => {
+    let active = true;
+    void loadRestNotificationsEnabled(session)
+      .then((enabled) => { if (active) { setNotifyOnFinish(enabled); setNotifyReady(true); } })
+      .catch(() => { if (active) setNotifyReady(true); });
+    return () => { active = false; };
+  }, [session]);
+
+  const toggleNotify = async (enabled: boolean) => {
+    setNotifyError(null);
+    if (enabled) {
+      const granted = await ensureNotificationPermission();
+      if (!granted) {
+        setNotifyError('El sistema no permite notificaciones. Actívalas en Ajustes para recibir el aviso.');
+        return;
+      }
+    }
+    try {
+      await saveRestNotificationsEnabled(session, enabled);
+      setNotifyOnFinish(enabled);
+    } catch {
+      setNotifyError('No se pudo guardar la preferencia de avisos.');
+    }
+  };
 
   const base = preferences.defaultRestSeconds;
   const step = (delta: number) => {
@@ -82,6 +113,21 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
       <Text accessibilityLiveRegion="polite" style={styles.status}>
         {saving ? 'Guardando…' : ready ? 'Guardado automático.' : 'Leyendo preferencias…'}
       </Text>
+      <View style={styles.switchRow}>
+        <View style={styles.switchCopy}>
+          <Text style={styles.switchTitle}>Avisar al terminar</Text>
+          <Text style={textStyles.muted}>Aunque el teléfono esté bloqueado.</Text>
+        </View>
+        <Switch
+          accessibilityLabel="Avisar al terminar el descanso"
+          disabled={busy || !notifyReady}
+          onValueChange={(enabled) => void toggleNotify(enabled)}
+          thumbColor={notifyOnFinish ? theme.colors.text : theme.colors.textDim}
+          trackColor={{ false: theme.colors.surfaceHighest, true: theme.colors.primary }}
+          value={notifyOnFinish}
+        />
+      </View>
+      {notifyError ? <Text accessibilityRole="alert" style={textStyles.error}>{notifyError}</Text> : null}
       {error ? <View style={styles.errorBox}>
         <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text>
         <PrimaryButton disabled={saving} onPress={() => void load(session)} variant="secondary">Reintentar</PrimaryButton>
@@ -133,6 +179,17 @@ const styles = StyleSheet.create({
   value: { color: theme.colors.text, fontSize: 28, fontVariant: ['tabular-nums'], fontWeight: '800', letterSpacing: -0.6 },
   valueCaption: { color: theme.colors.textMuted, fontSize: 11 },
   status: { color: theme.colors.textDim, fontSize: 11 },
+  switchRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.backgroundElevated,
+    borderRadius: theme.radii.lg,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    minHeight: 56,
+    paddingHorizontal: 10,
+  },
+  switchCopy: { flex: 1, gap: 1 },
+  switchTitle: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
   errorBox: { gap: 8 },
   hint: { color: theme.colors.textDim, fontSize: 11, lineHeight: 16 },
   disabled: { opacity: 0.4 },

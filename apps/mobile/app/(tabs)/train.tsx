@@ -19,6 +19,7 @@ import { useExerciseInsights } from '@/src/training/use-exercise-insights';
 import { ExerciseCard, type ExerciseCardModel } from '@/src/training/ExerciseCard';
 import { ExercisePicker } from '@/src/training/ExercisePicker';
 import { RestTimer, type RestStartRequest } from '@/src/training/RestTimer';
+import { SessionSummarySheet, buildSessionSummary, type SessionSummary } from '@/src/training/SessionSummarySheet';
 import { SetTypeSheet } from '@/src/training/SetTypeSheet';
 import { SetOptionsSheet } from '@/src/training/SetOptionsSheet';
 import { RestSecondsSheet } from '@/src/training/RestSecondsSheet';
@@ -94,6 +95,7 @@ export default function TrainScreen() {
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [restRequest, setRestRequest] = useState<RestStartRequest | null>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [now, setNow] = useState(Date.now);
   const restSequence = useRef(0);
@@ -177,6 +179,7 @@ export default function TrainScreen() {
     function changePage(nextPage: number) { setPage(nextPage); }
     function changeSearch(value: string) { setSearch(value); setPage(1); }
     return (
+      <>
       <Screen>
         <ScreenHeader
           eyebrow="ENTRENAMIENTO"
@@ -193,7 +196,7 @@ export default function TrainScreen() {
           <Text style={textStyles.muted}>Empieza cuando quieras: cada serie se guarda en este dispositivo.</Text>
           <PrimaryButton
             icon={<AppIcon color={theme.colors.onPrimary} name="add" size={20} />}
-            onPress={() => void startWorkout()}
+            onPress={() => { setSummary(null); void startWorkout(); }}
           >
             Iniciar sesión libre
           </PrimaryButton>
@@ -220,12 +223,14 @@ export default function TrainScreen() {
           onChangePage={changePage}
           onRetryCatalog={() => void exercisesQuery.refetch()}
           onSearchChange={changeSearch}
-          onStartRoutine={(value) => void startWorkout(value.name, value.id)}
+          onStartRoutine={(value) => { setSummary(null); void startWorkout(value.name, value.id); }}
           routines={routinesQuery.data.items}
           routinesStale={routinesQuery.data.stale}
           session={session}
         /> : null}
       </Screen>
+      <SessionSummarySheet onClose={() => setSummary(null)} summary={summary} />
+      </>
     );
   }
 
@@ -268,6 +273,7 @@ export default function TrainScreen() {
       seconds,
       label: isSecondarySetType(type) ? `${SET_TYPE_LABELS[type]} · descanso corto` : null,
       exerciseId: set.exerciseId,
+      exerciseName: info.get(set.exerciseId)?.name ?? null,
     });
   }
 
@@ -300,11 +306,13 @@ export default function TrainScreen() {
       return;
     }
     const finish = async () => {
+      const captured = buildSessionSummary(workout!, info, insights, Date.now());
       try {
         await finishWorkout();
         if (isCurrentMobileSession(session)) {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
         }
+        setSummary(captured);
       } catch {
         // The training store keeps the session and publishes the storage error.
       }
@@ -557,6 +565,8 @@ export default function TrainScreen() {
           value={nameDraft}
         />
       </BottomSheet>
+
+      <SessionSummarySheet onClose={() => setSummary(null)} summary={summary} />
     </View>
   );
 }

@@ -16,7 +16,7 @@ export const theme = {
     border: '#2E323B',
     text: '#F4F6F9',
     textMuted: '#98A2B3',
-    textDim: '#6C7686',
+    textDim: '#909AAD',
     primary: '#168DFF',
     primaryPressed: '#0F7AE0',
     primarySoft: 'rgba(22, 141, 255, 0.14)',

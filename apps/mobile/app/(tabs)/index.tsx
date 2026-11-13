@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, Text, View } from 'react-native';
 import {
@@ -11,6 +11,11 @@ import {
 } from '@/src/db/database';
 import { useSessionStore } from '@/src/auth/session-store';
 import { useTrainingStore } from '@/src/training/training-store';
+import { useSupplementsStore } from '@/src/supplements/store';
+import {
+  dismissSupplementsOnboarding,
+  loadSupplementsOnboardingDismissed,
+} from '@/src/supplements/onboarding';
 import {
   Avatar, Badge, Card, PrimaryButton, Screen, SectionHeader, SyncStatus, textStyles,
 } from '@/src/ui/components';
@@ -30,6 +35,16 @@ export default function HomeScreen() {
   const trainingError = useTrainingStore((state) => state.error);
   const initializeTraining = useTrainingStore((state) => state.initialize);
   const recoverDraft = useTrainingStore((state) => state.recoverDraft);
+  const supplements = useSupplementsStore((state) => state.supplements);
+  const supplementsReady = useSupplementsStore((state) => state.ready);
+  const [supplementsDismissed, setSupplementsDismissed] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    void loadSupplementsOnboardingDismissed(session)
+      .then((dismissed) => { if (alive) setSupplementsDismissed(dismissed); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [session]);
   const [resolutionError, setResolutionError] = useState<string | null>(null);
   const { data: reviews = [], refetch: refreshReviews, isError: reviewsFailed, error: reviewsError } = useQuery({
     queryKey: ['sync-reviews', syncState],
@@ -139,6 +154,23 @@ export default function HomeScreen() {
         </PrimaryButton>
       </Card>
 
+      {supplementsReady && supplements.length === 0 && !supplementsDismissed ? (
+        <Card style={styles.supplementCard}>
+          <View style={styles.pendingHeader}>
+            <AppIcon color={theme.colors.success} name="medication" size={20} />
+            <Text style={styles.pendingTitle}>¿Tomas algún suplemento?</Text>
+          </View>
+          <Text style={textStyles.muted}>
+            Lleva un registro local y, si quieres, recibe un recordatorio semanal. EVRY no sugiere dosis ni sustituye consejo médico.
+          </Text>
+          <PrimaryButton onPress={() => router.push('/supplements')} variant="secondary">Configurar suplementos</PrimaryButton>
+          <PrimaryButton onPress={() => {
+            setSupplementsDismissed(true);
+            void dismissSupplementsOnboarding(session).catch(() => undefined);
+          }} variant="ghost">Ahora no</PrimaryButton>
+        </Card>
+      ) : null}
+
       {hasPending ? (
         <SectionHeader
           detail="EVRY nunca mezcla versiones automáticamente."
@@ -227,6 +259,7 @@ const styles = StyleSheet.create({
   heroEyebrow: { color: theme.colors.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1.1 },
   heroTitle: { color: theme.colors.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.6, lineHeight: 30 },
   problem: { gap: theme.spacing.sm },
+  supplementCard: { gap: theme.spacing.sm, backgroundColor: theme.colors.backgroundElevated },
   pending: { gap: theme.spacing.sm },
   pendingHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm },
   pendingTitle: { color: theme.colors.text, flex: 1, fontSize: 16, fontWeight: '700' },

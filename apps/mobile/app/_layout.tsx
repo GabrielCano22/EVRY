@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useSessionStore } from '@/src/auth/session-store';
 import { SyncCoordinator } from '@/src/sync/SyncCoordinator';
+import { NotificationCoordinator } from '@/src/notifications/NotificationCoordinator';
 import { useTrainingStore } from '@/src/training/training-store';
 import { AccountQueryProvider } from '@/src/auth/AccountQueryProvider';
 
@@ -34,10 +35,12 @@ export default function RootLayout() {
       <ThemeProvider value={DarkTheme}>
         <StatusBar style="light" />
         <SyncCoordinator />
+        <NotificationCoordinator />
         <Stack screenOptions={{ contentStyle: { backgroundColor: '#0A0B0D' } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="register" options={{ headerShown: false }} />
+          <Stack.Screen name="supplements" options={{ headerShown: false }} />
         </Stack>
       </ThemeProvider>
     </AccountQueryProvider>

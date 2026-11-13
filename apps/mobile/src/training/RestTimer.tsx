@@ -8,6 +8,8 @@ import {
 import { isCurrentMobileSession, type MobileSession } from '../api/client';
 import { useSessionStore } from '../auth/session-store';
 import { loadRestTimer, saveRestTimer } from '../db/database';
+import { loadRestNotificationsEnabled } from '../notifications/preferences';
+import { cancelRestReminder, syncRestReminder } from '../notifications/rest-reminder';
 import { AppIcon } from '../ui/icon';
 import { theme } from '../ui/theme';
 import { useTrainingStore } from './training-store';
@@ -20,6 +22,8 @@ export interface RestStartRequest {
   /** Shown while a reduced rest is running («Calentamiento · 01:00»). */
   label: string | null;
   exerciseId: string;
+  /** Used only for the native notification body. */
+  exerciseName?: string | null;
 }
 
 const AUTO_HIDE_MS = 3_000;
@@ -43,10 +47,12 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
   const [totalMs, setTotalMs] = useState(1);
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const alive = useRef(false);
   const busy = useRef(false);
   const failedWrite = useRef<RestTimerState | null>(null);
   const lastRequestKey = useRef<string | null>(null);
+  const activeExerciseName = useRef<string | null>(null);
   const localSaveState = useTrainingStore(state => state.localSaveState);
   const owned = useCallback(() => {
     const training = useTrainingStore.getState();
@@ -69,11 +75,23 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
       if (saved) {
         setTotalMs(Math.max(1, saved.remainingMs));
         setHidden(false);
+        if (saved.mode === 'RUNNING' && !saved.notificationDelivered) {
+          const remainingMs = remainingRestMs(saved, Date.now());
+          if (remainingMs > 0) {
+            void syncRestReminder({
+              workoutId,
+              seconds: Math.ceil(remainingMs / 1000),
+              exerciseName: activeExerciseName.current,
+              enabled: notificationsEnabled,
+              requestPermission: false,
+            }).catch(() => undefined);
+          }
+        }
       }
     }).catch((reason: unknown) => {
       if (owned()) setError(reason instanceof Error ? reason.message : 'No se pudo recuperar el descanso.');
     }).finally(() => { busy.current = false; });
-  }, [owned, session, workoutId]);
+  }, [owned, session, workoutId, notificationsEnabled]);
 
   const commit = useCallback(async (next: RestTimerState): Promise<boolean> => {
     if (!owned() || busy.current || useTrainingStore.getState().localSaveState === 'saving') return false;
@@ -94,6 +112,16 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
       if (notify && AppState.currentState === 'active') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       }
+      const seconds = durable.mode === 'RUNNING' && durable.deadlineMs !== null
+        ? Math.max(1, Math.ceil((durable.deadlineMs - Date.now()) / 1000))
+        : 0;
+      void syncRestReminder({
+        workoutId,
+        seconds,
+        exerciseName: activeExerciseName.current,
+        enabled: notificationsEnabled && durable.mode === 'RUNNING' && !durable.notificationDelivered,
+        requestPermission: true,
+      }).catch(() => undefined);
       return true;
     } catch (reason) {
       if (owned()) setError(reason instanceof Error ? reason.message : 'No se pudo guardar el descanso.');
@@ -102,7 +130,17 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
       busy.current = false;
       if (owned()) setSaving(false);
     }
-  }, [owned, session, workoutId]);
+  }, [owned, session, workoutId, notificationsEnabled]);
+
+  useEffect(() => {
+    let active = true;
+    void loadRestNotificationsEnabled(session)
+      .then((enabled) => { if (active) setNotificationsEnabled(enabled); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [session]);
+
+  useEffect(() => () => { void cancelRestReminder(workoutId); }, [workoutId]);
 
   useEffect(() => {
     alive.current = true;
@@ -145,6 +183,7 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
     setTotalMs(Math.max(1, startRequest.seconds * 1000));
     setActiveExerciseId(startRequest.exerciseId);
     setActiveLabel(startRequest.label);
+    activeExerciseName.current = startRequest.exerciseName?.trim() || null;
     void commit(startRestTimer(startRequest.seconds));
   }, [startRequest, loaded, error, saving, localSaveState, commit]);
 

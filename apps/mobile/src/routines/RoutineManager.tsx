@@ -1,14 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { MobileSession } from '../api/client';
 import type { Exercise } from '../catalog/catalog';
-import { CachedThumbnail } from '../catalog/CachedThumbnail';
-import { muscleTargetLabel } from '../catalog/muscle-labels';
-import { mediaUrl } from '../catalog/media-url';
-import { mobileThumbnailCache } from '../catalog/thumbnail-files';
+import { ExercisePreview } from '../catalog/ExercisePreview';
 import { AppIcon } from '../ui/icon';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
@@ -194,25 +190,6 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
       </View>
     </View> : null}
     {draft ? <RoutineEditor session={session} draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
-  </View>;
-}
-
-function ExercisePreview({ exercise, session }: { exercise: Exercise; session: MobileSession }) {
-  const [playingGif, setPlayingGif] = useState(false);
-  const image = mediaUrl(exercise.imageUrl ?? exercise.imagePath, session.serverUrl);
-  const gif = mediaUrl(exercise.gifUrl ?? exercise.gifPath, session.serverUrl);
-  const source = playingGif ? gif : image;
-  return <View accessibilityLabel={`Vista previa de ${exercise.name}`} style={styles.preview}>
-    <Text style={textStyles.heading}>{exercise.name}</Text>
-    <Text style={textStyles.body}>Equipo: {exercise.equipmentLabel ?? exercise.equipment}</Text>
-    <Text style={textStyles.body}>Músculo: {muscleTargetLabel(exercise.target, exercise.muscleGroup)}</Text>
-    {exercise.description ? <Text style={textStyles.body}>{exercise.description}</Text> : null}
-    {source ? playingGif
-      ? <Image accessibilityLabel={`Demostración de ${exercise.name}`} cachePolicy="none" contentFit="contain" source={{ uri: source }} style={styles.exerciseMedia} />
-      : <CachedThumbnail cache={mobileThumbnailCache} label={`Demostración de ${exercise.name}`} owner={session} url={source} style={styles.exerciseMedia} />
-    : null}
-    {exercise.attribution ? <Text style={textStyles.muted}>{exercise.attribution}</Text> : null}
-    {gif ? <PrimaryButton onPress={() => setPlayingGif((value) => !value)}>{playingGif ? 'Detener demostración' : 'Reproducir GIF'}</PrimaryButton> : null}
   </View>;
 }
 

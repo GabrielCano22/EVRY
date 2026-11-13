@@ -14,6 +14,25 @@ jest.mock('expo-router', () => {
   return { Stack, ThemeProvider, DarkTheme };
 });
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
+// Notifications are a native boundary. Mock the module so its Expo Go push
+// auto-registration effect does not run inside Jest; the coordinator's own
+// behaviour is covered by its dedicated suites.
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4, DEFAULT: 3 },
+  AndroidNotificationVisibility: { PUBLIC: 1, PRIVATE: 0 },
+  SchedulableTriggerInputTypes: { DATE: 'date', WEEKLY: 'weekly' },
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(async () => null),
+  setNotificationCategoryAsync: jest.fn(async () => null),
+  getPermissionsAsync: jest.fn(async () => ({ granted: true, canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: true, canAskAgain: true })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  cancelScheduledNotificationAsync: jest.fn(async () => undefined),
+  dismissNotificationAsync: jest.fn(async () => undefined),
+  scheduleNotificationAsync: jest.fn(async () => 'scheduled'),
+  getAllScheduledNotificationsAsync: jest.fn(async () => []),
+}));
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: async () => undefined,
   hideAsync: async () => undefined,

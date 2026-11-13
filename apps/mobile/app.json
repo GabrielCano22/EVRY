@@ -2,7 +2,7 @@
   "expo": {
     "name": "EVRY",
     "slug": "evry",
-    "version": "1.0.2",
+    "version": "1.0.12",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "evry",
@@ -34,7 +34,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.gabrielcano.evry.local",
-      "versionCode": 3
+      "versionCode": 13
     },
     "web": {
       "bundler": "metro",
@@ -63,7 +63,15 @@
         }
       ],
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#168DFF",
+          "defaultChannel": "rest"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

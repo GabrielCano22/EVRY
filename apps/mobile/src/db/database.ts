@@ -16,7 +16,7 @@ export interface DatabaseOwner {
   readonly userId: string;
   readonly serverUrl: string;
 }
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 
 export interface PendingSyncRow {
   id: number;
@@ -48,7 +48,8 @@ function mediaAccessStamp(): string {
 // Expo's async transactions share a connection. Serialize complete write units so
 // a network acknowledgement cannot commit/rollback an unrelated local edit.
 // Separate account connections must not wait for each other's pending writes.
-function writeTransaction<T>(database: SQLite.SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
+// Operations passed here must not call writeTransaction again on this connection.
+export function writeTransaction<T>(database: SQLite.SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
   const write = (writeQueues.get(database) ?? Promise.resolve()).then(async () => {
     let result!: T;
     await database.withTransactionAsync(async () => { result = await operation(); });
@@ -100,7 +101,8 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   if (current < 2) await migrateBaseSchema(database);
   if (current < 3) await migrateRestTimers(database);
   if (current < 4) await migrateRestPreferences(database);
-  await migrateUiPreferences(database);
+  if (current < 5) await migrateUiPreferences(database);
+  if (current < 6) await migrateSupplements(database);
 }
 
 async function migrateBaseSchema(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -220,6 +222,35 @@ async function migrateUiPreferences(database: SQLite.SQLiteDatabase): Promise<vo
         value TEXT NOT NULL
       );
       PRAGMA user_version = 5;
+    `);
+  });
+}
+
+async function migrateSupplements(database: SQLite.SQLiteDatabase): Promise<void> {
+  await writeTransaction(database, async () => {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS supplements (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        dosage TEXT,
+        notes TEXT,
+        reminder_enabled INTEGER NOT NULL DEFAULT 0,
+        reminder_time TEXT,
+        reminder_weekdays TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS supplement_intakes (
+        id TEXT PRIMARY KEY NOT NULL,
+        supplement_id TEXT NOT NULL,
+        taken_at TEXT NOT NULL,
+        civil_date TEXT NOT NULL,
+        UNIQUE(supplement_id, civil_date),
+        FOREIGN KEY(supplement_id) REFERENCES supplements(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS supplement_intakes_date
+        ON supplement_intakes(civil_date);
+      PRAGMA user_version = 6;
     `);
   });
 }

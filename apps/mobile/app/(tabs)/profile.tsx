@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { router } from 'expo-router';
 import { todayCivil, type CivilDate } from '@evry/domain';
 import type { components } from '@evry/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,7 +17,7 @@ import {
   type ProfileGoal,
   type ProfileUpdateInput,
 } from '@/src/profile/profile-form';
-import { Avatar, Card, PrimaryButton, Screen, ScreenHeader, SectionHeader, textStyles } from '@/src/ui/components';
+import { Avatar, Card, ListRow, PrimaryButton, Screen, ScreenHeader, SectionHeader, textStyles } from '@/src/ui/components';
 import { AppIcon } from '@/src/ui/icon';
 import { theme } from '@/src/ui/theme';
 import { RestPreferencesCard } from '@/src/training/RestPreferencesCard';
@@ -360,6 +361,18 @@ export default function ProfileScreen() {
 
       <RestPreferencesCard key={JSON.stringify([session.serverUrl, session.userId, session.version])} session={session} />
 
+      <SectionHeader detail="Registro local y recordatorios opcionales." title="Bienestar diario" />
+      <ListRow
+        accessibilityLabel="Abrir suplementos"
+        leading={<View style={styles.supplementIcon}>
+          <AppIcon color={theme.colors.success} name="medication" size={20} />
+        </View>}
+        onPress={() => router.push('/supplements')}
+        subtitle="EVRY no sugiere dosis ni sustituye consejo médico."
+        title="Suplementos"
+        trailing={<AppIcon color={theme.colors.textDim} name="chevron_right" size={20} />}
+      />
+
       <PrimaryButton icon={<AppIcon color={theme.colors.error} name="logout" size={19} />} onPress={() => void logout()} variant="danger">
         Cerrar sesión
       </PrimaryButton>
@@ -587,6 +600,14 @@ const styles = StyleSheet.create({
   switchIcon: {
     alignItems: 'center',
     backgroundColor: theme.colors.cycleSoft,
+    borderRadius: theme.radii.full,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  supplementIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.successSoft,
     borderRadius: theme.radii.full,
     height: 34,
     justifyContent: 'center',

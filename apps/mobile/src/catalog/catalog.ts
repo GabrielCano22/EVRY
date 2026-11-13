@@ -49,6 +49,8 @@ function validItem(item: unknown): item is { id: string; name: string } {
 export async function loadExercises(session: MobileSession, options: {
   search?: string;
   page?: number;
+  equipment?: Exercise['equipment'];
+  muscleGroup?: Exercise['muscleGroup'];
   signal?: AbortSignal;
 } = {}): Promise<ExerciseResult> {
   assertCurrentMobileSession(session);
@@ -58,7 +60,15 @@ export async function loadExercises(session: MobileSession, options: {
     throw apiError({ code: 'VALIDATION_ERROR', message: 'Revisa la búsqueda y la página solicitada.' }, '', 400);
   }
   const request = () => withMobileAuth((client) => client.GET('/exercises', {
-    params: { query: { ...(q ? { q } : {}), page, limit: 30 } },
+    params: {
+      query: {
+        ...(q ? { q } : {}),
+        page,
+        limit: 30,
+        ...(options.equipment ? { equipment: options.equipment } : {}),
+        ...(options.muscleGroup ? { muscleGroup: options.muscleGroup } : {}),
+      },
+    },
     signal: options.signal,
   }), session);
   let response: Awaited<ReturnType<typeof request>>;
@@ -68,6 +78,14 @@ export async function loadExercises(session: MobileSession, options: {
   } catch (error) {
     assertCurrentMobileSession(session);
     if (options.signal?.aborted || !temporaryFailure(error)) throw error;
+    // The local page cache is keyed by search and page only. Returning it for
+    // a filtered request would silently show exercises that do not match.
+    if (options.equipment || options.muscleGroup) {
+      throw apiError({
+        code: 'OFFLINE_CACHE_MISS',
+        message: 'Los filtros del catálogo necesitan conexión. Quita los filtros o reintenta.',
+      }, '');
+    }
     const cached = await cachedExercisePage(session, q, page);
     assertCurrentMobileSession(session);
     if (!cached.available) throw missingCache();
