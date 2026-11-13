@@ -146,7 +146,9 @@ Dispositivo `CPH2239` (Android 11), serie `WCOBNF798LNZJVNZ`, API local por `adb
 
 - «Reintentar rutinas» cargó «Verificacion OPPO» (1 ejercicio, Sentadilla con barra).
 - «Empezar rutina» creó la sesión `Verificacion OPPO` en estado `ACTIVE`, sincronizada con el backend.
-- El editor de rutinas **no se abrió en el dispositivo**: la lista seguía marcada como `stale` y `mutationsDisabled = routinesStale || pending` bloquea crear, editar y eliminar. Es el comportamiento intencional documentado; el editor se validó con las 47 pruebas de `RoutineManager` y revisión de código, no en pantalla.
+- El editor se abrió con «Editar» y se verificó en pantalla: `Editar rutina`, `DATOS` con el nombre «Verificacion OPPO», día y notas; `CATÁLOGO` con buscador (la búsqueda «Sentadilla» filtró el catálogo) y `EJERCICIOS DE LA RUTINA` con la fila `1. Sentadilla con barra`, botones Subir/Bajar/Quitar, `Series` = 4 y `Repeticiones`, `Peso kg` y `Notas` vacíos, más «Configurar plan por serie».
+- El intento anterior de abrir el editor falló por coordenadas y falta de desplazamiento: el editor se renderiza debajo de la tarjeta de la rutina, no por un estado `stale`. Con `bounds` frescos y scroll se abrió sin forzar ninguna protección.
+- «Cancelar edición» cerró el editor sin guardar; la lista siguió mostrando «Verificacion OPPO» con 1 ejercicio y sin cambios.
 
 ## 7. Verificación en API y base de datos
 
@@ -157,7 +159,7 @@ Sesiones de la cuenta QA en la base local `evry_local` (PostgreSQL 17.11):
 | Entrenamiento libre | 20:22:22 | `COMPLETED` 20:27:27 | 2 completadas | 200 kg |
 | Entrenamiento libre | 20:32:05 | `COMPLETED` 20:34:01 | 1 completada | 180 kg |
 | Entrenamiento libre | 23:22:10 | `COMPLETED` 23:40:24 | 1 completada | 50 kg |
-| Verificacion OPPO | 23:51:19 | `ACTIVE` | 3 sin completar | 0 kg |
+| Verificacion OPPO | 23:51:19 | `CANCELLED` 00:31:16 (13 nov UTC) | 3 sin completar | 0 kg |
 
 Series de la sesión de la prueba v12:
 
@@ -165,7 +167,9 @@ Series de la sesión de la prueba v12:
 |---|---|---|
 | `NORMAL` | 5 × 10 | 2026-11-12 23:33:15.282 |
 
-La sesión de rutina quedó con `routineId = cmvexssz50006dsrqulp44wqo` y tres series `NORMAL` vacías, creadas por la plantilla.
+La sesión de rutina quedó con `routineId = cmvexssz50006dsrqulp44wqo` y tres series `NORMAL` vacías, creadas por la plantilla. La cancelación conservó las series: `POST /workouts/:id/cancel` respondió 201 con `status=CANCELLED`, `cancelledAt=2026-11-13T00:31:16.996Z` y `revision=5`.
+
+La cancelación se fijó primero en la API para dejar el estado canónico. Al cancelar después desde la app, la cola local partía de una revisión anterior y el servidor respondió `REVISION_CONFLICT`; Inicio mostró la tarjeta «Requiere revisión» con «Verificacion OPPO». Se resolvió con «Continuar versión del servidor»: la app adoptó la versión `CANCELLED`, la tarjeta desapareció y el estado quedó «Sincronizado», sin sesión activa.
 
 Readiness persistido:
 
@@ -176,18 +180,17 @@ Readiness persistido:
 ## 8. Limitaciones honestas
 
 1. **`uiautomator dump` en la sesión activa.** La pantalla de sesión vuelve a renderizar cada segundo por el cronómetro y `uiautomator` falla de forma intermitente con «could not get idle state». Esa pantalla se verificó con capturas y con API/BD, no con la jerarquía completa.
-2. **Editor de rutinas.** No se abrió en el dispositivo por el bloqueo intencional de la lista `stale`; queda pendiente una comprobación manual cuando la lista esté fresca. No se forzó el estado ni se desactivó la protección.
-3. **Sesión de rutina activa.** «Verificacion OPPO» quedó `ACTIVE` con 3 series sin completar. No se canceló desde la UI porque el flujo de cancelación no era alcanzable con el dump inestable de la sesión; queda reanudable y cancelable a mano.
-4. **Revisión visual.** Las capturas se guardaron, pero no se hizo una comparación píxel a píxel ni una auditoría de contraste instrumentada. La coherencia se sostiene en los tokens, la jerarquía de accesibilidad y la revisión de código.
-5. **CI.** GitHub Actions sigue bloqueado por facturación (ticket **#4986721**); no hay ejecución remota que valide `3289ced`.
-6. **`versionName`.** Se mantiene `1.0.11-local` con `versionCode 12`; Android usa `versionCode` para la actualización, así que no hay downgrade.
+2. **Editor de rutinas sin guardado.** Se comprobó que abre, que muestra los datos y los campos, y que «Cancelar edición» no altera la rutina; no se ejecutó un guardado real en esta pasada. Las 47 pruebas de `RoutineManager` siguen cubriendo la validación y el guardado.
+3. **Revisión visual.** Las capturas se guardaron, pero no se hizo una comparación píxel a píxel ni una auditoría de contraste instrumentada. La coherencia se sostiene en los tokens, la jerarquía de accesibilidad y la revisión de código.
+4. **CI.** GitHub Actions sigue bloqueado por facturación (ticket **#4986721**); no hay ejecución remota que valide `3289ced`.
+5. **`versionName`.** Se mantiene `1.0.11-local` con `versionCode 12`; Android usa `versionCode` para la actualización, así que no hay downgrade.
 
 ## 9. Artefactos
 
 - `D:\DatosPC\Temp\opencode\v12-gates.log` — type-check, lint, Jest 456/456 y posttests.
 - `D:\DatosPC\Temp\opencode\evry-android-rediseno-v12-build.log` — `BUILD SUCCESSFUL in 24m 3s`.
 - `D:\e58out12\app\outputs\apk\release\app-release.apk` — APK instalada.
-- Capturas en `D:\DatosPC\Temp\opencode\`: `v12-start.png`, `v12-home.png`, `v12-inicio.png`, `v12-entrenar.png`, `v12-sesion.png`, `v12-picker.png`, `v12-sesion-ejercicio.png`, `v12-settype.png`, `v12-warmup.png`, `v12-set-filled.png`, `v12-rest-running.png`, `v12-finish.png`, `v12-progreso.png`, `v12-progreso-ok.png`, `v12-progress-scroll.png`, `v12-progress-cards.png`, `v12-daysheet.png`, `v12-daysheet-detail.png`, `v12-cycle-form.png`, `v12-perfil-2.png`, `v12-perfil-3.png`, `v12-readiness-saved.png`, `v12-routine-editor.png`, `v12-routine-editor3.png`, `v12-routine-start.png`.
+- Capturas en `D:\DatosPC\Temp\opencode\`: `v12-start.png`, `v12-home.png`, `v12-inicio.png`, `v12-entrenar.png`, `v12-sesion.png`, `v12-picker.png`, `v12-sesion-ejercicio.png`, `v12-settype.png`, `v12-warmup.png`, `v12-set-filled.png`, `v12-rest-running.png`, `v12-finish.png`, `v12-progreso.png`, `v12-progreso-ok.png`, `v12-progress-scroll.png`, `v12-progress-cards.png`, `v12-daysheet.png`, `v12-daysheet-detail.png`, `v12-cycle-form.png`, `v12-perfil-2.png`, `v12-perfil-3.png`, `v12-readiness-saved.png`, `v12-routine-editor.png`, `v12-routine-editor3.png`, `v12-routine-start.png`, `v12-editor-ok.png`, `v12-editor-exercises2.png`, `v12-editor-fields2.png`.
 - Jerarquías `uiautomator` en `D:\DatosPC\Temp\opencode\v12-*.xml`.
 - Directorios de compilación `D:\e58src`, `D:\e58out12` y el init script de Gradle se conservan; **no se han borrado**.
 
