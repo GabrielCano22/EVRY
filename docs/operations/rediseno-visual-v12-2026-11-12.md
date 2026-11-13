@@ -181,13 +181,14 @@ Readiness persistido:
 
 1. **`uiautomator dump` en la sesión activa.** La pantalla de sesión vuelve a renderizar cada segundo por el cronómetro y `uiautomator` falla de forma intermitente con «could not get idle state». Esa pantalla se verificó con capturas y con API/BD, no con la jerarquía completa.
 2. **Editor de rutinas sin guardado.** Se comprobó que abre, que muestra los datos y los campos, y que «Cancelar edición» no altera la rutina; no se ejecutó un guardado real en esta pasada. Las 47 pruebas de `RoutineManager` siguen cubriendo la validación y el guardado.
-3. **Revisión visual.** Las capturas se guardaron, pero no se hizo una comparación píxel a píxel ni una auditoría de contraste instrumentada. La coherencia se sostiene en los tokens, la jerarquía de accesibilidad y la revisión de código.
+3. **Contraste.** Se hizo una auditoría estática de los tokens con la fórmula WCAG 2.1. Texto principal, `textMuted` y los acentos semánticos cumplen AA en las superficies principales; `primary` cumple en `background`, `backgroundElevated` y `surface` (5.3–5.9:1). El hallazgo es `textDim`: 4.29:1 en `background`, 4.08:1 en `backgroundElevated`, 3.87:1 en `surface` y 2.92:1 en `surfaceHighest`, por debajo de 4.5:1 para texto normal. Se usa en etiquetas de 9–12 px, placeholders y la pestaña inactiva (4.08:1). Para v13: subir `textDim` a ~`#8C96A8` o usar `textMuted` en texto pequeño. No se cambió el tema para no invalidar la APK v12. Tampoco se hizo comparación píxel a píxel.
 4. **CI.** GitHub Actions sigue bloqueado por facturación (ticket **#4986721**); no hay ejecución remota que valide el código de `3289ced`. Los jobs fallan en 2 s sin pasos, como confirma la ejecución `43339512043`.
 5. **`versionName`.** Se mantiene `1.0.11-local` con `versionCode 12`; Android usa `versionCode` para la actualización, así que no hay downgrade.
 
 ## 9. Artefactos
 
 - `D:\DatosPC\Temp\opencode\v12-gates.log` — type-check, lint, Jest 456/456 y posttests.
+- `D:\DatosPC\Temp\opencode\v12-contrast.js` — auditoría estática de contraste WCAG de los tokens.
 - `D:\DatosPC\Temp\opencode\evry-android-rediseno-v12-build.log` — `BUILD SUCCESSFUL in 24m 3s`.
 - `D:\e58out12\app\outputs\apk\release\app-release.apk` — APK instalada.
 - Capturas en `D:\DatosPC\Temp\opencode\`: `v12-start.png`, `v12-home.png`, `v12-inicio.png`, `v12-entrenar.png`, `v12-sesion.png`, `v12-picker.png`, `v12-sesion-ejercicio.png`, `v12-settype.png`, `v12-warmup.png`, `v12-set-filled.png`, `v12-rest-running.png`, `v12-finish.png`, `v12-progreso.png`, `v12-progreso-ok.png`, `v12-progress-scroll.png`, `v12-progress-cards.png`, `v12-daysheet.png`, `v12-daysheet-detail.png`, `v12-cycle-form.png`, `v12-perfil-2.png`, `v12-perfil-3.png`, `v12-readiness-saved.png`, `v12-routine-editor.png`, `v12-routine-editor3.png`, `v12-routine-start.png`, `v12-editor-ok.png`, `v12-editor-exercises2.png`, `v12-editor-fields2.png`.
