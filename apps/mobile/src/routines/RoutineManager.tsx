@@ -9,6 +9,7 @@ import { CachedThumbnail } from '../catalog/CachedThumbnail';
 import { muscleTargetLabel } from '../catalog/muscle-labels';
 import { mediaUrl } from '../catalog/media-url';
 import { mobileThumbnailCache } from '../catalog/thumbnail-files';
+import { AppIcon } from '../ui/icon';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
 import { createRoutine, deleteRoutine, updateRoutine, type CreateRoutineInput, type Routine, type UpdateRoutineInput } from './routines';
@@ -166,16 +167,32 @@ export function RoutineManager({ session, routines, routinesStale, exercises, on
     <Text style={textStyles.heading}>Rutinas</Text>
     {routinesStale ? <Text accessibilityRole="alert" style={textStyles.error}>Conéctate para administrar rutinas. La copia local puede estar desactualizada.</Text> : null}
     {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
-    {success ? <Text accessibilityLiveRegion="polite" style={textStyles.body}>{success}</Text> : null}
-    {!draft ? <PrimaryButton disabled={mutationsDisabled} onPress={() => { setError(null); setSuccess(null); setDraft(emptyDraft()); }}>Crear rutina</PrimaryButton> : null}
+    {success ? <Text accessibilityLiveRegion="polite" style={styles.success}>{success}</Text> : null}
+    {!draft ? <PrimaryButton disabled={mutationsDisabled} icon={<AppIcon color={theme.colors.onPrimary} name="add" size={19} />} onPress={() => { setError(null); setSuccess(null); setDraft(emptyDraft()); }}>Crear rutina</PrimaryButton> : null}
     {routines.map((routine) => <View key={routine.id} style={styles.card}>
-      <Text style={textStyles.heading}>{routine.name}</Text>
-      <Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text>
-      {routine.exercises.length ? <Text numberOfLines={2} style={textStyles.muted}>{routine.exercises.map((item) => item.exercise.name).join(' · ')}</Text> : null}
-      <PrimaryButton accessibilityLabel={`Iniciar ${routine.name}`} onPress={() => onStartRoutine(routine)}>Empezar rutina</PrimaryButton>
-      <View style={styles.row}><PrimaryButton disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }}>Editar</PrimaryButton><PrimaryButton disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)}>Eliminar</PrimaryButton></View>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardIcon}>
+          <AppIcon color={theme.colors.primary} name="playlist_play" size={20} />
+        </View>
+        <View style={styles.cardCopy}>
+          <Text style={styles.cardTitle}>{routine.name}</Text>
+          <Text style={textStyles.muted}>{routine.exercises.length} ejercicios · disponible sin conexión</Text>
+        </View>
+      </View>
+      {routine.exercises.length ? <Text numberOfLines={2} style={styles.exerciseList}>{routine.exercises.map((item) => item.exercise.name).join(' · ')}</Text> : null}
+      <PrimaryButton accessibilityLabel={`Iniciar ${routine.name}`} icon={<AppIcon color={theme.colors.onPrimary} name="play_arrow" size={19} />} onPress={() => onStartRoutine(routine)}>Empezar rutina</PrimaryButton>
+      <View style={styles.row}>
+        <PrimaryButton compact disabled={mutationsDisabled} accessibilityLabel={`Editar ${routine.name}`} onPress={() => { setError(null); setSuccess(null); setDraft(draftFromRoutine(routine)); }} variant="secondary">Editar</PrimaryButton>
+        <PrimaryButton compact disabled={mutationsDisabled || settledDeleteIds.has(routine.id)} accessibilityLabel={`Eliminar ${routine.name}`} onPress={() => setDeleteCandidate(routine)} variant="danger">Eliminar</PrimaryButton>
+      </View>
     </View>)}
-    {deleteCandidate ? <View style={styles.confirmation}><Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text><View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)}>Cancelar</PrimaryButton><PrimaryButton disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()}>Eliminar definitivamente</PrimaryButton></View></View> : null}
+    {deleteCandidate ? <View style={styles.confirmation}>
+      <Text style={textStyles.body}>¿Eliminar la rutina {deleteCandidate.name}?</Text>
+      <View style={styles.row}>
+        <PrimaryButton compact disabled={pending} accessibilityLabel="Cancelar eliminación" onPress={() => setDeleteCandidate(null)} variant="secondary">Cancelar</PrimaryButton>
+        <PrimaryButton compact disabled={mutationsDisabled} accessibilityLabel="Confirmar eliminación" onPress={() => void confirmDelete()} variant="danger">Eliminar definitivamente</PrimaryButton>
+      </View>
+    </View> : null}
     {draft ? <RoutineEditor session={session} draft={draft} exercises={exercises} pending={pending} disabled={mutationsDisabled} preview={preview} catalogSearch={catalogSearch} catalogPage={catalogPage} catalogHasMore={catalogHasMore} catalogLoading={catalogLoading} catalogError={catalogError} catalogNotice={catalogNotice} catalogSource={catalogSource} catalogSuccess={catalogSuccess} onSearchChange={(value) => { setPreview(null); onSearchChange(value); }} onChangePage={(page) => { setPreview(null); onChangePage(page); }} onRetryCatalog={onRetryCatalog} onChange={updateDraft} onUpdateExercise={updateExercise} onUpdateTargetSets={updateTargetSets} onSetPlan={setPlan} onMove={moveExercise} onRemove={(index) => updateDraft({ exercises: draft.exercises.filter((_, itemIndex) => itemIndex !== index) })} onPreview={setPreview} onAdd={addExercise} onCancel={() => { setDraft(null); setError(null); }} onSave={() => void save()} /> : null}
   </View>;
 }
@@ -204,34 +221,150 @@ function RoutineEditor({ session, draft, exercises, pending, disabled, preview, 
   draft: RoutineDraft; exercises: Exercise[]; pending: boolean; disabled: boolean; preview: Exercise | null; catalogSearch: string; catalogPage: number; catalogHasMore: boolean; catalogLoading: boolean; catalogError: Error | null; catalogNotice: string | null; catalogSource: 'server' | 'cache' | null; catalogSuccess: boolean; onSearchChange: (value: string) => void; onChangePage: (page: number) => void; onRetryCatalog: () => void; onChange: (next: Partial<RoutineDraft>) => void; onUpdateExercise: (index: number, next: Partial<DraftExercise>) => void; onUpdateTargetSets: (index: number, targetSets: string) => void; onSetPlan: (index: number, enabled: boolean) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void; onPreview: (exercise: Exercise) => void; onAdd: (exercise: Exercise) => void; onCancel: () => void; onSave: () => void;
 }) {
   return <View style={styles.editor}>
-    <Text style={textStyles.heading}>{draft.id ? 'Editar rutina' : 'Nueva rutina'}</Text>
-    <TextInput accessibilityLabel="Nombre de rutina" editable={!disabled} maxLength={120} onChangeText={(name) => onChange({ name })} placeholder="Nombre" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.name} />
-    <TextInput accessibilityLabel="Día de la semana" editable={!disabled} inputMode="numeric" onChangeText={(dayOfWeek) => onChange({ dayOfWeek })} placeholder="Día de la semana (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.dayOfWeek} />
-    <TextInput accessibilityLabel="Notas de rutina" editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onChange({ notes })} placeholder="Notas (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={draft.notes} />
-    <Text style={textStyles.heading}>Catálogo</Text>
-    <TextInput accessibilityLabel="Buscar ejercicio para rutina" autoCapitalize="none" maxLength={80} onChangeText={onSearchChange} placeholder="Buscar ejercicio" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={catalogSearch} />
+    <Text style={styles.editorTitle}>{draft.id ? 'Editar rutina' : 'Nueva rutina'}</Text>
+    <Text style={styles.sectionLabel}>DATOS</Text>
+    <TextInput accessibilityLabel="Nombre de rutina" editable={!disabled} maxLength={120} onChangeText={(name) => onChange({ name })} placeholder="Nombre" placeholderTextColor={theme.colors.textDim} style={styles.input} value={draft.name} />
+    <TextInput accessibilityLabel="Día de la semana" editable={!disabled} inputMode="numeric" onChangeText={(dayOfWeek) => onChange({ dayOfWeek })} placeholder="Día de la semana (opcional)" placeholderTextColor={theme.colors.textDim} style={styles.input} value={draft.dayOfWeek} />
+    <TextInput accessibilityLabel="Notas de rutina" editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onChange({ notes })} placeholder="Notas (opcional)" placeholderTextColor={theme.colors.textDim} style={[styles.input, styles.multiline]} value={draft.notes} />
+
+    <Text style={styles.sectionLabel}>CATÁLOGO</Text>
+    <View style={styles.searchRow}>
+      <AppIcon color={theme.colors.textDim} name="search" size={18} />
+      <TextInput accessibilityLabel="Buscar ejercicio para rutina" autoCapitalize="none" maxLength={80} onChangeText={onSearchChange} placeholder="Buscar ejercicio" placeholderTextColor={theme.colors.textDim} style={styles.searchInput} value={catalogSearch} />
+    </View>
     {catalogLoading ? <Text style={textStyles.muted}>Cargando catálogo…</Text> : null}
-    {catalogError ? <><Text accessibilityRole="alert" style={textStyles.error}>{catalogError.message}</Text><PrimaryButton disabled={catalogLoading} accessibilityLabel="Reintentar catálogo" onPress={onRetryCatalog}>Reintentar catálogo</PrimaryButton></> : null}
+    {catalogError ? <View style={styles.message}><Text accessibilityRole="alert" style={textStyles.error}>{catalogError.message}</Text><PrimaryButton compact disabled={catalogLoading} accessibilityLabel="Reintentar catálogo" onPress={onRetryCatalog} variant="secondary">Reintentar catálogo</PrimaryButton></View> : null}
     {catalogNotice ? <Text style={textStyles.muted}>{catalogNotice}</Text> : null}
     {catalogSuccess && exercises.length === 0 ? <Text style={textStyles.muted}>{catalogSource === 'cache' ? 'No hay coincidencias en la copia local.' : 'No hay ejercicios que coincidan con la búsqueda.'}</Text> : null}
-    {catalogSuccess && !catalogError ? exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}><Text style={[textStyles.body, { flex: 1 }]}>{exercise.name}</Text><PrimaryButton disabled={disabled} accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)}>Ver</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)}>Agregar</PrimaryButton></View>) : null}
+    {catalogSuccess && !catalogError ? <View style={styles.catalogList}>{exercises.map((exercise) => <View key={exercise.id} style={styles.catalogRow}>
+      <Text numberOfLines={1} style={styles.catalogName}>{exercise.name}</Text>
+      <PrimaryButton compact disabled={disabled} accessibilityLabel={`Ver ${exercise.name}`} onPress={() => onPreview(exercise)} variant="ghost">Ver</PrimaryButton>
+      <PrimaryButton compact disabled={disabled} accessibilityLabel={`Agregar ${exercise.name}`} onPress={() => onAdd(exercise)} variant="secondary">Agregar</PrimaryButton>
+    </View>)}</View> : null}
     {preview ? <ExercisePreview key={preview.id} exercise={preview} session={session} /> : null}
-    <View style={styles.row}><PrimaryButton disabled={disabled || catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)}>Anterior</PrimaryButton><PrimaryButton disabled={disabled || catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)}>Siguiente</PrimaryButton></View>
-    <Text style={textStyles.heading}>Ejercicios de la rutina</Text>
+    <View style={styles.row}>
+      <PrimaryButton compact disabled={disabled || catalogLoading || catalogPage === 1} accessibilityLabel="Página anterior del catálogo" onPress={() => onChangePage(catalogPage - 1)} variant="secondary">Anterior</PrimaryButton>
+      <Text style={styles.page}>Página {catalogPage}</Text>
+      <PrimaryButton compact disabled={disabled || catalogLoading || !catalogHasMore} accessibilityLabel="Página siguiente del catálogo" onPress={() => onChangePage(catalogPage + 1)} variant="secondary">Siguiente</PrimaryButton>
+    </View>
+
+    <Text style={styles.sectionLabel}>EJERCICIOS DE LA RUTINA</Text>
+    {draft.exercises.length === 0 ? <Text style={textStyles.muted}>Añade ejercicios desde el catálogo.</Text> : null}
     {draft.exercises.map((item, index) => <View key={item.exercise.id} style={styles.card}>
-      <Text style={textStyles.body}>{index + 1}. {item.exercise.name}</Text><View style={styles.row}><PrimaryButton disabled={disabled || index === 0} accessibilityLabel={`Subir ${item.exercise.name}`} onPress={() => onMove(index, -1)}>Subir</PrimaryButton><PrimaryButton disabled={disabled || index === draft.exercises.length - 1} accessibilityLabel={`Bajar ${item.exercise.name}`} onPress={() => onMove(index, 1)}>Bajar</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={`Quitar ${item.exercise.name}`} onPress={() => onRemove(index)}>Quitar</PrimaryButton></View>
-      <TextInput accessibilityLabel={`Series de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetSets) => onUpdateTargetSets(index, targetSets)} placeholder="Series" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetSets} />
-      <TextInput accessibilityLabel={`Repeticiones de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetReps) => onUpdateExercise(index, { targetReps })} placeholder="Repeticiones (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetReps} />
-      <TextInput accessibilityLabel={`Peso kg de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(targetWeightKg) => onUpdateExercise(index, { targetWeightKg })} placeholder="Peso kg (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.targetWeightKg} />
-      <TextInput accessibilityLabel={`Notas de ${item.exercise.name}`} editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onUpdateExercise(index, { notes })} placeholder="Notas del ejercicio (opcional)" placeholderTextColor={theme.colors.textMuted} style={styles.input} value={item.notes} />
-      {item.seriesPlan ? <PrimaryButton disabled={disabled} accessibilityLabel={`Quitar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, false)}>Quitar plan por serie</PrimaryButton> : <PrimaryButton disabled={disabled} accessibilityLabel={`Configurar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, true)}>Configurar plan por serie</PrimaryButton>}
-      {item.seriesPlan?.map((plan, planIndex) => <View key={planIndex} style={styles.row}><TextInput accessibilityLabel={`Repeticiones plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(reps) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, reps } : value) ?? null })} placeholder={`Reps serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.reps} /><TextInput accessibilityLabel={`Peso plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(weightKg) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, weightKg } : value) ?? null })} placeholder={`Peso serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textMuted} style={[styles.input, { flex: 1 }]} value={plan.weightKg} /></View>)}
+      <View style={styles.exerciseHeader}>
+        <Text style={styles.exerciseName}>
+          <Text style={styles.orderText}>{index + 1}. </Text>{item.exercise.name}
+        </Text>
+      </View>
+      <View style={styles.row}>
+        <PrimaryButton compact disabled={disabled || index === 0} accessibilityLabel={`Subir ${item.exercise.name}`} onPress={() => onMove(index, -1)} variant="secondary">Subir</PrimaryButton>
+        <PrimaryButton compact disabled={disabled || index === draft.exercises.length - 1} accessibilityLabel={`Bajar ${item.exercise.name}`} onPress={() => onMove(index, 1)} variant="secondary">Bajar</PrimaryButton>
+        <PrimaryButton compact disabled={disabled} accessibilityLabel={`Quitar ${item.exercise.name}`} onPress={() => onRemove(index)} variant="danger">Quitar</PrimaryButton>
+      </View>
+      <View style={styles.inlineFields}>
+        <TextInput accessibilityLabel={`Series de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetSets) => onUpdateTargetSets(index, targetSets)} placeholder="Series" placeholderTextColor={theme.colors.textDim} style={[styles.input, styles.inlineInput]} value={item.targetSets} />
+        <TextInput accessibilityLabel={`Repeticiones de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(targetReps) => onUpdateExercise(index, { targetReps })} placeholder="Repeticiones (opcional)" placeholderTextColor={theme.colors.textDim} style={[styles.input, styles.inlineInput]} value={item.targetReps} />
+      </View>
+      <TextInput accessibilityLabel={`Peso kg de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(targetWeightKg) => onUpdateExercise(index, { targetWeightKg })} placeholder="Peso kg (opcional)" placeholderTextColor={theme.colors.textDim} style={styles.input} value={item.targetWeightKg} />
+      <TextInput accessibilityLabel={`Notas de ${item.exercise.name}`} editable={!disabled} maxLength={2000} multiline onChangeText={(notes) => onUpdateExercise(index, { notes })} placeholder="Notas del ejercicio (opcional)" placeholderTextColor={theme.colors.textDim} style={[styles.input, styles.multiline]} value={item.notes} />
+      {item.seriesPlan
+        ? <PrimaryButton compact disabled={disabled} accessibilityLabel={`Quitar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, false)} variant="ghost">Quitar plan por serie</PrimaryButton>
+        : <PrimaryButton compact disabled={disabled} accessibilityLabel={`Configurar plan por serie de ${item.exercise.name}`} onPress={() => onSetPlan(index, true)} variant="secondary">Configurar plan por serie</PrimaryButton>}
+      {item.seriesPlan?.map((plan, planIndex) => <View key={planIndex} style={styles.row}>
+        <TextInput accessibilityLabel={`Repeticiones plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="numeric" onChangeText={(reps) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, reps } : value) ?? null })} placeholder={`Reps serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textDim} style={[styles.input, { flex: 1 }]} value={plan.reps} />
+        <TextInput accessibilityLabel={`Peso plan ${planIndex + 1} de ${item.exercise.name}`} editable={!disabled} inputMode="decimal" onChangeText={(weightKg) => onUpdateExercise(index, { seriesPlan: item.seriesPlan?.map((value, valueIndex) => valueIndex === planIndex ? { ...value, weightKg } : value) ?? null })} placeholder={`Peso serie ${planIndex + 1}`} placeholderTextColor={theme.colors.textDim} style={[styles.input, { flex: 1 }]} value={plan.weightKg} />
+      </View>)}
     </View>)}
-    <View style={styles.row}><PrimaryButton disabled={pending} accessibilityLabel="Cancelar edición" onPress={onCancel}>Cancelar</PrimaryButton><PrimaryButton disabled={disabled} accessibilityLabel={draft.id ? 'Guardar cambios' : 'Guardar rutina'} onPress={onSave}>{draft.id ? 'Guardar cambios' : 'Guardar rutina'}</PrimaryButton></View>
+
+    <View style={styles.row}>
+      <PrimaryButton compact disabled={pending} accessibilityLabel="Cancelar edición" onPress={onCancel} variant="secondary">Cancelar</PrimaryButton>
+      <PrimaryButton compact disabled={disabled} accessibilityLabel={draft.id ? 'Guardar cambios' : 'Guardar rutina'} onPress={onSave}>{draft.id ? 'Guardar cambios' : 'Guardar rutina'}</PrimaryButton>
+    </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  exerciseMedia: { width: '100%', height: 220 },
-  container: { gap: 12 }, card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 14 }, catalogRow: { alignItems: 'center', flexDirection: 'row', gap: 8 }, confirmation: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 12, gap: 10, padding: 14 }, editor: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 12, gap: 10, padding: 14 }, input: { backgroundColor: theme.colors.surface, borderRadius: 8, color: theme.colors.text, minHeight: 46, paddingHorizontal: 12 }, preview: { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12 }, row: { flexDirection: 'row', gap: 8 },
+  exerciseMedia: { borderRadius: theme.radii.lg, height: 220, width: '100%' },
+  container: { gap: theme.spacing.md },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.gutter },
+  cardIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: theme.radii.full,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  cardCopy: { flex: 1, gap: 2 },
+  cardTitle: { color: theme.colors.text, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  exerciseList: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 17 },
+  catalogList: { gap: 6 },
+  catalogRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  catalogName: { color: theme.colors.text, flex: 1, fontSize: 14 },
+  confirmation: {
+    backgroundColor: theme.colors.errorSoft,
+    borderColor: theme.colors.error + '55',
+    borderRadius: theme.radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  editor: {
+    backgroundColor: theme.colors.backgroundElevated,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  editorTitle: { color: theme.colors.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
+  sectionLabel: { color: theme.colors.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 4 },
+  input: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: theme.colors.text,
+    fontSize: 15,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  multiline: { minHeight: 72, textAlignVertical: 'top' },
+  inlineFields: { flexDirection: 'row', gap: 6 },
+  inlineInput: { flex: 1 },
+  searchRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  searchInput: { color: theme.colors.text, flex: 1, fontSize: 15, minHeight: 46, paddingVertical: 10 },
+  message: { gap: 8 },
+  exerciseHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm },
+  orderText: { color: theme.colors.primary, fontSize: 15, fontWeight: '800' },
+  exerciseName: { color: theme.colors.text, flex: 1, fontSize: 15, fontWeight: '700' },
+  page: { color: theme.colors.textDim, flex: 1, fontSize: 12, textAlign: 'center' },
+  success: { color: theme.colors.success, fontSize: 13, fontWeight: '600' },
+  preview: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  row: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
 });

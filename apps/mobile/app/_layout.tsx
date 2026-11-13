@@ -34,7 +34,7 @@ export default function RootLayout() {
       <ThemeProvider value={DarkTheme}>
         <StatusBar style="light" />
         <SyncCoordinator />
-        <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a141d' } }}>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: '#0A0B0D' } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="register" options={{ headerShown: false }} />

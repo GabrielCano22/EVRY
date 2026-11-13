@@ -7,7 +7,15 @@
     "icon": "./assets/images/icon.png",
     "scheme": "evry",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0a141d",
+    "backgroundColor": "#0A0B0D",
+    "androidStatusBar": {
+      "backgroundColor": "#0A0B0D",
+      "barStyle": "light-content"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#0A0B0D",
+      "barStyle": "light-content"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gabrielcano.evry"
@@ -19,7 +27,7 @@
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0A0B0D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -51,7 +59,7 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0A0B0D"
         }
       ],
       "expo-image",

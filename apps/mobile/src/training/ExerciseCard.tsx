@@ -7,6 +7,7 @@ import { setTypeOfLocal, type LocalWorkoutSet } from './workout-domain';
 import { SetRow, SetTableHeader } from './SetRow';
 import { formatRest } from './format-rest';
 import { savedAtLabel, type ExerciseTarget, type PreviousSet } from './use-exercise-insights';
+import { AppIcon } from '../ui/icon';
 import { textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
 
@@ -55,10 +56,12 @@ export function ExerciseCard({ exercise, owner, editable, compact, onAddSet, onT
           owner={owner}
           style={styles.thumbnail}
           url={exercise.thumbnailUrl}
-        /> : null}
+        /> : <View style={styles.thumbnailFallback}>
+          <AppIcon color={theme.colors.primary} name="fitness_center" size={20} />
+        </View>}
         <View style={styles.identity}>
           <Text numberOfLines={2} style={styles.name}>{exercise.name}</Text>
-          <Text style={textStyles.muted}>
+          <Text style={styles.muscle}>
             {exercise.muscleGroup ? muscleGroupLabel(exercise.muscleGroup as Parameters<typeof muscleGroupLabel>[0]) : 'Sin grupo'}
             {exercise.timed ? ' · por tiempo' : ''}
           </Text>
@@ -69,54 +72,93 @@ export function ExerciseCard({ exercise, owner, editable, compact, onAddSet, onT
           onPress={onOpenRest}
           style={styles.restChip}
         >
-          <Text style={styles.restText}>⏱ {formatRest(exercise.restSeconds)} · corto {formatRest(exercise.shortRestSeconds)}</Text>
+          <AppIcon color={theme.colors.textMuted} name="timer" size={14} />
+          <Text style={styles.restText}>{formatRest(exercise.restSeconds)}</Text>
         </Pressable>
         <Pressable accessibilityLabel={`Opciones de ${exercise.name}`} accessibilityRole="button" onPress={onOpenExercise} style={styles.more}>
-          <Text style={styles.moreText}>⋯</Text>
+          <AppIcon color={theme.colors.textMuted} name="more_horiz" size={21} />
         </Pressable>
       </View>
 
       {rows.length === 0 ? <Text style={textStyles.muted}>Aún no hay series. Añade la primera cuando estés listo.</Text> : <>
         <SetTableHeader compact={compact} timed={exercise.timed} />
-        {rows.map(({ set, ordinal, index }) => (
-          <SetRow
-            compact={compact}
-            editable={editable}
-            key={set.clientId}
-            onChange={(changes) => onChangeSet(set, changes)}
-            onOptions={() => onOptionsSet(set)}
-            onToggle={() => onToggleSet(set)}
-            onTypePress={() => onTypeSet(set)}
-            ordinal={ordinal}
-            previous={exercise.timed ? undefined : exercise.previous[index]}
-            set={set}
-            target={exercise.timed ? null : exercise.target}
-            timed={exercise.timed}
-          />
-        ))}
+        <View style={styles.rows}>
+          {rows.map(({ set, ordinal, index }) => (
+            <SetRow
+              compact={compact}
+              editable={editable}
+              key={set.clientId}
+              onChange={(changes) => onChangeSet(set, changes)}
+              onOptions={() => onOptionsSet(set)}
+              onToggle={() => onToggleSet(set)}
+              onTypePress={() => onTypeSet(set)}
+              ordinal={ordinal}
+              previous={exercise.timed ? undefined : exercise.previous[index]}
+              set={set}
+              target={exercise.timed ? null : exercise.target}
+              timed={exercise.timed}
+            />
+          ))}
+        </View>
       </>}
 
       {exercise.target && savedLabel ? (
-        <Text style={textStyles.muted}>Objetivo de la última consulta · {savedLabel}. Toca la celda para copiarlo.</Text>
+        <Text style={styles.hint}>Objetivo de la última consulta · {savedLabel}. Toca la celda para copiarlo.</Text>
       ) : null}
 
       {editable ? <Pressable accessibilityLabel="Agregar serie" accessibilityRole="button" onPress={onAddSet} style={styles.add}>
-        <Text style={styles.addText}>+ Agregar serie</Text>
+        <AppIcon color={theme.colors.primary} name="add" size={18} />
+        <Text style={styles.addText}>Agregar serie</Text>
       </Pressable> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 8, padding: 12 },
-  header: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  thumbnail: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 8, height: 38, width: 38 },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  header: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm },
+  thumbnail: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 44, width: 44 },
+  thumbnailFallback: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: 10,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   identity: { flex: 1, gap: 1 },
-  name: { color: theme.colors.text, fontSize: 17, fontWeight: '700' },
-  restChip: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 999, justifyContent: 'center', minHeight: 44, paddingHorizontal: 10 },
-  restText: { color: theme.colors.text, fontSize: 12, fontVariant: ['tabular-nums'], fontWeight: '600' },
-  more: { alignItems: 'center', height: 44, justifyContent: 'center', width: 32 },
-  moreText: { color: theme.colors.textMuted, fontSize: 22, fontWeight: '700' },
-  add: { alignItems: 'center', borderColor: theme.colors.surfaceHigh, borderRadius: 8, borderWidth: 1, justifyContent: 'center', minHeight: 44 },
-  addText: { color: theme.colors.primary, fontSize: 15, fontWeight: '700' },
+  name: { color: theme.colors.text, fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
+  muscle: { color: theme.colors.textMuted, fontSize: 12 },
+  restChip: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: theme.radii.full,
+    flexDirection: 'row',
+    gap: 3,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 9,
+  },
+  restText: { color: theme.colors.textMuted, fontSize: 11, fontVariant: ['tabular-nums'], fontWeight: '700' },
+  more: { alignItems: 'center', height: 40, justifyContent: 'center', width: 30 },
+  rows: { gap: 2 },
+  hint: { color: theme.colors.textDim, fontSize: 11, lineHeight: 16 },
+  add: {
+    alignItems: 'center',
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  addText: { color: theme.colors.primary, fontSize: 14, fontWeight: '700' },
 });

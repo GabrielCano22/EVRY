@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { Redirect, Tabs } from 'expo-router';
-import { Platform, Text, useWindowDimensions, type ColorValue } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionStore } from '@/src/auth/session-store';
 import { useTrainingStore } from '@/src/training/training-store';
@@ -33,50 +33,74 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textMuted,
-        headerStyle: { backgroundColor: theme.colors.background },
-        headerTintColor: theme.colors.text,
+        headerShown: false,
+        sceneStyle: { backgroundColor: theme.colors.background },
+        tabBarActiveTintColor: theme.colors.text,
+        tabBarInactiveTintColor: theme.colors.textDim,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.surfaceHigh,
+          backgroundColor: theme.colors.backgroundElevated,
+          borderTopColor: theme.colors.border,
+          borderTopWidth: StyleSheet.hairlineWidth,
           height: tabContentHeight + bottomGutter,
           paddingBottom: bottomGutter,
+          paddingTop: 6,
         },
-        tabBarLabelStyle: { fontSize: theme.spacing.gutter, lineHeight: 18 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.1 },
+        tabBarIconStyle: { marginBottom: -1 },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'house.fill', android: 'home', web: 'home' }} color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon active={focused} name={{ ios: 'house.fill', android: 'home', web: 'home' }} color={color} />,
         }}
       />
       <Tabs.Screen
         name="train"
         options={{
           title: 'Entrenar',
-          tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'dumbbell.fill', android: 'fitness_center', web: 'fitness_center' }} color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon active={focused} name={{ ios: 'dumbbell.fill', android: 'fitness_center', web: 'fitness_center' }} color={color} />,
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
           title: 'Progreso',
-          tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'chart.line.uptrend.xyaxis', android: 'show_chart', web: 'show_chart' }} color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon active={focused} name={{ ios: 'chart.line.uptrend.xyaxis', android: 'show_chart', web: 'show_chart' }} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ color }) => <TabIcon name={{ ios: 'person.fill', android: 'person', web: 'person' }} color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon active={focused} name={{ ios: 'person.fill', android: 'person', web: 'person' }} color={color} />,
         }}
       />
     </Tabs>
   );
 }
 
-function TabIcon({ name, color }: { name: Parameters<typeof SymbolView>[0]['name']; color: ColorValue }) {
-  return <SymbolView name={name} tintColor={color} size={24} />;
+function TabIcon({ name, color, active }: {
+  name: Parameters<typeof SymbolView>[0]['name'];
+  color: ColorValue;
+  active: boolean;
+}) {
+  return (
+    <View style={styles.iconSlot}>
+      <SymbolView name={name} tintColor={color} size={23} />
+      <View style={[styles.activeDot, active && styles.activeDotVisible]} />
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  iconSlot: { alignItems: 'center', gap: 3, justifyContent: 'center' },
+  activeDot: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 99,
+    height: 3,
+    opacity: 0,
+    width: 3,
+  },
+  activeDotVisible: { opacity: 1 },
+});

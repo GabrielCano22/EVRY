@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { todayCivil, type CivilDate } from '@evry/domain';
 import type { components } from '@evry/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,7 +16,8 @@ import {
   type ProfileGoal,
   type ProfileUpdateInput,
 } from '@/src/profile/profile-form';
-import { PrimaryButton, Screen, textStyles } from '@/src/ui/components';
+import { Avatar, Card, PrimaryButton, Screen, ScreenHeader, SectionHeader, textStyles } from '@/src/ui/components';
+import { AppIcon } from '@/src/ui/icon';
 import { theme } from '@/src/ui/theme';
 import { RestPreferencesCard } from '@/src/training/RestPreferencesCard';
 import { useReadinessDay } from '@/src/profile/use-readiness-day';
@@ -201,118 +202,177 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <Text style={textStyles.title}>Perfil</Text>
-      <View style={styles.card}>
-        <Text style={textStyles.heading}>Datos personales</Text>
-        <Text style={textStyles.muted}>{user?.email}</Text>
-        <Text style={styles.label}>Nombre</Text>
-        <TextInput
-          accessibilityLabel="Nombre"
-          autoCapitalize="words"
-          maxLength={120}
-          onChangeText={(name) => updateDraft({ name })}
-          style={styles.input}
-          value={draft.name}
-        />
+      <ScreenHeader
+        eyebrow="TU CUENTA"
+        subtitle="Datos personales, ciclo y readiness en un solo lugar."
+        title="Perfil"
+      />
+
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Avatar name={draft.name || user?.email || 'EVRY'} size={46} />
+          <View style={styles.cardHeaderCopy}>
+            <Text style={styles.cardTitle}>Datos personales</Text>
+            <Text style={styles.email}>{user?.email}</Text>
+          </View>
+        </View>
+
+        <Field label="Nombre">
+          <TextInput
+            accessibilityLabel="Nombre"
+            autoCapitalize="words"
+            maxLength={120}
+            onChangeText={(name) => updateDraft({ name })}
+            placeholder="Tu nombre"
+            placeholderTextColor={theme.colors.textDim}
+            style={styles.input}
+            value={draft.name}
+          />
+        </Field>
         {profileErrors.name ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.name}</Text> : null}
-        <Text style={styles.label}>Fecha de nacimiento</Text>
-        <TextInput
-          accessibilityLabel="Fecha de nacimiento"
-          autoCapitalize="none"
-          keyboardType="numbers-and-punctuation"
-          maxLength={10}
-          onChangeText={(birthDate) => updateDraft({ birthDate })}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={theme.colors.textMuted}
-          style={styles.input}
-          value={draft.birthDate}
-        />
+
+        <Field label="Fecha de nacimiento">
+          <TextInput
+            accessibilityLabel="Fecha de nacimiento"
+            autoCapitalize="none"
+            keyboardType="numbers-and-punctuation"
+            maxLength={10}
+            onChangeText={(birthDate) => updateDraft({ birthDate })}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={theme.colors.textDim}
+            style={styles.input}
+            value={draft.birthDate}
+          />
+        </Field>
         <Text style={textStyles.muted}>Formato: YYYY-MM-DD</Text>
         {profileErrors.birthDate ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.birthDate}</Text> : null}
+
         <Text style={styles.label}>Sexo biológico</Text>
         <View style={styles.options}>
-          {sexOptions.map((option) => (
-            <Pressable
-              accessibilityLabel={`Sexo biológico: ${option.label}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: draft.biologicalSex === option.value }}
-              key={option.value}
-              onPress={() => updateDraft({ biologicalSex: option.value })}
-              style={[styles.option, draft.biologicalSex === option.value && styles.optionSelected]}
-            >
-              <Text style={textStyles.body}>{option.label}</Text>
-            </Pressable>
-          ))}
+          {sexOptions.map((option) => {
+            const selected = draft.biologicalSex === option.value;
+            return (
+              <Pressable
+                accessibilityLabel={`Sexo biológico: ${option.label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={option.value}
+                onPress={() => updateDraft({ biologicalSex: option.value })}
+                style={[styles.option, selected && styles.optionSelected]}
+              >
+                {selected ? <AppIcon color={theme.colors.onPrimary} name="check" size={14} /> : null}
+                <Text style={selected ? styles.optionTextSelected : styles.optionText}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
         {profileErrors.biologicalSex ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.biologicalSex}</Text> : null}
+
         <Text style={styles.label}>Objetivos</Text>
         <View style={styles.options}>
-          {goalOptions.map((option) => (
-            <Pressable
-              accessibilityLabel={`Objetivo: ${option.label}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: draft.goals.includes(option.value) }}
-              key={option.value}
-              onPress={() => toggleGoal(option.value)}
-              style={[styles.option, draft.goals.includes(option.value) && styles.optionSelected]}
-            >
-              <Text style={textStyles.body}>{option.label}</Text>
-            </Pressable>
-          ))}
+          {goalOptions.map((option) => {
+            const selected = draft.goals.includes(option.value);
+            return (
+              <Pressable
+                accessibilityLabel={`Objetivo: ${option.label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={option.value}
+                onPress={() => toggleGoal(option.value)}
+                style={[styles.option, selected && styles.optionSelected]}
+              >
+                {selected ? <AppIcon color={theme.colors.onPrimary} name="check" size={14} /> : null}
+                <Text style={selected ? styles.optionTextSelected : styles.optionText}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
         {profileErrors.goals ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.goals}</Text> : null}
+
         <View style={styles.switchRow}>
+          <View style={styles.switchIcon}>
+            <AppIcon color={theme.colors.cycle} name="calendar_month" size={18} />
+          </View>
           <View style={styles.switchCopy}>
-            <Text style={textStyles.body}>Seguimiento de ciclo</Text>
+            <Text style={styles.switchTitle}>Seguimiento de ciclo</Text>
             <Text style={textStyles.muted}>Opcional para cualquier persona.</Text>
           </View>
           <Switch
             accessibilityLabel="Activar seguimiento de ciclo"
             onValueChange={toggleCycleTracking}
+            thumbColor={draft.trackCycle ? theme.colors.text : theme.colors.textDim}
+            trackColor={{ false: theme.colors.surfaceHighest, true: theme.colors.cycle }}
             value={draft.trackCycle}
           />
         </View>
         {profileErrors.trackCycle ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.trackCycle}</Text> : null}
+
         {draft.trackCycle ? (
-          <>
-            <Text style={styles.label}>Promedio de ciclo (días)</Text>
-            <TextInput
-              accessibilityLabel="Promedio de ciclo (días)"
-              keyboardType="number-pad"
-              onChangeText={(avgCycleLen) => updateDraft({ avgCycleLen })}
-              style={styles.input}
-              value={draft.avgCycleLen}
-            />
-            {profileErrors.avgCycleLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgCycleLen}</Text> : null}
-            <Text style={styles.label}>Promedio de periodo (días)</Text>
-            <TextInput
-              accessibilityLabel="Promedio de periodo (días)"
-              keyboardType="number-pad"
-              onChangeText={(avgPeriodLen) => updateDraft({ avgPeriodLen })}
-              style={styles.input}
-              value={draft.avgPeriodLen}
-            />
-            {profileErrors.avgPeriodLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgPeriodLen}</Text> : null}
-          </>
+          <View style={styles.cycleLengths}>
+            <View style={styles.cycleField}>
+              <Field label="Promedio de ciclo (días)">
+                <TextInput
+                  accessibilityLabel="Promedio de ciclo (días)"
+                  inputMode="numeric"
+                  keyboardType="number-pad"
+                  onChangeText={(avgCycleLen) => updateDraft({ avgCycleLen })}
+                  placeholder="28"
+                  placeholderTextColor={theme.colors.textDim}
+                  style={styles.input}
+                  value={draft.avgCycleLen}
+                />
+              </Field>
+              {profileErrors.avgCycleLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgCycleLen}</Text> : null}
+            </View>
+            <View style={styles.cycleField}>
+              <Field label="Promedio de periodo (días)">
+                <TextInput
+                  accessibilityLabel="Promedio de periodo (días)"
+                  inputMode="numeric"
+                  keyboardType="number-pad"
+                  onChangeText={(avgPeriodLen) => updateDraft({ avgPeriodLen })}
+                  placeholder="5"
+                  placeholderTextColor={theme.colors.textDim}
+                  style={styles.input}
+                  value={draft.avgPeriodLen}
+                />
+              </Field>
+              {profileErrors.avgPeriodLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgPeriodLen}</Text> : null}
+            </View>
+          </View>
         ) : (
           <>
             {profileErrors.avgCycleLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgCycleLen}</Text> : null}
             {profileErrors.avgPeriodLen ? <Text accessibilityRole="alert" style={textStyles.error}>{profileErrors.avgPeriodLen}</Text> : null}
           </>
         )}
+
         {profileMutation.error ? <Text accessibilityRole="alert" style={textStyles.error}>{profileMutation.error.message}</Text> : null}
         {profileMutation.isSuccess ? <Text accessibilityLiveRegion="polite" style={styles.success}>Perfil guardado.</Text> : null}
         <PrimaryButton disabled={profileMutation.isPending} onPress={submitProfile}>
           {profileMutation.isPending ? 'Guardando…' : 'Guardar perfil'}
         </PrimaryButton>
-      </View>
+      </Card>
+
+      <SectionHeader detail="Contexto diario para sugerencias conservadoras." title="Bienestar" />
 
       <DailyReadiness session={session} />
 
       <RestPreferencesCard key={JSON.stringify([session.serverUrl, session.userId, session.version])} session={session} />
 
-      <PrimaryButton onPress={() => void logout()}>Cerrar sesión</PrimaryButton>
+      <PrimaryButton icon={<AppIcon color={theme.colors.error} name="logout" size={19} />} onPress={() => void logout()} variant="danger">
+        Cerrar sesión
+      </PrimaryButton>
     </Screen>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      {children}
+    </View>
   );
 }
 
@@ -373,22 +433,45 @@ function ReadinessForm({ session, day, refreshDay }: {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     },
   });
-  return <View style={styles.card}>
-    <Text style={textStyles.heading}>Readiness de hoy</Text>
-    <Text accessibilityLabel="Fecha de readiness" style={textStyles.muted}>{day}</Text>
+  const score = readinessQuery.data?.score ?? null;
+  return <Card style={styles.readiness}>
+    <View style={styles.readinessHeader}>
+      <View style={styles.readinessIcon}>
+        <AppIcon color={theme.colors.success} name="monitor_heart" size={20} />
+      </View>
+      <View style={styles.readinessCopy}>
+        <Text style={styles.cardTitle}>Readiness de hoy</Text>
+        <Text accessibilityLabel="Fecha de readiness" style={textStyles.muted}>{day}</Text>
+      </View>
+      {score !== null ? (
+        <View style={styles.scoreBadge}>
+          <Text style={styles.scoreBadgeText}>{score}</Text>
+          <Text style={styles.scoreBadgeUnit}>/100</Text>
+        </View>
+      ) : null}
+    </View>
     <Text style={textStyles.muted}>Sirve como contexto para sugerencias conservadoras; no cambia cargas automáticamente.</Text>
+    {score !== null ? (
+      <View style={styles.scoreTrack}>
+        <View style={[styles.scoreFill, { width: `${Math.max(0, Math.min(100, score))}%` }]} />
+      </View>
+    ) : null}
     {readinessQuery.isFetching ? <Text accessibilityLiveRegion="polite" style={textStyles.muted}>Consultando readiness de hoy…</Text> : null}
-    {readinessQuery.data ? <Text style={styles.score}>Puntaje actual: {readinessQuery.data.score}/100</Text> : null}
+    {readinessQuery.data ? <Text style={styles.scoreText}>Puntaje actual: {readinessQuery.data.score}/100</Text> : null}
     {readinessQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>No pudimos consultar el registro de hoy.</Text> : null}
     {readinessQuery.isError && readinessQuery.data ? <Text style={textStyles.muted}>Se conserva el último puntaje consultado; no se pudo actualizar.</Text> : null}
     {readinessQuery.isSuccess && readinessQuery.data === null ? <Text style={textStyles.muted}>No has registrado readiness hoy.</Text> : null}
-    <PrimaryButton disabled={readinessQuery.isFetching} onPress={() => void readinessQuery.refetch()}>
+    <PrimaryButton disabled={readinessQuery.isFetching} onPress={() => void readinessQuery.refetch()} variant="secondary">
       {readinessQuery.isError ? 'Reintentar readiness' : 'Actualizar readiness'}
     </PrimaryButton>
-    <MetricStepper label="Horas de sueño" max={16} min={0} onChange={value => updateField('sleepHrs', value)} step={0.5} value={draft.values.sleepHrs} />
-    <MetricStepper label="Estrés" max={5} min={1} onChange={value => updateField('stress', value)} value={draft.values.stress} />
-    <MetricStepper label="Dolor muscular" max={5} min={1} onChange={value => updateField('soreness', value)} value={draft.values.soreness} />
-    <MetricStepper label="Motivación" max={5} min={1} onChange={value => updateField('motivation', value)} value={draft.values.motivation} />
+
+    <View style={styles.metrics}>
+      <MetricStepper label="Horas de sueño" max={16} min={0} onChange={value => updateField('sleepHrs', value)} step={0.5} value={draft.values.sleepHrs} />
+      <MetricStepper label="Estrés" max={5} min={1} onChange={value => updateField('stress', value)} value={draft.values.stress} />
+      <MetricStepper label="Dolor muscular" max={5} min={1} onChange={value => updateField('soreness', value)} value={draft.values.soreness} />
+      <MetricStepper label="Motivación" max={5} min={1} onChange={value => updateField('motivation', value)} value={draft.values.motivation} />
+    </View>
+
     {readinessMutation.error ? <Text accessibilityRole="alert" style={textStyles.error}>{readinessMutation.error.message}</Text> : null}
     {readinessMutation.isSuccess && confirmedValues !== null ? <Text accessibilityLiveRegion="polite" style={styles.success}>
       {readinessFields.every(field => confirmedValues[field] === draft.values[field])
@@ -397,7 +480,7 @@ function ReadinessForm({ session, day, refreshDay }: {
     <PrimaryButton disabled={readinessMutation.isPending} onPress={() => readinessMutation.mutate({ values: { ...draft.values }, version: draft.version })}>
       {readinessMutation.isPending ? 'Guardando…' : 'Guardar readiness'}
     </PrimaryButton>
-  </View>;
+  </Card>;
 }
 
 function MetricStepper(props: {
@@ -416,42 +499,149 @@ function MetricStepper(props: {
     void Haptics.selectionAsync().catch(() => undefined);
   };
   return (
-    <View style={{ gap: 6 }}>
-      <View style={styles.stepper}>
-        <Text style={[textStyles.body, { flex: 1 }]}>{props.label}</Text>
-        <View style={styles.stepperControls}>
-        <Pressable accessibilityLabel={`Reducir ${props.label}`} accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined} accessibilityRole="button" onPress={() => void change(-1)} style={styles.stepButton}>
-          <Text style={styles.stepText}>−</Text>
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{props.label}</Text>
+      <View style={styles.metricControls}>
+        <Pressable
+          accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined}
+          accessibilityLabel={`Reducir ${props.label}`}
+          accessibilityRole="button"
+          onPress={() => void change(-1)}
+          style={styles.stepButton}
+        >
+          <AppIcon color={theme.colors.text} name="remove" size={20} />
         </Pressable>
-        <Text accessibilityLabel={`Valor de ${props.label}`} accessibilityLiveRegion="polite" style={styles.stepValue}>{props.value === null ? 'Sin registrar' : props.value}</Text>
-        <Pressable accessibilityLabel={`Aumentar ${props.label}`} accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined} accessibilityRole="button" onPress={() => void change(1)} style={styles.stepButton}>
-          <Text style={styles.stepText}>+</Text>
+        <Text
+          accessibilityLabel={`Valor de ${props.label}`}
+          accessibilityLiveRegion="polite"
+          style={styles.stepValue}
+        >
+          {props.value === null ? 'Sin registrar' : props.value}
+        </Text>
+        <Pressable
+          accessibilityHint={props.value === null ? `Comenzar a registrar en ${props.min}` : undefined}
+          accessibilityLabel={`Aumentar ${props.label}`}
+          accessibilityRole="button"
+          onPress={() => void change(1)}
+          style={styles.stepButton}
+        >
+          <AppIcon color={theme.colors.text} name="add" size={20} />
         </Pressable>
-        </View>
       </View>
-      <Pressable accessibilityLabel={`Dejar sin registrar ${props.label}`} accessibilityRole="button"
-        accessibilityState={{ disabled: props.value === null }} disabled={props.value === null}
-        onPress={() => props.onChange(null)} style={{ minHeight: 44, justifyContent: 'center' }}>
-        <Text style={textStyles.muted}>Dejar sin registrar</Text>
+      <Pressable
+        accessibilityLabel={`Dejar sin registrar ${props.label}`}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: props.value === null }}
+        disabled={props.value === null}
+        onPress={() => props.onChange(null)}
+        style={styles.metricClear}
+      >
+        <Text style={styles.metricClearText}>Dejar sin registrar</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 12, padding: 18 },
-  input: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, color: theme.colors.text, fontSize: 16, minHeight: 48, paddingHorizontal: 14 },
-  label: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
-  option: { borderColor: theme.colors.surfaceHigh, borderRadius: 10, borderWidth: 1, padding: 10 },
-  optionSelected: { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.primary },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  score: { color: theme.colors.primary, fontSize: 18, fontWeight: '800' },
-  stepButton: { alignItems: 'center', backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, height: 48, justifyContent: 'center', width: 48 },
-  stepper: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
-  stepperControls: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  stepText: { color: theme.colors.text, fontSize: 24, fontWeight: '700' },
-  stepValue: { color: theme.colors.text, fontSize: 16, minWidth: 34, textAlign: 'center' },
+  card: { gap: theme.spacing.sm },
+  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.gutter },
+  cardHeaderCopy: { flex: 1, gap: 1 },
+  cardTitle: { color: theme.colors.text, fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  email: { color: theme.colors.textMuted, fontSize: 12 },
+  field: { gap: 6 },
+  label: { color: theme.colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
+  input: {
+    backgroundColor: theme.colors.surfaceHigh,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: theme.colors.text,
+    fontSize: 16,
+    minHeight: 48,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  option: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHigh,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 5,
+    minHeight: 38,
+    paddingHorizontal: 12,
+  },
+  optionSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  optionText: { color: theme.colors.textMuted, fontSize: 13, fontWeight: '600' },
+  optionTextSelected: { color: theme.colors.onPrimary, fontSize: 13, fontWeight: '800' },
+  switchRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: theme.radii.lg,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    padding: 12,
+  },
+  switchIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.cycleSoft,
+    borderRadius: theme.radii.full,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  switchCopy: { flex: 1, gap: 1 },
+  switchTitle: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
+  cycleLengths: { flexDirection: 'row', gap: theme.spacing.sm },
+  cycleField: { flex: 1, gap: 4 },
   success: { color: theme.colors.success, fontSize: 14 },
-  switchCopy: { flex: 1 },
-  switchRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  readiness: { gap: theme.spacing.sm },
+  readinessHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.gutter },
+  readinessIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.successSoft,
+    borderRadius: theme.radii.full,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  readinessCopy: { flex: 1, gap: 1 },
+  scoreBadge: {
+    alignItems: 'baseline',
+    backgroundColor: theme.colors.successSoft,
+    borderRadius: theme.radii.full,
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  scoreBadgeText: { color: theme.colors.success, fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  scoreBadgeUnit: { color: theme.colors.success, fontSize: 10, fontWeight: '700' },
+  scoreTrack: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 99, height: 6, overflow: 'hidden' },
+  scoreFill: { backgroundColor: theme.colors.success, borderRadius: 99, height: 6 },
+  scoreText: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
+  metrics: { gap: theme.spacing.sm },
+  metric: {
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: theme.radii.lg,
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  metricLabel: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
+  metricControls: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm, justifyContent: 'space-between' },
+  stepButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  stepValue: { color: theme.colors.text, flex: 1, fontSize: 17, fontVariant: ['tabular-nums'], fontWeight: '800', textAlign: 'center' },
+  metricClear: { alignSelf: 'center', justifyContent: 'center', minHeight: 30 },
+  metricClearText: { color: theme.colors.textDim, fontSize: 11, fontWeight: '600' },
 });

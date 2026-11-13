@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useContext } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import {
   SET_TYPE_LABELS, isSecondarySetType, restSecondsForExercise, restSecondsForSetType,
   setTypeOf, type SetType,
@@ -26,7 +27,10 @@ import { formatDuration } from '@/src/training/format-rest';
 import { BodyMuscleMap } from '@/src/progress/body-muscle-map';
 import { cachedExerciseSummaries } from '@/src/db/database';
 import { BottomSheet } from '@/src/ui/bottom-sheet';
-import { PrimaryButton, Screen, SyncStatus, textStyles } from '@/src/ui/components';
+import { AppIcon } from '@/src/ui/icon';
+import {
+  Card, PrimaryButton, Screen, ScreenHeader, SectionHeader, SyncStatus, textStyles,
+} from '@/src/ui/components';
 import { theme } from '@/src/ui/theme';
 import type { LocalWorkoutSet } from '@/src/training/workout-domain';
 
@@ -42,6 +46,7 @@ type ExerciseInfo = {
 };
 
 export default function TrainScreen() {
+  const insets = useContext(SafeAreaInsetsContext);
   const session = useSessionStore((state) => state.session)!;
   const sex = useSessionStore((state) => state.user?.biologicalSex);
   const [search, setSearch] = useState('');
@@ -173,16 +178,31 @@ export default function TrainScreen() {
     function changeSearch(value: string) { setSearch(value); setPage(1); }
     return (
       <Screen>
-        <Text style={textStyles.title}>Entrenar</Text>
+        <ScreenHeader
+          eyebrow="ENTRENAMIENTO"
+          subtitle="Sesiones libres y rutinas que funcionan sin conexión."
+          title="Entrenar"
+        />
         <SyncStatus state={syncState} localSaveState={localSaveState} />
         {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
-        <Text style={textStyles.muted}>No hay una sesión activa.</Text>
-        <PrimaryButton onPress={() => void startWorkout()}>Iniciar sesión libre</PrimaryButton>
+        <Card style={styles.startCard}>
+          <View style={styles.startIcon}>
+            <AppIcon color={theme.colors.primary} name="fitness_center" size={26} />
+          </View>
+          <Text style={textStyles.heading}>No hay una sesión activa.</Text>
+          <Text style={textStyles.muted}>Empieza cuando quieras: cada serie se guarda en este dispositivo.</Text>
+          <PrimaryButton
+            icon={<AppIcon color={theme.colors.onPrimary} name="add" size={20} />}
+            onPress={() => void startWorkout()}
+          >
+            Iniciar sesión libre
+          </PrimaryButton>
+        </Card>
         {routinesQuery.isLoading ? <Text style={textStyles.muted}>Cargando rutinas…</Text> : null}
         {routinesQuery.isError ? <Text accessibilityRole="alert" style={textStyles.error}>{routinesQuery.error.message}</Text> : null}
         {routinesQuery.data?.notice ? <Text style={textStyles.muted}>{routinesQuery.data.notice}</Text> : null}
         {routinesQuery.isError || routinesQuery.data?.stale ? (
-          <PrimaryButton disabled={routinesQuery.isFetching} onPress={() => void routinesQuery.refetch()}>Reintentar rutinas</PrimaryButton>
+          <PrimaryButton disabled={routinesQuery.isFetching} onPress={() => void routinesQuery.refetch()} variant="secondary">Reintentar rutinas</PrimaryButton>
         ) : null}
         {routinesQuery.isSuccess && routinesQuery.data.items.length === 0 ? (
           <Text style={textStyles.muted}>{routinesQuery.data.source === 'cache' ? 'No hay rutinas en la copia local.' : 'No tienes rutinas guardadas.'}</Text>
@@ -320,7 +340,7 @@ export default function TrainScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: (insets?.top ?? 0) + theme.spacing.sm }]}>
         <Pressable
           accessibilityLabel="Cambiar nombre de la sesión"
           accessibilityRole="button"
@@ -328,7 +348,11 @@ export default function TrainScreen() {
           onPress={() => { setNameDraft(workout.name); setRenaming(true); }}
           style={styles.headerIdentity}
         >
-          <Text numberOfLines={1} style={styles.headerTitle}>{workout.name}</Text>
+          <Text style={styles.headerEyebrow}>{active ? 'SESIÓN ACTIVA' : 'SESIÓN FINALIZADA'}</Text>
+          <View style={styles.headerTitleRow}>
+            <Text numberOfLines={1} style={styles.headerTitle}>{workout.name}</Text>
+            <AppIcon color={theme.colors.textDim} name="edit" size={15} />
+          </View>
           <Text style={styles.headerMeta}>{formatDuration(elapsedMs)}{workout.status === 'COMPLETED' ? ' · finalizando…' : ''}</Text>
         </Pressable>
         <Pressable
@@ -339,35 +363,44 @@ export default function TrainScreen() {
           onPress={confirmFinish}
           style={[styles.finish, !active && styles.disabled]}
         >
+          <AppIcon color={theme.colors.onPrimary} name="check" size={18} />
           <Text style={styles.finishText}>{workout.status === 'COMPLETED' ? 'Finalizando…' : 'Terminar'}</Text>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.metrics}>
-          <Metric label="Duración" value={formatDuration(elapsedMs)} />
-          <Metric label="Volumen" value={`${volumeKg.toLocaleString('es-CO', { maximumFractionDigits: 1 })} kg`} />
-          <Metric label="Series" value={String(completedSets.length)} />
+          <Metric icon="timer" label="Duración" value={formatDuration(elapsedMs)} />
+          <Metric icon="monitor_weight" label="Volumen" value={`${volumeKg.toLocaleString('es-CO', { maximumFractionDigits: 1 })} kg`} />
+          <Metric icon="stacked_bar_chart" label="Series" value={String(completedSets.length)} />
         </View>
 
         {active ? <SyncStatus localSaveState={localSaveState} state={syncState} /> : null}
 
-        {muscleSummary.groups.length > 0 || muscleSummary.unclassifiedSets > 0 ? <View style={styles.muscleCard}>
+        {muscleSummary.groups.length > 0 || muscleSummary.unclassifiedSets > 0 ? <Card style={styles.muscleCard}>
           <View style={styles.muscleHeader}>
             <Text style={textStyles.heading}>Trabajo muscular</Text>
             <Pressable accessibilityLabel="Ver mapa muscular de la sesión" accessibilityRole="button" onPress={() => setShowMap((value) => !value)} style={styles.mapToggle}>
               <Text style={styles.link}>{showMap ? 'Ocultar mapa' : 'Ver mapa'}</Text>
+              <AppIcon color={theme.colors.primary} name={showMap ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={18} />
             </Pressable>
           </View>
           <Text style={textStyles.muted}>Estimación en vivo por series no-calentamiento registradas.</Text>
           {muscleSummary.groups.map((item) => (
-            <Text key={item.muscleGroup} style={textStyles.body}>
-              {muscleGroupLabel(item.muscleGroup)} · {item.workingSets} {item.workingSets === 1 ? 'serie' : 'series'}
-            </Text>
+            <View key={item.muscleGroup} style={styles.muscleRow}>
+              <View style={styles.muscleDot} />
+              <Text style={[textStyles.body, styles.muscleLabel]}>{muscleGroupLabel(item.muscleGroup)}</Text>
+              <Text style={textStyles.muted}>{item.workingSets} {item.workingSets === 1 ? 'serie' : 'series'}</Text>
+            </View>
           ))}
           {muscleSummary.unclassifiedSets > 0 ? <Text style={textStyles.muted}>Algunas series no se clasifican porque su ejercicio no está en la copia local del catálogo.</Text> : null}
           {showMap && muscleSummary.groups.length > 0 ? <BodyMuscleMap distribution={muscleSummary.groups} sex={sex} /> : null}
-        </View> : null}
+        </Card> : null}
+
+        <SectionHeader
+          detail={`${exerciseIds.length} ${exerciseIds.length === 1 ? 'ejercicio' : 'ejercicios'}`}
+          title="Ejercicios"
+        />
 
         {exerciseIds.map((exerciseId) => {
           const data = info.get(exerciseId)!;
@@ -406,12 +439,16 @@ export default function TrainScreen() {
         })}
 
         {active ? <Pressable accessibilityLabel="Agregar ejercicio" accessibilityRole="button" onPress={() => setPickerVisible(true)} style={styles.addExercise}>
-          <Text style={styles.addExerciseText}>+ Agregar ejercicio</Text>
+          <View style={styles.addExerciseIcon}>
+            <AppIcon color={theme.colors.primary} name="add" size={20} />
+          </View>
+          <Text style={styles.addExerciseText}>Agregar ejercicio</Text>
         </Pressable> : null}
 
         {error ? <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text> : null}
 
         {active ? <Pressable accessibilityLabel="Cancelar sesión" accessibilityRole="button" onPress={confirmCancel} style={styles.cancel}>
+          <AppIcon color={theme.colors.error} name="delete" size={18} />
           <Text style={textStyles.error}>Cancelar sesión</Text>
         </Pressable> : null}
         <View style={{ height: 96 }} />
@@ -524,10 +561,13 @@ export default function TrainScreen() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, icon }: { label: string; value: string; icon: Parameters<typeof AppIcon>[0]['name'] }) {
   return (
     <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
+      <View style={styles.metricTop}>
+        <Text style={styles.metricLabel}>{label}</Text>
+        <AppIcon color={theme.colors.textDim} name={icon} size={15} />
+      </View>
       <Text numberOfLines={1} style={styles.metricValue}>{value}</Text>
     </View>
   );
@@ -537,52 +577,98 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: theme.colors.background, flex: 1 },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.surfaceHigh,
-    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: 10,
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
   },
   headerIdentity: { flex: 1, justifyContent: 'center', minHeight: 48 },
-  headerTitle: { color: theme.colors.text, fontSize: 20, fontWeight: '800' },
-  headerMeta: { color: theme.colors.textMuted, fontSize: 13, fontVariant: ['tabular-nums'] },
+  headerEyebrow: { color: theme.colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  headerTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  headerTitle: { color: theme.colors.text, flexShrink: 1, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  headerMeta: { color: theme.colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
   finish: {
     alignItems: 'center',
     backgroundColor: theme.colors.primary,
-    borderRadius: 10,
+    borderRadius: theme.radii.full,
+    flexDirection: 'row',
+    gap: 5,
     justifyContent: 'center',
-    minHeight: 44,
-    minWidth: 92,
+    minHeight: 42,
+    minWidth: 104,
     paddingHorizontal: 14,
   },
-  finishText: { color: theme.colors.onPrimary, fontSize: 15, fontWeight: '800' },
+  finishText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
   content: { gap: theme.spacing.md, padding: theme.spacing.md },
-  metrics: { flexDirection: 'row', gap: 8 },
-  metric: { backgroundColor: theme.colors.surface, borderRadius: 10, flex: 1, gap: 2, padding: 10 },
-  metricLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
-  metricValue: { color: theme.colors.text, fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '800' },
-  muscleCard: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 6, padding: 12 },
+  startCard: { gap: theme.spacing.sm, padding: theme.spacing.lg },
+  startIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: theme.radii.full,
+    height: 52,
+    justifyContent: 'center',
+    marginBottom: 2,
+    width: 52,
+  },
+  metrics: { flexDirection: 'row', gap: theme.spacing.sm },
+  metric: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    gap: 4,
+    padding: 12,
+  },
+  metricTop: { alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'space-between' },
+  metricLabel: { color: theme.colors.textMuted, flexShrink: 1, fontSize: 10, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  metricValue: { color: theme.colors.text, fontSize: 17, fontVariant: ['tabular-nums'], fontWeight: '800', letterSpacing: -0.2 },
+  muscleCard: { gap: theme.spacing.sm },
   muscleHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
-  mapToggle: { justifyContent: 'center', minHeight: 44 },
-  link: { color: theme.colors.primary, fontSize: 14, fontWeight: '700' },
+  mapToggle: { alignItems: 'center', flexDirection: 'row', gap: 2, justifyContent: 'center', minHeight: 44 },
+  link: { color: theme.colors.primary, fontSize: 13, fontWeight: '700' },
+  muscleRow: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm },
+  muscleDot: { backgroundColor: theme.colors.primary, borderRadius: 99, height: 6, width: 6 },
+  muscleLabel: { flex: 1 },
   addExercise: {
     alignItems: 'center',
-    borderColor: theme.colors.primary,
-    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderStyle: 'dashed',
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 56,
   },
-  addExerciseText: { color: theme.colors.primary, fontSize: 16, fontWeight: '700' },
-  cancel: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  addExerciseIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: theme.radii.full,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  addExerciseText: { color: theme.colors.primary, fontSize: 15, fontWeight: '700' },
+  cancel: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
   disabled: { opacity: 0.45 },
   nameInput: {
     backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: 10,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     color: theme.colors.text,
     fontSize: 16,
-    minHeight: 48,
-    paddingHorizontal: 12,
+    minHeight: 52,
+    paddingHorizontal: 14,
   },
 });

@@ -4,6 +4,7 @@ import {
   MAX_REST_SECONDS, MIN_REST_SECONDS, REST_STEP_SECONDS, restSecondsForSetType,
 } from '@evry/domain';
 import type { MobileSession } from '../api/client';
+import { AppIcon } from '../ui/icon';
 import { PrimaryButton, textStyles } from '../ui/components';
 import { theme } from '../ui/theme';
 import { formatRest } from './format-rest';
@@ -33,7 +34,15 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
 
   return (
     <View style={styles.card}>
-      <Text style={textStyles.heading}>Descanso entre series</Text>
+      <View style={styles.header}>
+        <View style={styles.icon}>
+          <AppIcon color={theme.colors.primary} name="timer" size={20} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={textStyles.heading}>Descanso entre series</Text>
+          <Text style={textStyles.muted}>Solo en este dispositivo.</Text>
+        </View>
+      </View>
       <Text style={textStyles.muted}>
         Se guarda solo en este dispositivo. Calentamiento y drop set descansan la mitad.
       </Text>
@@ -46,7 +55,7 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
           onPress={() => step(-REST_STEP_SECONDS)}
           style={[styles.stepButton, (busy || base <= MIN_REST_SECONDS) && styles.disabled]}
         >
-          <Text style={styles.stepText}>−15</Text>
+          <AppIcon color={theme.colors.text} name="remove" size={20} />
         </Pressable>
         <View
           accessibilityLabel={`Descanso predeterminado ${formatRest(base)}`}
@@ -67,17 +76,17 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
           onPress={() => step(REST_STEP_SECONDS)}
           style={[styles.stepButton, (busy || base >= MAX_REST_SECONDS) && styles.disabled]}
         >
-          <Text style={styles.stepText}>+15</Text>
+          <AppIcon color={theme.colors.text} name="add" size={20} />
         </Pressable>
       </View>
-      <Text accessibilityLiveRegion="polite" style={textStyles.muted}>
+      <Text accessibilityLiveRegion="polite" style={styles.status}>
         {saving ? 'Guardando…' : ready ? 'Guardado automático.' : 'Leyendo preferencias…'}
       </Text>
       {error ? <View style={styles.errorBox}>
         <Text accessibilityRole="alert" style={textStyles.error}>{error}</Text>
-        <PrimaryButton disabled={saving} onPress={() => void load(session)}>Reintentar</PrimaryButton>
+        <PrimaryButton disabled={saving} onPress={() => void load(session)} variant="secondary">Reintentar</PrimaryButton>
       </View> : null}
-      <Text style={textStyles.muted}>
+      <Text style={styles.hint}>
         Los ejercicios con un descanso propio mantienen su valor; se cambia desde la sesión.
       </Text>
     </View>
@@ -85,20 +94,46 @@ export function RestPreferencesCard({ session }: { session: MobileSession }) {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 18 },
-  stepper: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  header: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.gutter },
+  icon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: theme.radii.full,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  headerCopy: { flex: 1, gap: 1 },
+  stepper: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.backgroundElevated,
+    borderRadius: theme.radii.lg,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    padding: theme.spacing.sm,
+  },
   stepButton: {
     alignItems: 'center',
     backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: 10,
-    height: 48,
+    borderRadius: theme.radii.full,
+    height: 44,
     justifyContent: 'center',
-    width: 64,
+    width: 44,
   },
-  stepText: { color: theme.colors.text, fontSize: 16, fontVariant: ['tabular-nums'], fontWeight: '700' },
-  valueBox: { alignItems: 'center', flex: 1, gap: 2 },
-  value: { color: theme.colors.text, fontSize: 30, fontVariant: ['tabular-nums'], fontWeight: '800' },
-  valueCaption: { color: theme.colors.textMuted, fontSize: 12 },
+  valueBox: { alignItems: 'center', flex: 1, gap: 1 },
+  value: { color: theme.colors.text, fontSize: 28, fontVariant: ['tabular-nums'], fontWeight: '800', letterSpacing: -0.6 },
+  valueCaption: { color: theme.colors.textMuted, fontSize: 11 },
+  status: { color: theme.colors.textDim, fontSize: 11 },
   errorBox: { gap: 8 },
-  disabled: { opacity: 0.45 },
+  hint: { color: theme.colors.textDim, fontSize: 11, lineHeight: 16 },
+  disabled: { opacity: 0.4 },
 });

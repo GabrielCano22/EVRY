@@ -8,7 +8,7 @@ import {
 import { isCurrentMobileSession, type MobileSession } from '../api/client';
 import { useSessionStore } from '../auth/session-store';
 import { loadRestTimer, saveRestTimer } from '../db/database';
-import { textStyles } from '../ui/components';
+import { AppIcon } from '../ui/icon';
 import { theme } from '../ui/theme';
 import { useTrainingStore } from './training-store';
 import { formatRest } from './format-rest';
@@ -245,7 +245,8 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
           onPress={() => void commit(skipRestTimer(timer))}
           style={[styles.skip, (disabled || finished) && styles.disabled]}
         >
-          <Text style={textStyles.muted}>Omitir</Text>
+          <AppIcon color={theme.colors.textMuted} name="skip_next" size={17} />
+          <Text style={styles.skipText}>Omitir</Text>
         </Pressable>
       </View>
     </View>
@@ -254,28 +255,44 @@ export function RestTimer({ session, workoutId, startRequest, onAdjustExercise }
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: theme.colors.surfaceHigh,
-    borderColor: theme.colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    bottom: 10,
-    left: 10,
+    backgroundColor: theme.colors.backgroundElevated,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: 12,
+    elevation: 12,
+    left: 12,
     overflow: 'hidden',
     position: 'absolute',
-    right: 10,
+    right: 12,
   },
-  progressTrack: { backgroundColor: theme.colors.surface, height: 3 },
+  progressTrack: { backgroundColor: theme.colors.surfaceHigh, height: 3 },
   progressFill: { backgroundColor: theme.colors.primary, height: 3 },
-  row: { alignItems: 'center', flexDirection: 'row', gap: 4, paddingHorizontal: 6, paddingVertical: 6 },
-  step: { alignItems: 'center', borderRadius: 10, height: 48, justifyContent: 'center', minWidth: 52 },
-  stepText: { color: theme.colors.text, fontSize: 16, fontVariant: ['tabular-nums'], fontWeight: '700' },
+  row: { alignItems: 'center', flexDirection: 'row', gap: 2, paddingHorizontal: 8, paddingVertical: 8 },
+  step: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: theme.radii.full,
+    height: 44,
+    justifyContent: 'center',
+    minWidth: 48,
+  },
+  stepText: { color: theme.colors.text, fontSize: 14, fontVariant: ['tabular-nums'], fontWeight: '700' },
   clock: { alignItems: 'center', flex: 1, justifyContent: 'center', minHeight: 48 },
-  time: { color: theme.colors.text, fontSize: 26, fontVariant: ['tabular-nums'], fontWeight: '800' },
-  caption: { color: theme.colors.textMuted, fontSize: 11, maxWidth: 150 },
-  skip: { alignItems: 'center', justifyContent: 'center', minHeight: 48, minWidth: 58 },
+  time: { color: theme.colors.text, fontSize: 26, fontVariant: ['tabular-nums'], fontWeight: '800', letterSpacing: -0.5 },
+  caption: { color: theme.colors.textMuted, fontSize: 10, maxWidth: 150 },
+  skip: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 64,
+  },
+  skipText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: '600' },
   actionText: { color: theme.colors.primary, fontSize: 14, fontWeight: '700' },
-  errorRow: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 10, paddingTop: 6 },
+  errorRow: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 8 },
   error: { color: theme.colors.error, flex: 1, fontSize: 12 },
   errorRetry: { justifyContent: 'center', minHeight: 44 },
-  disabled: { opacity: 0.45 },
+  disabled: { opacity: 0.4 },
 });

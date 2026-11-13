@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { calendarMonthCells, parseCivilDate, todayCivil, type CivilDate } from '@evry/domain';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { textStyles } from '../ui/components';
+import { IconButton } from '../ui/components';
 import { theme } from '../ui/theme';
 
 type CalendarEntry = { date: string };
@@ -77,18 +77,16 @@ export function CycleCalendar({
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Mes anterior" onPress={() => move(-1)} style={styles.nav}>
-          <Text style={styles.navText}>‹</Text>
-        </Pressable>
-        <Text accessibilityRole="header" style={textStyles.heading}>{monthName}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Mes siguiente" onPress={() => move(1)} style={styles.nav}>
-          <Text style={styles.navText}>›</Text>
-        </Pressable>
+        <IconButton label="Mes anterior" name="chevron_left" onPress={() => move(-1)} />
+        <Text accessibilityRole="header" style={styles.month}>{monthName}</Text>
+        <IconButton label="Mes siguiente" name="chevron_right" onPress={() => move(1)} />
       </View>
       {summary ? <Text accessibilityLabel={summary} style={styles.summary}>{summary}</Text> : null}
-      <Text style={textStyles.muted}>{tracking && showCycle ? 'Calendario de entrenamientos y ciclo' : 'Calendario de entrenamientos'}</Text>
-      <View style={styles.grid}>
+      <Text style={styles.caption}>{tracking && showCycle ? 'Calendario de entrenamientos y ciclo' : 'Calendario de entrenamientos'}</Text>
+      <View style={styles.weekdays}>
         {weekdays.map((day, index) => <Text key={index} style={styles.weekday}>{day}</Text>)}
+      </View>
+      <View style={styles.grid}>
         {days.map((day, index) => {
           if (!day) return <View key={`empty-${index}`} style={styles.cell} />;
           const isWorkout = workouts.has(day);
@@ -148,6 +146,8 @@ export function CycleCalendar({
             <Switch
               accessibilityLabel="Ocultar capa de ciclo"
               onValueChange={(visible) => onToggleCycleLayer?.(visible)}
+              thumbColor={showCycle ? theme.colors.text : theme.colors.textDim}
+              trackColor={{ false: theme.colors.surfaceHighest, true: theme.colors.cycle }}
               value={showCycle}
             />
           </View>
@@ -158,11 +158,11 @@ export function CycleCalendar({
             onPress={onActivateTracking}
             style={styles.activate}
           >
-            <Text style={styles.legendText}>Activar seguimiento</Text>
+            <Text style={styles.activateText}>Activar seguimiento</Text>
           </Pressable>
         )}
       </View>
-      <Text style={textStyles.muted}>
+      <Text style={styles.footnote}>
         {tracking && showCycle
           ? 'Relleno: entrenamiento · anillo: registro de ciclo · punto: hoy. No representa una predicción.'
           : 'Relleno: entrenamiento · punto: hoy.'}
@@ -172,30 +172,48 @@ export function CycleCalendar({
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: 12, gap: 10, padding: 16 },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
   header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  nav: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
-  navText: { color: theme.colors.primary, fontSize: 30 },
-  summary: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
+  month: { color: theme.colors.text, fontSize: 17, fontWeight: '700', textTransform: 'capitalize' },
+  summary: { color: theme.colors.text, fontSize: 13, fontWeight: '700' },
+  caption: { color: theme.colors.textMuted, fontSize: 12 },
+  weekdays: { flexDirection: 'row', marginTop: 2 },
+  weekday: { color: theme.colors.textDim, fontSize: 11, fontWeight: '700', textAlign: 'center', width: '14.2857%' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  weekday: { color: theme.colors.textMuted, textAlign: 'center', width: '14.2857%' },
-  cell: { alignItems: 'center', justifyContent: 'center', minHeight: 44, width: '14.2857%' },
-  day: { alignItems: 'center', borderRadius: 18, height: 34, justifyContent: 'center', width: 34 },
+  cell: { alignItems: 'center', justifyContent: 'center', minHeight: 42, width: '14.2857%' },
+  day: { alignItems: 'center', borderRadius: 15, height: 32, justifyContent: 'center', width: 32 },
   workout: { backgroundColor: theme.colors.primary },
   cycle: { borderColor: theme.colors.cycle, borderWidth: 2 },
   selected: { borderColor: theme.colors.text, borderWidth: 2 },
-  workoutText: { color: theme.colors.onPrimary },
-  futureText: { opacity: 0.35 },
-  dayText: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
+  workoutText: { color: theme.colors.onPrimary, fontWeight: '800' },
+  futureText: { opacity: 0.3 },
+  dayText: { color: theme.colors.text, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   todayDot: { backgroundColor: theme.colors.text, borderRadius: 2, bottom: 3, height: 4, position: 'absolute', width: 4 },
   todayDotOnFill: { backgroundColor: theme.colors.onPrimary },
-  legend: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  legend: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 2 },
   legendItem: { alignItems: 'center', flexDirection: 'row', gap: 4 },
-  legendDot: { borderRadius: 6, height: 12, width: 12 },
+  legendDot: { borderRadius: 6, height: 11, width: 11 },
   legendWorkout: { backgroundColor: theme.colors.primary },
   legendCycle: { borderColor: theme.colors.cycle, borderWidth: 2 },
   legendToday: { backgroundColor: theme.colors.text, borderRadius: 2, height: 4, width: 4 },
-  legendText: { color: theme.colors.textMuted, fontSize: 12 },
+  legendText: { color: theme.colors.textMuted, fontSize: 11 },
   legendSwitch: { alignItems: 'center', flexDirection: 'row', gap: 6, marginLeft: 'auto' },
-  activate: { justifyContent: 'center', marginLeft: 'auto', minHeight: 44 },
+  activate: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.cycleSoft,
+    borderRadius: theme.radii.full,
+    justifyContent: 'center',
+    marginLeft: 'auto',
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  activateText: { color: theme.colors.cycle, fontSize: 12, fontWeight: '700' },
+  footnote: { color: theme.colors.textDim, fontSize: 10, lineHeight: 15 },
 });

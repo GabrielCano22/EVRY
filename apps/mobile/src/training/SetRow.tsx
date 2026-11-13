@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SET_TYPE_CHIPS, SET_TYPE_LABELS, setTypeOf } from '@evry/domain';
 import type { LocalWorkoutSet } from './workout-domain';
 import { setTypeColor } from './SetTypeSheet';
+import { AppIcon } from '../ui/icon';
 import { theme } from '../ui/theme';
 
 export interface SetTarget {
@@ -46,9 +47,9 @@ export function SetRow({ set, ordinal, previous, target, timed, editable, compac
         accessibilityRole="button"
         disabled={!editable}
         onPress={onTypePress}
-        style={[styles.type, { borderColor: setTypeColor(type) }]}
+        style={[styles.type, { borderColor: setTypeColor(type), backgroundColor: `${setTypeColor(type)}1F` }]}
       >
-        <Text style={[styles.typeText, { color: setTypeColor(type) }]}>{SET_TYPE_CHIPS[type]}</Text>
+        <Text style={[styles.typeText, { color: setTypeColor(type) }]}>{SET_TYPE_CHIPS[type] || '•'}</Text>
       </Pressable>
       <Text accessibilityLabel={`Serie ${ordinal}`} style={styles.ordinal}>{ordinal}</Text>
       {timed ? (
@@ -110,7 +111,9 @@ export function SetRow({ set, ordinal, previous, target, timed, editable, compac
         onPress={onToggle}
         style={[styles.check, completed && styles.checkCompleted]}
       >
-        <Text style={[styles.checkText, completed && styles.checkTextCompleted]}>{completed ? '✓' : '○'}</Text>
+        {completed
+          ? <AppIcon color={theme.colors.background} name="check" size={18} />
+          : <View style={styles.checkEmpty} />}
       </Pressable>
       <Pressable
         accessibilityLabel={`Opciones de la serie ${ordinal}`}
@@ -118,7 +121,7 @@ export function SetRow({ set, ordinal, previous, target, timed, editable, compac
         onPress={onOptions}
         style={styles.options}
       >
-        <Text style={styles.optionsText}>⋯</Text>
+        <AppIcon color={theme.colors.textDim} name="more_vert" size={18} />
       </Pressable>
     </View>
   );
@@ -179,7 +182,7 @@ function SetNumberInput({ value, editable, onChange, accessibilityLabel, style, 
       maxLength={8}
       onChangeText={change}
       placeholder="—"
-      placeholderTextColor={theme.colors.textMuted}
+      placeholderTextColor={theme.colors.textDim}
       selectTextOnFocus
       style={[styles.numberInput, style, !editable && styles.inputDisabled]}
       value={draft}
@@ -189,44 +192,43 @@ function SetNumberInput({ value, editable, onChange, accessibilityLabel, style, 
 
 const styles = StyleSheet.create({
   header: { alignItems: 'center', flexDirection: 'row', gap: 4, paddingHorizontal: 2 },
-  headerText: { color: theme.colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
-  typeHeader: { width: 40 },
+  headerText: { color: theme.colors.textDim, fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  typeHeader: { width: 36 },
   row: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: theme.radii.md,
     flexDirection: 'row',
     gap: 4,
-    minHeight: 46,
+    minHeight: 50,
     paddingHorizontal: 2,
   },
-  rowCompleted: { backgroundColor: 'rgba(48,209,88,0.16)' },
-  type: { alignItems: 'center', borderRadius: 7, borderWidth: 2, height: 34, justifyContent: 'center', width: 38 },
-  typeText: { fontSize: 13, fontWeight: '800' },
-  ordinal: { color: theme.colors.textMuted, fontVariant: ['tabular-nums'], fontSize: 13, textAlign: 'center', width: 34 },
-  flex: { flex: 1, minWidth: 34 },
-  previous: { color: theme.colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
+  rowCompleted: { backgroundColor: 'rgba(48,209,88,0.08)' },
+  type: { alignItems: 'center', borderRadius: 8, borderWidth: 1, height: 32, justifyContent: 'center', width: 34 },
+  typeText: { fontSize: 12, fontWeight: '800' },
+  ordinal: { color: theme.colors.textMuted, fontVariant: ['tabular-nums'], fontSize: 12, fontWeight: '700', textAlign: 'center', width: 30 },
+  flex: { flex: 1, minWidth: 32 },
+  previous: { color: theme.colors.textDim, fontSize: 12, fontVariant: ['tabular-nums'] },
   target: { color: theme.colors.text, fontSize: 12, fontVariant: ['tabular-nums'] },
   numberInput: {
-    backgroundColor: 'transparent',
-    borderColor: theme.colors.surfaceHigh,
+    backgroundColor: theme.colors.surfaceHigh,
+    borderColor: 'transparent',
     borderRadius: 8,
     borderWidth: 1,
     color: theme.colors.text,
     fontSize: 14,
     fontVariant: ['tabular-nums'],
+    fontWeight: '600',
     height: 38,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 0,
     textAlign: 'center',
   },
-  input: { width: 62 },
-  repsInput: { width: 50 },
+  input: { width: 58 },
+  repsInput: { width: 48 },
   wideInput: { flex: 1 },
-  inputDisabled: { opacity: 0.7 },
-  check: { alignItems: 'center', height: 44, justifyContent: 'center', width: 40 },
-  checkCompleted: { backgroundColor: theme.colors.success, borderRadius: 9 },
-  checkText: { color: theme.colors.textMuted, fontSize: 18 },
-  checkTextCompleted: { color: theme.colors.background, fontWeight: '900' },
-  options: { alignItems: 'center', height: 44, justifyContent: 'center', width: 30 },
-  optionsText: { color: theme.colors.textMuted, fontSize: 18 },
+  inputDisabled: { opacity: 0.6 },
+  check: { alignItems: 'center', height: 40, justifyContent: 'center', width: 38 },
+  checkCompleted: { backgroundColor: theme.colors.success, borderRadius: 99 },
+  checkEmpty: { borderColor: theme.colors.textDim, borderRadius: 99, borderWidth: 1.5, height: 18, width: 18 },
+  options: { alignItems: 'center', height: 40, justifyContent: 'center', width: 26 },
 });
